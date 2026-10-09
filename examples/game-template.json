@@ -1,0 +1,325 @@
+{
+  "format": "fworld-template",
+  "version": 1,
+  "exportedAt": "2026-09-30T00:00:00.000Z",
+  "game": {
+    "title": "Kedai Senja di Tepi Laut",
+    "description": "Mengelola kedai kopi kecil sambil menyelidiki rahasia mercusuar tua yang padam.",
+    "genre": "slice of life",
+    "tone": "hangat dan penuh rasa ingin tahu",
+    "language": "id",
+    "scenario": {
+      "setting": "Kedai kopi kecil di kota pelabuhan Kamakura, berdiri di antara pasar ikan dan mercusuar tua yang sudah dua tahun tidak menyala.",
+      "startingSituation": "Hari pertama kedai dibuka. Hujan rintik turun sejak pagi, dan satu-satunya pelanggan awal adalah Bima, penjaga mercusuar yang tampak gelisah sambil menggenggam secarik foto lama.",
+      "worldRules": "Mercusuar hanya bisa dinyalakan kembali bila rahasia keluarga penjaganya terungkap. Penduduk kota enggan membicarakan malam terakhir lampu itu menyala.",
+      "tone": "hangat",
+      "genre": "slice of life",
+      "additionalContext": "Kota pelabuhan kecil dengan rutinitas pagi pasar ikan dan senja di dermaga. Kopi adalah alasan orang membuka cerita."
+    },
+    "attributes": [
+      {
+        "id": "semangat",
+        "name": "Semangat",
+        "description": "Motivasi harian pemain untuk menghidupkan kedai.",
+        "min": 0,
+        "max": 10,
+        "defaultValue": 5
+      },
+      {
+        "id": "fokus",
+        "name": "Fokus",
+        "description": "Kemampuan berkonsentrasi saat meracik kopi dan bekerja.",
+        "min": 0,
+        "max": 10,
+        "defaultValue": 5
+      },
+      {
+        "id": "keberanian",
+        "name": "Keberanian",
+        "description": "Nyali untuk menggali rahasia mercusuar yang sensitif.",
+        "min": 0,
+        "max": 10,
+        "defaultValue": 3
+      }
+    ],
+    "resources": [
+      {
+        "id": "uang",
+        "name": "Uang",
+        "description": "Tabungan kedai dalam yen.",
+        "min": 0,
+        "initialValue": 1000
+      },
+      {
+        "id": "energi",
+        "name": "Energi",
+        "description": "Tenaga fisik pemain sepanjang hari.",
+        "min": 0,
+        "max": 100,
+        "initialValue": 80
+      },
+      {
+        "id": "bahan_kopi",
+        "name": "Bahan Kopi",
+        "description": "Persediaan biji kopi dalam gram siap racik.",
+        "min": 0,
+        "max": 2000,
+        "initialValue": 500
+      }
+    ],
+    "relationships": [
+      {
+        "id": "akrab",
+        "name": "Keakraban",
+        "description": "Kedekatan personal dengan pemain.",
+        "min": -10,
+        "max": 10,
+        "defaultValue": 0
+      },
+      {
+        "id": "hormat",
+        "name": "Rasa Hormat",
+        "description": "Penghargaan terhadap kemampuan dan kejujuran pemain.",
+        "min": -10,
+        "max": 10,
+        "defaultValue": 0
+      },
+      {
+        "id": "curiga",
+        "name": "Kecurigaan",
+        "description": "Rasa curiga terhadap niat pemain terkait mercusuar.",
+        "min": -10,
+        "max": 10,
+        "defaultValue": 0
+      }
+    ],
+    "items": [
+      {
+        "id": "kopi_hangat",
+        "name": "Kopi Hangat",
+        "description": "Kopi khas kedai yang memulihkan tenaga dan menaikkan semangat.",
+        "stackable": true,
+        "maxStack": 5,
+        "consumable": true,
+        "effects": [
+          {
+            "type": "RESOURCE_CHANGE",
+            "target": "energi",
+            "operation": "ADD",
+            "value": 15
+          },
+          {
+            "type": "ATTRIBUTE_CHANGE",
+            "target": "semangat",
+            "operation": "ADD",
+            "value": 1
+          }
+        ],
+        "tags": ["minuman", "andalan"]
+      },
+      {
+        "id": "kopi_tubruk_kuat",
+        "name": "Kopi Tubruk Kuat",
+        "description": "Racikan pekat untuk lembur; memulihkan energi dan fokus sekaligus.",
+        "stackable": true,
+        "maxStack": 3,
+        "consumable": true,
+        "effects": [
+          {
+            "type": "RESOURCE_CHANGE",
+            "target": "energi",
+            "operation": "ADD",
+            "value": 25
+          },
+          {
+            "type": "ATTRIBUTE_CHANGE",
+            "target": "fokus",
+            "operation": "ADD",
+            "value": 1
+          },
+          {
+            "type": "RESOURCE_CHANGE",
+            "target": "bahan_kopi",
+            "operation": "SUBTRACT",
+            "value": 50
+          }
+        ],
+        "tags": ["minuman", "khusus"]
+      },
+      {
+        "id": "paket_biji_kopi",
+        "name": "Paket Biji Kopi",
+        "description": "Paket biji kopi dari pemasok; diseduh menjadi dua kopi hangat.",
+        "stackable": true,
+        "maxStack": 3,
+        "consumable": true,
+        "effects": [
+          {
+            "type": "ADD_ITEM",
+            "target": "kopi_hangat",
+            "quantity": 2
+          },
+          {
+            "type": "RESOURCE_CHANGE",
+            "target": "uang",
+            "operation": "SUBTRACT",
+            "value": 300
+          }
+        ],
+        "tags": ["persediaan"]
+      },
+      {
+        "id": "nota_pesanan_bima",
+        "name": "Nota Pesanan Bima",
+        "description": "Nota pesanan biji kopi dari Bima; penuhi untuk mengantarkan satu paket dan menerima bayaran.",
+        "stackable": false,
+        "consumable": true,
+        "effects": [
+          {
+            "type": "REMOVE_ITEM",
+            "target": "paket_biji_kopi",
+            "quantity": 1
+          },
+          {
+            "type": "RESOURCE_CHANGE",
+            "target": "uang",
+            "operation": "ADD",
+            "value": 600
+          },
+          {
+            "type": "RELATIONSHIP_CHANGE",
+            "target": "hormat",
+            "npcId": "bima",
+            "operation": "ADD",
+            "value": 1
+          }
+        ],
+        "tags": ["pesanan", "mercusuar"]
+      },
+      {
+        "id": "kamera_tua",
+        "name": "Kamera Tua",
+        "description": "Kamera film peninggalan keluarga penjaga mercusuar; menyimpan foto malam terakhir lampu menyala.",
+        "stackable": false,
+        "consumable": false,
+        "effects": [
+          {
+            "type": "ADD_FACT",
+            "text": "Kamera tua menyimpan foto mercusuar dari malam terakhir lampu itu menyala, dengan siluet dua orang di galerinya."
+          },
+          {
+            "type": "RELATIONSHIP_CHANGE",
+            "target": "akrab",
+            "npcId": "bima",
+            "operation": "ADD",
+            "value": 2
+          }
+        ],
+        "tags": ["kenang-kenangan", "bukti"]
+      },
+      {
+        "id": "kunci_mercusuar",
+        "name": "Kunci Mercusuar",
+        "description": "Kunci karatan pintu mercusuar yang konon hanya ada satu di dunia.",
+        "stackable": false,
+        "consumable": false,
+        "effects": [
+          {
+            "type": "REMOVE_FACT",
+            "target": "pintu-mercusuar-terkunci"
+          }
+        ],
+        "tags": ["kunci", "mercusuar"]
+      },
+      {
+        "id": "buku_catat_penjaga",
+        "name": "Buku Catat Penjaga",
+        "description": "Buku catatan harian penjaga mercusuar sebelumnya; meruntuhkan prasangka bila dibaca bersama.",
+        "stackable": false,
+        "consumable": false,
+        "effects": [
+          {
+            "type": "ADD_FACT",
+            "text": "Catatan harian menyebut adanya perselisihan keluarga pada malam mercusuar padam, bukan kecelakaan."
+          },
+          {
+            "type": "RELATIONSHIP_CHANGE",
+            "target": "curiga",
+            "npcId": "sora",
+            "operation": "SUBTRACT",
+            "value": 1
+          }
+        ],
+        "tags": ["bukti", "mercusuar"]
+      }
+    ],
+    "player": {
+      "name": "Dian",
+      "description": "Perantau yang membuka kedai kopi untuk menata ulang hidupnya sambil mengejar jawaban tentang mercusuar.",
+      "background": "Mantan pekerja kantoran yang pindah ke kota pelabuhan setelah menemukan foto lama milik kakeknya.",
+      "personality": "Tekun, mudah penasaran, canggung saat hujan deras, tetapi hangat terhadap pelanggan tetap.",
+      "notes": "Membawa kamera tua sebagai satu-satunya barang berharga; ingin menyalakan kembali mercusuar sebelum musim dingin.",
+      "attributes": { "semangat": 7, "fokus": 6, "keberanian": 4 },
+      "resources": { "uang": 1500, "energi": 85 }
+    },
+    "npcs": [
+      {
+        "id": "bima",
+        "name": "Bima",
+        "description": "Penjaga mercusuar paruh baya yang jarang tersenyum dan selalu datang menjelang tutup.",
+        "personality": ["pendiam", "teliti"],
+        "background": "Mewarisi posisi penjaga dari ayahnya yang hilang pada malam mercusuar padam.",
+        "role": "Penjaga mercusuar",
+        "goals": [
+          "menjaga mercusuar tetap berdiri",
+          "menemukan foto terakhir ayahnya"
+        ],
+        "privateKnowledge": [
+          "menyimpan surat wasiat ayahnya di laci rumah jaga",
+          "tahu persis siapa yang terakhir kali naik ke galeri mercusuar"
+        ],
+        "initialRelationships": { "akrab": 3, "hormat": 1, "curiga": 0 },
+        "attributes": { "fokus": 8 }
+      },
+      {
+        "id": "sora",
+        "name": "Sora",
+        "description": "Nelayan muda yang kapalnya bersandar tepat di depan kedai; ramah tetapi waspada pada pendatang.",
+        "personality": ["ceria", "waspada"],
+        "background": "Adik angkat keluarga penjaga mercusuar; tumbuh di sekitar dermaga.",
+        "role": "Nelayan",
+        "goals": [
+          "membuktikan keluarganya tidak bersalah atas padamnya mercusuar"
+        ],
+        "privateKnowledge": [
+          "menyaksikan cahaya terakhir mercusuar dari laut sebelum padam"
+        ],
+        "initialRelationships": { "akrab": 1, "hormat": 0, "curiga": 2 },
+        "attributes": { "keberanian": 6 }
+      },
+      {
+        "id": "hana",
+        "name": "Hana",
+        "description": "Pemilik toko roti di sebelah kedai; pusat kabar kota dan teman bicara paling terbuka.",
+        "personality": ["ramah", "suka bercerita"],
+        "background": "Sudah tiga puluh tahun tinggal di kota pelabuhan dan mengenal hampir semua keluarga.",
+        "role": "Pemilik toko roti",
+        "goals": [
+          "melihat mercusuar menyala lagi sebelum festival musim dingin"
+        ],
+        "privateKnowledge": [
+          "menyimpan kliping koran lama tentang malam padamnya mercusuar"
+        ],
+        "initialRelationships": { "akrab": 2, "hormat": 2, "curiga": 0 },
+        "attributes": { "semangat": 7 }
+      }
+    ],
+    "startingInventory": [
+      { "itemId": "kopi_hangat", "quantity": 2 },
+      { "itemId": "paket_biji_kopi", "quantity": 1 },
+      { "itemId": "kamera_tua", "quantity": 1 },
+      { "itemId": "kunci_mercusuar", "quantity": 1 }
+    ]
+  },
+  "ai": { "provider": "gemini", "model": "gemini-2.5-flash" }
+}

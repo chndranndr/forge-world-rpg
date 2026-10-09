@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#faf8f3" />
+    <title>Fworld — Interactive mockup</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <header class="header">
+      <a class="brand" href="#library"
+        ><span aria-hidden="true">♧</span> Fworld</a
+      ><span class="prototype">Interactive mockup</span
+      ><button data-action="settings" aria-label="Pengaturan">⚙</button>
+    </header>
+    <main id="app"></main>
+    <nav id="navigation" aria-label="Navigasi utama"></nav>
+    <div id="notice" role="status" aria-live="polite"></div>
+    <dialog id="modal">
+      <div id="modal-content"></div>
+      <button id="close-dialog">Tutup</button>
+    </dialog>
+    <input
+      id="import-file"
+      type="file"
+      accept="application/json,.json"
+      hidden
+    />
+  </body>
+</html>

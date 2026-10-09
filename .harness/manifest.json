@@ -1,0 +1,234 @@
+{
+  "schema_version": 2,
+  "profile": "lite",
+  "project": {
+    "kind": "web-app",
+    "stacks": ["node", "react", "typescript", "vite", "sqlite"]
+  },
+  "capabilities": {
+    "application_scaffold": {
+      "status": "implemented",
+      "artifacts": [
+        "index.html",
+        "src/App.tsx",
+        "src/api.ts",
+        "server/main.ts",
+        "scripts/dev-server.mjs",
+        "vite.config.js",
+        "package.json"
+      ],
+      "verify": ["npm.cmd run doctor", "npm.cmd run build"]
+    },
+    "ai_connection": {
+      "status": "partial",
+      "artifacts": [
+        "server/agent.ts",
+        "server/main.ts",
+        "src/components/SettingsPanel.tsx",
+        "tests/agent.test.mjs",
+        "tests/api.test.mjs"
+      ],
+      "verify": [
+        "npm.cmd test (provider stubs)",
+        "live: Gemini connection and an earlier isolated turn passed; latest isolated turn ended RUN_FAILED after 2 successful requests and no commit (2026-10-01)",
+        "live: OpenRouter backend request (pending credential/acceptance)"
+      ]
+    },
+    "persistence": {
+      "status": "partial",
+      "artifacts": [
+        "server/db.ts",
+        "src/db.ts",
+        "shared/browser-storage.ts",
+        "src/components/SettingsPanel.tsx",
+        "tests/server-db.test.mjs",
+        "tests/server-api.test.mjs"
+      ],
+      "verify": [
+        "npm.cmd test",
+        "browser: IndexedDB transfer and read-back on canonical origin (pending acceptance)"
+      ]
+    },
+    "game_library_editor": {
+      "status": "partial",
+      "artifacts": [
+        "src/App.tsx",
+        "src/api.ts",
+        "src/components/GameLibrary.tsx",
+        "src/components/GameEditor.tsx",
+        "server/db.ts",
+        "tests/api.test.mjs",
+        "tests/server-api.test.mjs"
+      ],
+      "verify": [
+        "npm.cmd test",
+        "browser: create/edit/start/restore playthrough (pending acceptance)"
+      ]
+    },
+    "rpg_engine": {
+      "status": "implemented",
+      "artifacts": [
+        "shared/engine.ts",
+        "shared/validation.ts",
+        "tests/engine.test.mjs",
+        "tests/server-db.test.mjs"
+      ],
+      "verify": ["npm.cmd test"]
+    },
+    "turn_flow": {
+      "status": "partial",
+      "artifacts": [
+        "server/turn.ts",
+        "server/agent.ts",
+        "src/components/SessionView.tsx",
+        "tests/agent.test.mjs",
+        "tests/server-db.test.mjs",
+        "tests/server-api.test.mjs"
+      ],
+      "verify": [
+        "npm.cmd test (provider stubs and API integration)",
+        "browser: live opening, turn, choices, and item use (pending acceptance)"
+      ]
+    },
+    "json_template": {
+      "status": "implemented",
+      "artifacts": [
+        "shared/template.ts",
+        "src/template.ts",
+        "examples/game-template.json",
+        "tests/template.test.mjs",
+        "tests/api.test.mjs",
+        "tests/server-api.test.mjs"
+      ],
+      "verify": ["npm.cmd test"]
+    },
+    "ci": {
+      "status": "deferred",
+      "artifacts": [],
+      "verify": []
+    },
+    "knowledge_base": {
+      "status": "implemented",
+      "artifacts": [
+        "AGENTS.md",
+        "README.md",
+        "prd.md",
+        "backend_agent_Implementation_plan.md",
+        ".harness/manifest.json"
+      ],
+      "verify": ["inspect: project docs match local backend scope"]
+    },
+    "quality_checks": {
+      "status": "implemented",
+      "artifacts": [
+        "package.json",
+        "package-lock.json",
+        "tsconfig.json",
+        "tsconfig.server.json",
+        "tests/startup.test.mjs",
+        "tests/server-api.test.mjs",
+        "tests/server-db.test.mjs",
+        "tests/agent.test.mjs"
+      ],
+      "verify": ["npm.cmd run check", "npm.cmd test", "npm.cmd run doctor"]
+    },
+    "repository_commands": {
+      "status": "implemented",
+      "artifacts": ["package.json", "README.md", ".nvmrc"],
+      "verify": ["npm.cmd run setup", "npm.cmd run doctor"]
+    }
+  },
+  "managed_artifacts": [
+    ".env.example",
+    ".gitignore",
+    ".harness/manifest.json",
+    ".nvmrc",
+    ".prettierignore",
+    "AGENTS.md",
+    "README.md",
+    "backend_agent_Implementation_plan.md",
+    "implementation_plan.md",
+    "prd.md",
+    "index.html",
+    "package.json",
+    "package-lock.json",
+    "scripts/dev-server.mjs",
+    "server/agent.ts",
+    "server/db.ts",
+    "server/main.ts",
+    "server/turn.ts",
+    "shared/browser-storage.ts",
+    "shared/engine.ts",
+    "shared/template.ts",
+    "shared/types.ts",
+    "shared/validation.ts",
+    "src/App.tsx",
+    "src/api.ts",
+    "src/components/GameEditor.tsx",
+    "src/components/GameLibrary.tsx",
+    "src/components/SessionView.tsx",
+    "src/components/SettingsPanel.tsx",
+    "src/db.ts",
+    "src/engine.ts",
+    "src/llm.ts",
+    "src/main.tsx",
+    "src/styles.css",
+    "src/template.ts",
+    "src/turn.ts",
+    "src/types.ts",
+    "tests/agent.test.mjs",
+    "tests/api.test.mjs",
+    "tests/editor-rules.test.mjs",
+    "tests/engine.test.mjs",
+    "tests/llm.test.mjs",
+    "tests/persistence.test.mjs",
+    "tests/server-api.test.mjs",
+    "tests/server-db.test.mjs",
+    "tests/startup.test.mjs",
+    "tests/template.test.mjs",
+    "tests/turn.test.mjs",
+    "tsconfig.json",
+    "tsconfig.server.json",
+    "vite.config.js",
+    "examples/game-template.json"
+  ],
+  "commands": {
+    "setup": "npm run setup",
+    "dev": "npm run dev",
+    "format": "npm run format:check",
+    "check": "npm run check",
+    "test": "npm test",
+    "eval": null,
+    "doctor": "npm run doctor",
+    "gc": null
+  },
+  "deferred": [
+    {
+      "capability": "ci",
+      "reason": "Repository lokal tanpa remote atau pilihan provider CI.",
+      "next_step": "Tentukan provider CI saat repository dipublikasikan."
+    },
+    {
+      "capability": "live_ai_and_browser_acceptance",
+      "reason": "Earlier Gemini turn passed, but the latest current-code turn failed before commit; OpenRouter credential and browser acceptance are pending.",
+      "next_step": "Investigate the current-code Gemini turn failure, then test OpenRouter when its server credential is configured and run browser acceptance on the canonical origin."
+    }
+  ],
+  "evidence_gaps": [
+    {
+      "capability": "ai_connection",
+      "gap": "Gemini connection and an earlier isolated turn passed. The latest isolated retest recorded 2 successful requests (1591 input, 390 output tokens) but ended RUN_FAILED with no committed messages. OpenRouter live request remains pending because no credential is configured.",
+      "next_step": "Investigate the current-code Gemini turn failure; configure OpenRouter server-side and test its connection and one turn."
+    },
+    {
+      "capability": "persistence",
+      "gap": "Transfer/read-back telah diuji pada SQLite sementara, tetapi belum melalui browser dan IndexedDB nyata di origin canonical.",
+      "next_step": "Uji migrasi data lama dari Settings dan pastikan IndexedDB tetap utuh."
+    },
+    {
+      "capability": "turn_flow",
+      "gap": "Belum ada playthrough browser live, benchmark A/B/C, uji recall cerita lebih dari 100 pesan, atau acceptance tablet/zoom. Port canonical 5173 sedang menyajikan server development proyek lain.",
+      "next_step": "Jalankan acceptance browser saat port canonical tersedia, lalu uji provider, cerita panjang, benchmark, dan viewport pada jalur backend."
+    }
+  ]
+}
