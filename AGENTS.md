@@ -8,8 +8,8 @@
 - Init hanya menyiapkan scaffold. Implementasikan fitur produk ketika diminta; jangan membuat modul kosong untuk rencana masa depan.
 - Gunakan origin aplikasi `http://127.0.0.1:5173` secara konsisten. Database server adalah sumber save aktif; IndexedDB hanya dibaca untuk migrasi/recovery dan bukan fallback writer ketika backend mati.
 - Draft editor yang belum disimpan tetap berada di memory browser. Simpan credential provider hanya di environment server atau `.env` yang di-ignore; jangan masukkan credential ke source, bundle, log, atau export.
-- Jalankan backend pada Node.js 24.13+ loopback. Jangan membuka bind publik atau menambahkan akses LAN tanpa perubahan kebutuhan.
-- Pertahankan pekerjaan user; jangan push, atau memasukkan credential ke source/log/backup.
+- Jalankan backend pada Node.js 24.13+ loopback. Jangan membuka bind publik atau menambahkan akses LAN tanpa permintaan eksplisit dari user.
+- Jangan memasukkan credential ke source/log/backup.
 - Setelah perubahan, jalankan `npm run doctor` dan review diff. Di PowerShell gunakan `npm.cmd` jika shim `npm` diblokir.
 - Solve the problem, not merely the prompt
 - Test behavior, not implementation
