@@ -15,6 +15,7 @@ import {
 import { exportTemplate } from "../template";
 import type { GameDefinition, ItemDefinition, NpcDefinition } from "../types";
 import exampleTemplate from "../../examples/game-template.json";
+import { storyIllustration } from "../illustrations";
 
 interface GameLibraryProps {
   onCreateDraft: (game: GameDefinition) => void;
@@ -26,6 +27,10 @@ interface GameEntry {
   game: GameRecord;
   sessions: SessionRecord[];
 }
+const dateTimeFormatter = new Intl.DateTimeFormat("id-ID", {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
 
 function seededGame(): GameDefinition {
   const example = exampleTemplate.game;
@@ -184,9 +189,11 @@ export default function GameLibrary({
 
   return (
     <section aria-label="Perpustakaan game">
-      <p className="eyebrow">Perpustakaan ceritamu</p>
-      <h2 className="hero">Dunia untuk kembali.</h2>
-      <p className="intro-line">Lanjutkan ceritamu, atau mulai yang baru.</p>
+      <div className="intro library-intro">
+        <p className="eyebrow">Perpustakaan ceritamu</p>
+        <h2 className="hero">Dunia untuk kembali.</h2>
+        <p className="intro-line">Lanjutkan ceritamu, atau mulai yang baru.</p>
+      </div>
       {loadError && (
         <p className="error" role="alert">
           Backend tidak dapat dimuat: {loadError}{" "}
@@ -194,136 +201,186 @@ export default function GameLibrary({
         </p>
       )}
 
-      {latestOverall && (
-        <>
+      <div className="library-grid">
+        <section className="library-featured" aria-label="Lanjutkan cerita">
           <h2>Lanjutkan bermain</h2>
-          <article className="card featured">
-            <h3>{latestOverall.game.value.title}</h3>
-            <p className="hint">
-              Diperbarui {latestOverall.session.value.updatedAt}
-            </p>
-            <button
-              type="button"
-              className="primary wide"
-              onClick={() => onStartSession(latestOverall.session.value.id)}
-            >
-              Lanjutkan cerita →
-            </button>
-          </article>
-        </>
-      )}
-
-      <div className="section-head">
-        <h2>Dunia kamu</h2>
-        <span className="hint">{entries.length} game</span>
-      </div>
-      <button
-        type="button"
-        className="primary wide"
-        onClick={() => onCreateDraft(seededGame())}
-      >
-        Buat game baru
-      </button>
-      <p className="hint">
-        Game baru dibuat terisi contoh cerita lengkap (atribut, sumber daya,
-        relasi, item, NPC, inventaris) sebagai bahan contoh; semua bagian bebas
-        diedit atau dihapus.
-      </p>
-      {entries.length > 0 && (
-        <label>
-          Cari
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Cari judul game…"
-          />
-        </label>
-      )}
-      {entries.length === 0 && <p>Belum ada game. Buat satu untuk memulai.</p>}
-      {entries.length > 0 && visible.length === 0 && (
-        <p>Tidak ada game yang cocok dengan pencarian.</p>
-      )}
-      <div className="library-list">
-        {visible.map(({ game: record, sessions: sessionRecords }) => {
-          const game = record.value;
-          const sessions = sessionRecords.map((entry) => entry.value);
-          const sorted = [...sessions].sort((a, b) =>
-            a.updatedAt < b.updatedAt ? 1 : -1,
-          );
-          const latest = sorted[0];
-          const status = statusOf(game, sessionRecords);
-          return (
-            <article key={game.id} className="card">
-              <h3>{game.title}</h3>
-              <p className="hint">
-                {status} · {game.genre || "(tanpa genre)"} · Diperbarui:{" "}
-                {game.updatedAt}
-              </p>
-              {latest && (
-                <div className="row">
-                  <button
-                    type="button"
-                    className="primary"
-                    onClick={() => onStartSession(latest.id)}
-                  >
-                    Lanjutkan sesi terbaru
-                  </button>
-                </div>
-              )}
-              <div className="row">
-                <button type="button" onClick={() => onOpenEditor(game.id)}>
-                  Edit
-                </button>
+          {latestOverall ? (
+            <article className="card featured">
+              <img
+                className="cover"
+                src={storyIllustration(latestOverall.game.value)}
+                width={900}
+                height={320}
+                alt=""
+              />
+              <div className="featured-body">
+                <h3>{latestOverall.game.value.title}</h3>
+                <p className="hint">
+                  Diperbarui{" "}
+                  {dateTimeFormatter.format(
+                    new Date(latestOverall.session.value.updatedAt),
+                  )}
+                </p>
                 <button
                   type="button"
-                  onClick={() => void handleExportTemplate(record)}
+                  className="primary wide"
+                  onClick={() => onStartSession(latestOverall.session.value.id)}
                 >
-                  Export template
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleDelete(record)}
-                  disabled={busy}
-                >
-                  Hapus
+                  Lanjutkan cerita →
                 </button>
               </div>
-              {exportNotes[game.id] && (
-                <p className="hint" role="status">
-                  {exportNotes[game.id]}
-                </p>
-              )}
-              {exportErrors[game.id] && (
-                <p className="error" role="alert">
-                  {exportErrors[game.id]}
-                </p>
-              )}
-              {deleteErrors[game.id] && (
-                <p className="error" role="alert">
-                  {deleteErrors[game.id]}
-                </p>
-              )}
-              {sorted.length > 1 && (
-                <ul className="session-list">
-                  {sorted.slice(1).map((session) => (
-                    <li key={session.id}>
-                      <span>
-                        Sesi {session.id.slice(0, 8)} ({session.updatedAt})
-                      </span>
+            </article>
+          ) : (
+            <p className="empty">Belum ada sesi aktif.</p>
+          )}
+        </section>
+
+        <section className="library-worlds" aria-label="Dunia kamu">
+          <div className="section-head">
+            <h2>Dunia kamu</h2>
+            <span className="hint">{entries.length} game</span>
+          </div>
+          {entries.length > 0 && (
+            <label className="search">
+              Cari
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Cari judul game…"
+              />
+            </label>
+          )}
+          {entries.length === 0 && (
+            <p>Belum ada game. Buat satu untuk memulai.</p>
+          )}
+          {entries.length > 0 && visible.length === 0 && (
+            <p>Tidak ada game yang cocok dengan pencarian.</p>
+          )}
+          <div className="library-list">
+            {visible.map(({ game: record, sessions: sessionRecords }) => {
+              const game = record.value;
+              const sessions = sessionRecords.map((entry) => entry.value);
+              const sorted = [...sessions].sort((a, b) =>
+                a.updatedAt < b.updatedAt ? 1 : -1,
+              );
+              const latest = sorted[0];
+              const status = statusOf(game, sessionRecords);
+              return (
+                <article key={game.id} className="world-row">
+                  <img
+                    className="world-illustration"
+                    src={storyIllustration(game)}
+                    width={900}
+                    height={320}
+                    alt=""
+                    loading="lazy"
+                  />
+                  <div className="world-content">
+                    <div className="world-description">
+                      <h3>{game.title}</h3>
+                      <p className="hint">
+                        {status} · {game.genre || "(tanpa genre)"} ·{" "}
+                        {dateTimeFormatter.format(new Date(game.updatedAt))}
+                      </p>
+                    </div>
+                    <div className="world-actions">
                       <button
                         type="button"
-                        onClick={() => onStartSession(session.id)}
+                        className="world-open"
+                        onClick={() =>
+                          latest
+                            ? onStartSession(latest.id)
+                            : onOpenEditor(game.id)
+                        }
+                        aria-label={
+                          latest
+                            ? `Lanjutkan ${game.title}`
+                            : `Buka editor ${game.title}`
+                        }
                       >
-                        Lanjutkan
+                        →
                       </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </article>
-          );
-        })}
+                      <details className="world-menu">
+                        <summary aria-label={`Menu ${game.title}`}>⋮</summary>
+                        <div className="world-menu-content">
+                          <button
+                            type="button"
+                            onClick={() => onOpenEditor(game.id)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleExportTemplate(record)}
+                          >
+                            Export template
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleDelete(record)}
+                            disabled={busy}
+                          >
+                            Hapus
+                          </button>
+                        </div>
+                      </details>
+                    </div>
+                    {exportNotes[game.id] && (
+                      <p className="hint" role="status">
+                        {exportNotes[game.id]}
+                      </p>
+                    )}
+                    {exportErrors[game.id] && (
+                      <p className="error" role="alert">
+                        {exportErrors[game.id]}
+                      </p>
+                    )}
+                    {deleteErrors[game.id] && (
+                      <p className="error" role="alert">
+                        {deleteErrors[game.id]}
+                      </p>
+                    )}
+                    {sorted.length > 1 && (
+                      <ul className="session-list">
+                        {sorted.slice(1).map((session) => (
+                          <li key={session.id}>
+                            <span>
+                              Sesi {session.id.slice(0, 8)} (
+                              {dateTimeFormatter.format(
+                                new Date(session.updatedAt),
+                              )}
+                              )
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => onStartSession(session.id)}
+                            >
+                              Lanjutkan
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            className="primary wide"
+            onClick={() => onCreateDraft(seededGame())}
+          >
+            ＋ Buat game baru
+          </button>
+          <p className="hint">
+            Game baru dimulai dari template contoh yang dapat kamu ubah.
+          </p>
+          <p className="footer-note">
+            Dunia dan progres tersimpan di backend lokal.
+          </p>
+        </section>
       </div>
     </section>
   );

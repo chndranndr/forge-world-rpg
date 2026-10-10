@@ -54,6 +54,16 @@ export default function App() {
         <h1 className="brand">
           <span aria-hidden="true">♧</span> Fworld
         </h1>
+        {view.kind !== "editor" && (
+          <button
+            type="button"
+            className="header-settings"
+            aria-label="Pengaturan"
+            onClick={() => setView({ kind: "settings" })}
+          >
+            <span aria-hidden="true">⚙</span>
+          </button>
+        )}
       </header>
       <main>
         {view.kind === "library" && (
@@ -106,7 +116,6 @@ export default function App() {
             key={view.sessionId}
             sessionId={view.sessionId}
             onBack={() => setView({ kind: "library" })}
-            onOpenSettings={() => setView({ kind: "settings" })}
           />
         )}
       </main>

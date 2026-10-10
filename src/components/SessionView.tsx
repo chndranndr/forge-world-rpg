@@ -15,6 +15,7 @@ import {
   type SessionRecord,
 } from "../api";
 import { DEFAULT_MODELS, type ProviderId } from "../llm";
+import { storyIllustration } from "../illustrations";
 import type { Choice } from "../../shared/engine.js";
 import {
   PLAYER_ID,
@@ -27,7 +28,6 @@ import {
 interface SessionViewProps {
   sessionId: string;
   onBack: () => void;
-  onOpenSettings: () => void;
 }
 
 type RunKind = "opening" | "turn" | "choices" | "item";
@@ -143,6 +143,13 @@ const PANEL_LABELS: Record<Panel, string> = {
   people: "People",
   facts: "Facts",
 };
+const PANEL_ICONS: Record<Panel, string> = {
+  story: "▤",
+  player: "♙",
+  inventory: "▣",
+  people: "♧",
+  facts: "≡",
+};
 
 function effectLabel(effect: ItemEffect): string {
   switch (effect.type) {
@@ -165,11 +172,7 @@ function itemStatus(item: ItemDefinition, quantity: number): string {
   return item.consumable ? "Consumable" : "Permanent";
 }
 
-export default function SessionView({
-  sessionId,
-  onBack,
-  onOpenSettings,
-}: SessionViewProps) {
+export default function SessionView({ sessionId, onBack }: SessionViewProps) {
   const [record, setRecord] = useState<SessionRecord | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [nextBeforeSequence, setNextBeforeSequence] = useState<number | null>(
@@ -460,7 +463,7 @@ export default function SessionView({
           </button>
         )}
         <button type="button" onClick={onBack}>
-          Kembali
+          ← Library
         </button>
       </section>
     );
@@ -587,10 +590,18 @@ export default function SessionView({
   const lastCheck = [...messages].reverse().find((message) => message.check);
 
   return (
-    <div>
-      <p className="eyebrow">
-        {def.title} · {session.ai.model}
-      </p>
+    <div className="session-view">
+      <header className="session-page-heading">
+        <button type="button" className="session-library-link" onClick={onBack}>
+          ← Library
+        </button>
+        <h2>{panel === "story" ? def.title : PANEL_LABELS[panel]}</h2>
+        <p className="eyebrow">
+          {panel === "story"
+            ? `Story · ${session.ai.model}`
+            : `${def.title} · ${session.ai.model}`}
+        </p>
+      </header>
 
       {error && (
         <p className="error" role="alert" tabIndex={-1} ref={errorRef}>
@@ -600,6 +611,24 @@ export default function SessionView({
 
       {panel === "story" && (
         <div className="session-main">
+          <section className="story-cover" aria-label="Metadata cerita">
+            <img
+              className="cover"
+              src={storyIllustration(def)}
+              width={900}
+              height={320}
+              alt=""
+            />
+            <p className="hint">
+              Lokasi: {state.world.location || "(belum ditentukan)"} · Waktu:{" "}
+              {state.world.time || "(belum ditentukan)"}
+            </p>
+            <p className="hint">Scene: {state.world.scene || "(belum ada)"}</p>
+            <p className="hint">
+              Turn committed:{" "}
+              {new Set(messages.map((message) => message.turnId)).size}
+            </p>
+          </section>
           <section className="card" aria-label="Pengaturan AI session">
             <h2>Model session</h2>
             <p className="hint">
@@ -636,19 +665,6 @@ export default function SessionView({
                 }
               />
             </label>
-          </section>
-
-          <section className="card" aria-label="Metadata cerita">
-            <h2>{def.title}</h2>
-            <p className="hint">
-              Lokasi: {state.world.location || "(belum ditentukan)"} · Waktu:{" "}
-              {state.world.time || "(belum ditentukan)"}
-            </p>
-            <p className="hint">Scene: {state.world.scene || "(belum ada)"}</p>
-            <p className="hint">
-              Turn committed:{" "}
-              {new Set(messages.map((message) => message.turnId)).size}
-            </p>
           </section>
 
           {messages.length === 0 && (
@@ -761,9 +777,18 @@ export default function SessionView({
       )}
 
       {panel === "player" && (
-        <section className="card" aria-label="Profil pemain">
-          <h2>{def.player.name || "(tanpa nama)"}</h2>
-          {def.player.description && <p>{def.player.description}</p>}
+        <section className="panel session-panel" aria-label="Profil pemain">
+          <div className="person-head">
+            <div className="avatar" aria-hidden="true">
+              {def.player.name.trim().slice(0, 1).toUpperCase() || "?"}
+            </div>
+            <div className="person-copy">
+              <h2>{def.player.name || "(tanpa nama)"}</h2>
+              {def.player.description && (
+                <p className="hint">{def.player.description}</p>
+              )}
+            </div>
+          </div>
           {def.player.background && (
             <p className="hint">Latar belakang: {def.player.background}</p>
           )}
@@ -778,29 +803,64 @@ export default function SessionView({
           {def.attributes.length === 0 && (
             <p className="hint">Tidak ada atribut.</p>
           )}
-          <ul>
-            {def.attributes.map((attribute) => (
-              <li key={attribute.id}>
-                {attribute.name}:{" "}
-                {state.attributes[attribute.id] ?? attribute.defaultValue} (
-                {attribute.min}–{attribute.max})
-              </li>
-            ))}
-          </ul>
+          <div className="stat-list">
+            {def.attributes.map((attribute) => {
+              const value =
+                state.attributes[attribute.id] ?? attribute.defaultValue;
+              return (
+                <div key={attribute.id} className="stat-row">
+                  <div className="row">
+                    <span>{attribute.name}</span>
+                    <strong>
+                      {value} ({attribute.min}–{attribute.max})
+                    </strong>
+                  </div>
+                  <meter
+                    min={attribute.min}
+                    max={attribute.max}
+                    value={value}
+                    aria-label={`${attribute.name}: ${value} (${attribute.min}–${attribute.max})`}
+                  />
+                  {attribute.description && (
+                    <p className="hint">{attribute.description}</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
 
           <h3>Sumber daya</h3>
           {def.resources.length === 0 && (
             <p className="hint">Tidak ada sumber daya.</p>
           )}
-          <ul>
-            {def.resources.map((resource) => (
-              <li key={resource.id}>
-                {resource.name}:{" "}
-                {state.resources[resource.id] ?? resource.initialValue}
-                {resource.max !== undefined ? ` / ${resource.max}` : ""}
-              </li>
-            ))}
-          </ul>
+          <div className="stat-list">
+            {def.resources.map((resource) => {
+              const value =
+                state.resources[resource.id] ?? resource.initialValue;
+              return (
+                <div key={resource.id} className="stat-row">
+                  <div className="row">
+                    <span>{resource.name}</span>
+                    <strong>
+                      {value}
+                      {resource.max !== undefined ? ` / ${resource.max}` : ""}
+                    </strong>
+                  </div>
+                  {resource.max !== undefined && (
+                    <meter
+                      min={resource.min}
+                      max={resource.max}
+                      value={value}
+                      aria-label={`${resource.name}: ${value} / ${resource.max}`}
+                    />
+                  )}
+                  {resource.description && (
+                    <p className="hint">{resource.description}</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
 
           <h3>Check terakhir</h3>
           {lastCheck && lastCheck.check ? (
@@ -816,8 +876,14 @@ export default function SessionView({
       )}
 
       {panel === "inventory" && (
-        <section className="card" aria-label="Inventaris">
-          <h2>Inventaris</h2>
+        <section className="panel session-panel" aria-label="Inventaris">
+          <p className="hint">
+            {state.inventory.reduce(
+              (total, entry) => total + entry.quantity,
+              0,
+            )}{" "}
+            item dibawa
+          </p>
           {state.inventory.length === 0 && (
             <p className="hint">Inventaris kosong.</p>
           )}
@@ -827,7 +893,7 @@ export default function SessionView({
             );
             if (!item) return null;
             return (
-              <article key={entry.itemId} className="entity">
+              <article key={entry.itemId} className="inventory-row">
                 <div className="row">
                   <h3>
                     {item.name} ×{entry.quantity}
@@ -861,8 +927,7 @@ export default function SessionView({
       )}
 
       {panel === "people" && (
-        <section className="card" aria-label="Karakter">
-          <h2>Karakter</h2>
+        <section className="panel session-panel" aria-label="Karakter">
           {state.relationships.length === 0 && (
             <p className="hint">Belum ada NPC terdaftar.</p>
           )}
@@ -873,29 +938,49 @@ export default function SessionView({
             if (!npc) return null;
             const active = state.world.activeCharacters.includes(npc.id);
             return (
-              <article key={entry.npcId} className="entity">
-                <div className="row">
-                  <h3>{npc.name}</h3>
-                  <span className="hint">
-                    {active ? "Aktif" : "Tidak aktif"}
-                  </span>
+              <article key={entry.npcId} className="person-row">
+                <div className="person-head">
+                  <div className="avatar" aria-hidden="true">
+                    {npc.name.trim().slice(0, 1).toUpperCase() || "?"}
+                  </div>
+                  <div className="person-copy">
+                    <div className="row">
+                      <h3>{npc.name}</h3>
+                      <span className="hint">
+                        {active ? "Aktif" : "Tidak aktif"}
+                      </span>
+                    </div>
+                    {npc.role && <p className="hint">Peran: {npc.role}</p>}
+                  </div>
                 </div>
                 {npc.description && <p>{npc.description}</p>}
-                {npc.role && <p className="hint">Peran: {npc.role}</p>}
                 {npc.personality.length > 0 && (
                   <p className="hint">Sifat: {npc.personality.join(", ")}</p>
                 )}
                 {npc.goals.length > 0 && (
                   <p className="hint">Tujuan: {npc.goals.join("; ")}</p>
                 )}
-                <ul>
-                  {def.relationships.map((rel) => (
-                    <li key={rel.id}>
-                      {rel.name}: {entry.values[rel.id] ?? rel.defaultValue} (
-                      {rel.min}–{rel.max})
-                    </li>
-                  ))}
-                </ul>
+                <div className="stat-list">
+                  {def.relationships.map((rel) => {
+                    const value = entry.values[rel.id] ?? rel.defaultValue;
+                    return (
+                      <div key={rel.id} className="stat-row">
+                        <div className="row">
+                          <span>{rel.name}</span>
+                          <strong>
+                            {value} ({rel.min}–{rel.max})
+                          </strong>
+                        </div>
+                        <meter
+                          min={rel.min}
+                          max={rel.max}
+                          value={value}
+                          aria-label={`${rel.name}: ${value} (${rel.min}–${rel.max})`}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
               </article>
             );
           })}
@@ -903,25 +988,36 @@ export default function SessionView({
       )}
 
       {panel === "facts" && (
-        <section className="card" aria-label="Dunia dan fakta">
+        <section className="panel session-panel" aria-label="Dunia dan fakta">
           <h2>Dunia</h2>
-          <ul>
-            <li>Lokasi: {state.world.location || "(belum ditentukan)"}</li>
-            <li>Waktu: {state.world.time || "(belum ditentukan)"}</li>
-            <li>Scene: {state.world.scene || "(belum ada)"}</li>
-            <li>
-              Karakter aktif:{" "}
-              {state.world.activeCharacters.join(", ") || "(belum ada)"}
-            </li>
-          </ul>
+          <dl className="world-details">
+            <div>
+              <dt>Lokasi</dt>
+              <dd>{state.world.location || "(belum ditentukan)"}</dd>
+            </div>
+            <div>
+              <dt>Waktu</dt>
+              <dd>{state.world.time || "(belum ditentukan)"}</dd>
+            </div>
+            <div>
+              <dt>Scene</dt>
+              <dd>{state.world.scene || "(belum ada)"}</dd>
+            </div>
+            <div>
+              <dt>Karakter aktif</dt>
+              <dd>
+                {state.world.activeCharacters.join(", ") || "(belum ada)"}
+              </dd>
+            </div>
+          </dl>
 
           <h3>Fakta yang diketahui pemain</h3>
           {visibleFacts.length === 0 && (
             <p className="hint">Belum ada fakta.</p>
           )}
-          <ul>
+          <ul className="fact-list">
             {visibleFacts.map((fact) => (
-              <li key={fact.id}>
+              <li key={fact.id} className="fact-row">
                 {fact.text}{" "}
                 <span className="hint">
                   ({fact.visibility}
@@ -971,10 +1067,7 @@ export default function SessionView({
         </label>
       </div>
 
-      <nav className="bottom-nav" aria-label="Panel sesi">
-        <button type="button" onClick={onBack}>
-          Kembali
-        </button>
+      <nav className="bottom-nav session-panel-nav" aria-label="Panel sesi">
         {(Object.keys(PANEL_LABELS) as Panel[]).map((name) => (
           <button
             key={name}
@@ -982,12 +1075,12 @@ export default function SessionView({
             aria-current={panel === name ? "page" : undefined}
             onClick={() => setPanel(name)}
           >
+            <span className="nav-icon" aria-hidden="true">
+              {PANEL_ICONS[name]}
+            </span>
             {PANEL_LABELS[name]}
           </button>
         ))}
-        <button type="button" onClick={onOpenSettings}>
-          Settings
-        </button>
       </nav>
     </div>
   );

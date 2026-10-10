@@ -299,7 +299,8 @@ export default function SettingsPanel({
   }
 
   return (
-    <div>
+    <div className="panel settings-page">
+      <h2 className="settings-page-title">Settings</h2>
       <section aria-label="Status backend" aria-live="polite">
         <h2>Backend lokal</h2>
         {backendStatus && <p role="status">{backendStatus}</p>}

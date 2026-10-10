@@ -376,7 +376,7 @@ details.card > *:not(summary) {
 
 .library-list {
   display: grid;
-  gap: 16px;
+  gap: 0;
 }
 
 .session-list {
@@ -607,11 +607,6 @@ dialog .row {
     font-size: 40px;
   }
 
-  .library-list {
-    grid-template-columns: 1fr 1fr;
-    gap: 24px;
-  }
-
   .editor {
     max-width: 760px;
     margin: auto;
@@ -672,4 +667,405 @@ dialog .row {
   .hero {
     font-size: 44px;
   }
+}
+/* ---------- Mockup-matched screens ---------- */
+
+.header-settings {
+  width: 44px;
+  min-width: 44px;
+  padding: 0;
+  margin-left: auto;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.library-intro {
+  margin-bottom: 28px;
+}
+
+.library-grid {
+  display: grid;
+  gap: 28px;
+}
+
+.library-grid > section,
+.world-content {
+  min-width: 0;
+}
+
+.library-featured > h2,
+.library-worlds .section-head h2 {
+  margin-top: 0;
+}
+
+.library-worlds .section-head {
+  margin-top: 0;
+}
+
+.featured {
+  display: block;
+  padding: 8px;
+}
+
+.featured .cover {
+  display: block;
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: #e7e8df;
+}
+
+.featured-body {
+  display: grid;
+  gap: 8px;
+  padding: 8px 12px 12px;
+  overflow-wrap: anywhere;
+}
+
+.featured-body h3 {
+  margin: 4px 0 0;
+}
+
+.world-row {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  align-items: start;
+  gap: 0 12px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.world-illustration {
+  width: 76px;
+  height: 70px;
+  grid-row: 1;
+  object-fit: cover;
+  border-radius: 4px;
+  background: #e7e8df;
+}
+
+.world-content {
+  grid-column: 2;
+  display: grid;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+
+.world-description h3 {
+  margin: 0 0 5px;
+}
+
+.world-description p {
+  margin: 0;
+}
+
+.world-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.world-open {
+  width: 44px;
+  min-width: 44px;
+  padding: 8px;
+  font-size: 20px;
+}
+
+.world-menu {
+  position: relative;
+}
+
+.world-menu > summary {
+  display: grid;
+  width: 44px;
+  min-height: 44px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  list-style: none;
+}
+
+.world-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.world-menu > summary:hover {
+  border-color: var(--green);
+}
+
+.world-menu-content {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 4;
+  display: grid;
+  min-width: 168px;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.world-menu-content button {
+  width: 100%;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.session-list li {
+  flex-wrap: wrap;
+}
+
+.session-list li span {
+  flex: 1 1 120px;
+  overflow-wrap: anywhere;
+}
+
+.editor-intro {
+  margin-top: 24px;
+}
+
+.editor-intro h2,
+.settings-page-title {
+  margin: 8px 0 12px;
+  font-family: var(--serif);
+  font-size: 36px;
+  font-weight: 500;
+  line-height: 1.12;
+}
+
+.settings-page-title {
+  margin-bottom: 24px;
+}
+
+.session-page-heading {
+  display: grid;
+  gap: 4px;
+  max-width: 700px;
+  margin: 0 auto 20px;
+}
+
+.session-page-heading h2 {
+  margin: 0;
+  font-size: 32px;
+}
+
+.session-page-heading .eyebrow {
+  margin: 0;
+}
+
+.session-library-link {
+  width: fit-content;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--green);
+  text-align: left;
+}
+
+.session-panel {
+  max-width: 700px;
+  margin: auto;
+}
+
+.story-cover {
+  margin: 20px 0 24px;
+}
+
+.story-cover .cover {
+  display: block;
+  width: 100%;
+  height: 150px;
+  margin-bottom: 16px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: #e7e8df;
+}
+
+.story-cover h2 {
+  margin: 0 0 8px;
+}
+
+.story-cover p {
+  margin: 4px 0;
+}
+
+.person-head {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  min-width: 0;
+  margin: 18px 0;
+}
+
+.avatar {
+  display: grid;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 50%;
+  background: #b67e71;
+  color: #fff;
+  font-family: var(--serif);
+  font-size: 23px;
+}
+
+.person-copy {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.person-copy h2,
+.person-copy h3 {
+  margin: 0;
+}
+
+.person-copy p {
+  margin: 4px 0 0;
+}
+
+.person-row {
+  padding: 8px 0 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.person-row > p {
+  margin: 8px 0;
+}
+
+.stat-row {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.stat-row .row {
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.stat-row meter {
+  display: block;
+  width: 100%;
+  height: 10px;
+  accent-color: var(--green);
+}
+
+.stat-row p {
+  margin: 6px 0 0;
+}
+
+.inventory-row {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.inventory-row h3 {
+  margin: 0;
+}
+
+.inventory-row p {
+  margin: 6px 0;
+}
+
+.fact-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fact-row {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.world-details {
+  display: grid;
+  margin: 0;
+}
+
+.world-details > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.world-details dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.world-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+.session-panel-nav {
+  gap: 0;
+}
+
+.session-panel-nav button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 9px 4px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+@media (min-width: 700px) {
+  .library-grid {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    gap: 40px;
+  }
+
+  .featured .cover {
+    height: 220px;
+  }
+
+  .world-row {
+    grid-template-columns: 90px minmax(0, 1fr);
+  }
+
+  .world-illustration {
+    width: 90px;
+  }
+
+  .story-cover .cover {
+    height: 200px;
+  }
+
+  .editor-intro h2,
+  .settings-page-title {
+    font-size: 44px;
+  }
+
+  .session-page-heading h2 {
+    font-size: 36px;
+  }
+}
+
+.footer-note {
+  border-top: 1px solid var(--line);
+  margin-top: 28px;
+  padding-top: 16px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.story-cover h2,
+.session-page-heading h2,
+.person-row,
+.inventory-row,
+.fact-row {
+  overflow-wrap: anywhere;
 }

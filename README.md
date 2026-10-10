@@ -2,6 +2,7 @@
 
 Aplikasi cerita RPG pribadi dengan frontend React + TypeScript + Vite dan backend Node.js lokal. Backend memakai SQLite untuk save, session, history, run, dan ledger penggunaan AI. Kebutuhan produk ada di [prd.md](prd.md); batas arsitektur dan acceptance ada di [rencana backend](backend_agent_Implementation_plan.md).
 
+Antarmuka production mengikuti arah visual `mockups/`, tanpa mengadopsi simulasi AI atau gameplay prototipe.
 
 ## Menjalankan
 

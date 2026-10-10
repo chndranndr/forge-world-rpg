@@ -475,7 +475,7 @@ export default function GameEditor({
   };
 
   return (
-    <div>
+    <div className="editor">
       <div className="row">
         <button
           type="button"
@@ -506,6 +506,11 @@ export default function GameEditor({
         <button type="button" onClick={handleOpenSettings} disabled={working}>
           Settings
         </button>
+      </div>
+      <div className="intro editor-intro">
+        <p className="eyebrow">Rancang ceritamu</p>
+        <h2>{revision === null ? "Buat duniamu" : "Edit duniamu"}</h2>
+        <p>Atur latar, karakter, dan cara dunia bekerja.</p>
       </div>
       {importError && (
         <p className="error" role="alert">
@@ -639,7 +644,7 @@ export default function GameEditor({
         </label>
       </details>
 
-      <details className="card" open>
+      <details className="card">
         <summary>Pemain</summary>
         <label>
           Nama
@@ -735,7 +740,7 @@ export default function GameEditor({
         ))}
       </details>
 
-      <details className="card" open>
+      <details className="card">
         <summary>Atribut</summary>
         {current.attributes.map((attribute, index) => (
           <div className="entity" key={`attr-${index}`}>
@@ -843,7 +848,7 @@ export default function GameEditor({
         </button>
       </details>
 
-      <details className="card" open>
+      <details className="card">
         <summary>Sumber daya</summary>
         {current.resources.map((resource, index) => (
           <div className="entity" key={`res-${index}`}>
@@ -950,7 +955,7 @@ export default function GameEditor({
         </button>
       </details>
 
-      <details className="card" open>
+      <details className="card">
         <summary>Relasi</summary>
         {current.relationships.map((relationship, index) => (
           <div className="entity" key={`rel-${index}`}>
@@ -1058,7 +1063,7 @@ export default function GameEditor({
         </button>
       </details>
 
-      <details className="card" open>
+      <details className="card">
         <summary>Item</summary>
         {current.items.map((item, index) => (
           <div className="entity" key={`item-${index}`}>
@@ -1416,7 +1421,7 @@ export default function GameEditor({
         </button>
       </details>
 
-      <details className="card" open>
+      <details className="card">
         <summary>Inventaris awal</summary>
         {current.startingInventory.map((entry, index) => (
           <div className="row" key={`${entry.itemId}-${index}`}>
@@ -1492,7 +1497,7 @@ export default function GameEditor({
         </button>
       </details>
 
-      <details className="card" open>
+      <details className="card">
         <summary>NPC</summary>
         {current.npcs.map((npc, index) => (
           <div className="entity" key={`npc-${index}`}>
@@ -1646,7 +1651,7 @@ export default function GameEditor({
         </button>
       </details>
 
-      <details className="card" open>
+      <details className="card">
         <summary>Pengaturan AI</summary>
         <label>
           Provider
