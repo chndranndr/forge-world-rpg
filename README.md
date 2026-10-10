@@ -2,13 +2,6 @@
 
 Aplikasi cerita RPG pribadi dengan frontend React + TypeScript + Vite dan backend Node.js lokal. Backend memakai SQLite untuk save, session, history, run, dan ledger penggunaan AI. Kebutuhan produk ada di [prd.md](prd.md); batas arsitektur dan acceptance ada di [rencana backend](backend_agent_Implementation_plan.md).
 
-## Kondisi implementasi
-
-Frontend tetap menyediakan library, editor game, session Story/Player/Inventory/People/Facts, template `fworld-template` v1, dan save `fworld-save` v1. Backend lokal menjadi sumber data aktif dan memvalidasi perubahan gameplay sebelum commit. Gemini dan OpenRouter dipanggil dari backend; browser tidak menerima API key. IndexedDB versi browser-only hanya tersedia untuk transfer dan recovery.
-
-Backend hanya bind ke loopback. Save default berada di `data/fworld.sqlite`, backup di `backups/`, dan keduanya diabaikan Git. Path dapat diatur lewat `FWORLD_DATA_DIR` dan `FWORLD_BACKUP_DIR`. Jangan gunakan LAN atau hosting sebelum scope akses remote dan keamanannya dirancang.
-
-Fitur backend, migrasi, agent, dan endpoint memiliki unit/integration tests lokal. Uji koneksi Gemini dan satu turn sebelumnya berhasil pada database sementara. Retest terisolasi pada kode terbaru mencatat dua request Gemini berhasil (1.591 input dan 390 output token), tetapi run berakhir `RUN_FAILED` tanpa commit pesan. Browser acceptance pada origin canonical juga pending karena port 5173 sedang dipakai server development proyek lain. OpenRouter live, acceptance tablet/zoom, cerita panjang, serta benchmark A/B/C masih perlu diverifikasi; tes otomatis provider menggunakan stub.
 
 ## Menjalankan
 
