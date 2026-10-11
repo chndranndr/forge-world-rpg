@@ -553,6 +553,77 @@ test("fails the active attempt without fabricating usage after a provider error"
   assert.equal(typeof finished[0].latencyMs, "number");
 });
 
+test("fits large relationship context without losing current values", async () => {
+  const session = makeSession();
+  const relationships = Array.from({ length: 180 }, (_, index) => ({
+    id: `rel-${String(index).padStart(3, "0")}`,
+    name: `Relationship ${String(index).padStart(3, "0")}`,
+    min: -10,
+    max: 10,
+    defaultValue: 0,
+  }));
+  const initialRelationships = Object.fromEntries(
+    relationships.map(({ id }) => [id, 0]),
+  );
+  const npcs = ["aiko", "bima", "citra"].map((id) => ({
+    id,
+    name: id,
+    description: `${id} waits nearby.`,
+    personality: ["patient"],
+    goals: ["keep the peace"],
+    privateKnowledge: ["A secret."],
+    initialRelationships,
+  }));
+  const valuesFor = (value) =>
+    Object.fromEntries(relationships.map(({ id }) => [id, value]));
+  session.definitionSnapshot.relationships = relationships;
+  session.definitionSnapshot.npcs = npcs;
+  session.state.relationships = npcs.map((npc, index) => ({
+    npcId: npc.id,
+    values: valuesFor([7, 3, -4][index]),
+  }));
+  session.state.world.activeCharacters = ["player", "aiko", "bima"];
+  const lastRelationshipId = relationships.at(-1).id;
+
+  const result = await agent.runNarrator(makeInput({ session }), {
+    generateText: async (options) => {
+      const prompt = JSON.parse(options.prompt);
+      const context = prompt.context;
+      const aiko = context.activeNpcs.find((npc) => npc.id === "aiko");
+      assert.equal(aiko.relationship[lastRelationshipId], 7);
+      assert.equal(Object.hasOwn(aiko, "initialRelationships"), false);
+      assert.equal(Object.hasOwn(context.state, "relationships"), false);
+
+      const inactiveDetails = await options.tools.get_npc_details.execute({
+        npcId: "citra",
+      });
+      assert.equal(inactiveDetails.relationship[lastRelationshipId], -4);
+
+      const legacyPrompt = structuredClone(prompt);
+      legacyPrompt.context.activeNpcs = legacyPrompt.context.activeNpcs.map(
+        (npc) => ({
+          ...npc,
+          initialRelationships,
+        }),
+      );
+      legacyPrompt.context.state.relationships = session.state.relationships;
+      assert.ok(options.system.length + options.prompt.length <= 24_000);
+      assert.ok(
+        options.system.length + JSON.stringify(legacyPrompt).length > 24_000,
+      );
+
+      return {
+        text: JSON.stringify({
+          narrative: "The scene continues.",
+          effects: [],
+        }),
+      };
+    },
+  });
+
+  assert.equal(result.response.narrative, "The scene continues.");
+});
+
 test("fails before the provider when required context exceeds its limit", async () => {
   const session = makeSession();
   session.definitionSnapshot.player.description = "x".repeat(25_000);
@@ -564,7 +635,15 @@ test("fails before the provider when required context exceeds its limit", async 
         return { text: "{}" };
       },
     }),
-    /Konteks wajib melebihi batas/,
+    (error) => {
+      assert.ok(error instanceof agent.NarratorContextError);
+      assert.ok(error.actualChars > error.maxChars);
+      assert.equal(error.maxChars, 24_000);
+      assert.match(error.message, new RegExp(String(error.actualChars)));
+      assert.match(error.message, /24,?000|24000/);
+      assert.match(error.message, /ringkas konfigurasi game atau aksi pemain/i);
+      return true;
+    },
   );
   assert.equal(providerCalled, false);
 });

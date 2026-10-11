@@ -8,15 +8,17 @@ import { createServer as createViteServer } from "vite";
 let vite;
 let serverApi;
 let databaseApi;
+let turnApi;
 
 test.before(async () => {
   vite = await createViteServer({
     server: { middlewareMode: true, hmr: false },
     appType: "custom",
   });
-  [serverApi, databaseApi] = await Promise.all([
+  [serverApi, databaseApi, turnApi] = await Promise.all([
     vite.ssrLoadModule("/server/main.ts"),
     vite.ssrLoadModule("/server/db.ts"),
+    vite.ssrLoadModule("/server/turn.ts"),
   ]);
 });
 
@@ -41,6 +43,51 @@ function game(id) {
     updatedAt: "2026-10-01T00:00:00.000Z",
   };
 }
+
+test("persists context overflow before any AI attempt or state commit", async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "fworld-context-overflow-"));
+  const database = new databaseApi.GameDatabase(join(directory, "data.sqlite"));
+  t.after(() => {
+    database.close();
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  const definition = game("context-overflow");
+  definition.player.description = "x".repeat(25_000);
+  const started = database.startSession({
+    definition,
+    ai: { provider: "gemini", model: "gemini-test" },
+  });
+  const session = started.session.value;
+  const requestId = "context-overflow-opening";
+  turnApi.startSessionRun(database, {
+    sessionId: session.id,
+    requestId,
+    expectedRevision: started.session.revision,
+    work: { kind: "opening" },
+    providerKey: "",
+  });
+
+  let run = database.getRun(session.id, requestId);
+  for (let attempt = 0; run?.status === "running" && attempt < 100; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    run = database.getRun(session.id, requestId);
+  }
+  assert.equal(run?.status, "failed");
+  assert.equal(run.error.code, "CONTEXT_TOO_LARGE");
+  assert.match(
+    run.error.message,
+    /Konteks wajib berisi \d+ karakter, melebihi batas 24000;/i,
+  );
+  assert.match(run.error.message, /ringkas konfigurasi game atau aksi pemain/i);
+
+  const after = database.getSession(session.id);
+  assert.equal(after.revision, started.session.revision);
+  assert.equal(after.nextSequence, 0);
+  assert.deepEqual(after.state, session.state);
+  assert.equal(database.getHistory(session.id).length, 0);
+  assert.equal(database.getUsageSummary(session.id, requestId).requests, 0);
+});
 
 test("local API enforces origin and JSON writes, returns revisions, and restores SQLite backups", async (t) => {
   const directory = mkdtempSync(join(tmpdir(), "fworld-http-"));

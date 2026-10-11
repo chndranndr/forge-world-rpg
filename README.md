@@ -37,6 +37,8 @@ Backend menyajikan frontend dan API pada `http://127.0.0.1:5173`. Hentikan serve
 
 Opsional, buat `.env` dari `.env.example`, lalu isi `GEMINI_API_KEY` dan/atau `OPENROUTER_API_KEY`. File `.env` diabaikan Git. Settings juga bisa menerima atau mengganti API key; backend menyimpannya sebagai `FWORLD_GEMINI_API_KEY` atau `FWORLD_OPENROUTER_API_KEY` di `.env`, dan nilai ini diprioritaskan atas credential environment biasa. Backend hanya mengembalikan status configured; key tidak tersimpan permanen di browser, database game, log, backup, atau export. Request AI nyata memerlukan koneksi internet dan credential provider yang sesuai.
 
+Uji koneksi memakai prompt singkat dan tidak memvalidasi ukuran context cerita. Narrator membatasi context wajib plus pesan terbaru hingga 24.000 karakter; nilai relasi aktif dikirim sekali, sedangkan detail NPC lain tersedia lewat tool. Jika context wajib masih terlalu besar, run berhenti sebelum memanggil provider dan menampilkan `CONTEXT_TOO_LARGE` beserta ukuran aktual dan batasnya, tanpa mengubah save. Restart backend setelah perubahan kode server; server development tidak memuat ulang handler yang sudah berjalan.
+
 Gunakan **Settings → Migrasi data IndexedDB** dari origin canonical untuk mengunduh atau mentransfer data lama. Transfer memvalidasi seluruh store, memakai Web Lock, memverifikasi read-back, dan membiarkan IndexedDB lama utuh. Gunakan **Backup backend** untuk backup/pemulihan SQLite. Restore save JSON v1 membuat salinan dengan ID baru; template JSON tetap di alur Create Game.
 
 ## Perintah

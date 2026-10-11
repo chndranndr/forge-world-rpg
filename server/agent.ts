@@ -90,6 +90,18 @@ export class NarratorResponseError extends Error {
   }
 }
 
+export class NarratorContextError extends Error {
+  constructor(
+    readonly actualChars: number,
+    readonly maxChars: number,
+  ) {
+    super(
+      `Konteks wajib berisi ${actualChars} karakter, melebihi batas ${maxChars}; ringkas konfigurasi game atau aksi pemain.`,
+    );
+    this.name = "NarratorContextError";
+  }
+}
+
 const MAX_STEPS = 3;
 const MAX_REPAIRS = 1;
 const MAX_OUTPUT_TOKENS = 1_200;
@@ -148,7 +160,6 @@ function npcContext(npc: NpcDefinition) {
     role: npc.role,
     goals: npc.goals,
     attributes: npc.attributes,
-    initialRelationships: npc.initialRelationships,
   };
 }
 
@@ -202,7 +213,6 @@ function contextSnapshot(session: GameSession) {
     state: {
       attributes: state.attributes,
       resources: state.resources,
-      relationships: state.relationships,
       inventory: state.inventory,
       facts: {
         public: state.facts
@@ -246,10 +256,9 @@ function buildPrompt(input: NarratorInput): { system: string; prompt: string } {
     });
   let prompt = makePrompt();
 
-  if (SYSTEM_PROMPT.length + prompt.length > MAX_CONTEXT_CHARS) {
-    throw new Error(
-      `Konteks wajib melebihi batas ${MAX_CONTEXT_CHARS} karakter; ringkas konfigurasi game atau aksi pemain.`,
-    );
+  const requiredChars = SYSTEM_PROMPT.length + prompt.length;
+  if (requiredChars > MAX_CONTEXT_CHARS) {
+    throw new NarratorContextError(requiredChars, MAX_CONTEXT_CHARS);
   }
 
   for (const message of selectedHistory.reverse()) {

@@ -1,7 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import { applyEffects, useItem as applyItem } from "../shared/engine.js";
 import type { Message, SessionState } from "../shared/types.js";
-import { NarratorResponseError, runNarrator } from "./agent.js";
+import {
+  NarratorContextError,
+  NarratorResponseError,
+  runNarrator,
+} from "./agent.js";
 import type { GameDatabase, RunKind, RunRecord, StoredSession } from "./db.js";
 
 type NarratorKind = "turn" | "opening" | "choices";
@@ -37,6 +41,9 @@ function hashInput(
 function errorForStorage(error: unknown): { code: string; message: string } {
   if (error instanceof NarratorResponseError) {
     return { code: "AI_RESPONSE_INVALID", message: error.message };
+  }
+  if (error instanceof NarratorContextError) {
+    return { code: "CONTEXT_TOO_LARGE", message: error.message };
   }
   if (error instanceof Error && error.name === "EngineError") {
     return { code: "INVALID_PROPOSAL", message: error.message.slice(0, 500) };
