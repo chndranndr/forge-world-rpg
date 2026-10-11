@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState, type ChangeEvent } from "react";
 import {
+  ApiError,
   createBackup,
   getAiSettings,
   getHealth,
+  getSession,
   importSave,
   listBackups,
   migrateLegacy,
@@ -10,19 +12,32 @@ import {
   restoreBackup,
   saveAiCredential,
   testAiConnection,
+  updateSessionAi,
   type BackupRecord,
 } from "../api";
 import { acquireWriteLock, readLegacySnapshot, releaseWriteLock } from "../db";
-import type { ProviderId } from "../llm";
-
-interface SettingsPanelProps {
-  provider: ProviderId;
-  models: Record<ProviderId, string>;
+import { DEFAULT_MODELS, type ProviderId } from "../llm";
+import type { AiConfig } from "../types";
+interface CommonSettingsPanelProps {
   textSize: "normal" | "large";
-  onProviderChange: (provider: ProviderId) => void;
-  onModelChange: (model: string) => void;
   onTextSizeChange: (size: "normal" | "large") => void;
 }
+
+type SettingsPanelProps = CommonSettingsPanelProps &
+  (
+    | {
+        mode: "global";
+        provider: ProviderId;
+        models: Record<ProviderId, string>;
+        onProviderChange: (provider: ProviderId) => void;
+        onModelChange: (model: string) => void;
+      }
+    | {
+        mode: "session";
+        sessionId: string;
+        onReturnToSession: () => void;
+      }
+  );
 
 function errorText(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
@@ -55,14 +70,8 @@ function downloadJson(value: unknown, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
-export default function SettingsPanel({
-  provider,
-  models,
-  textSize,
-  onProviderChange,
-  onModelChange,
-  onTextSizeChange,
-}: SettingsPanelProps) {
+export default function SettingsPanel(props: SettingsPanelProps) {
+  const { textSize, onTextSizeChange } = props;
   const [backendStatus, setBackendStatus] = useState<string | null>(null);
   const [backendError, setBackendError] = useState<string | null>(null);
   const [configured, setConfigured] = useState<Record<
@@ -89,6 +98,28 @@ export default function SettingsPanel({
   } | null>(null);
   const [legacyNote, setLegacyNote] = useState<string | null>(null);
   const [legacyBusy, setLegacyBusy] = useState(false);
+  const [sessionAiDraft, setSessionAiDraft] = useState<AiConfig | null>(null);
+  const [persistedSessionAi, setPersistedSessionAi] = useState<AiConfig | null>(
+    null,
+  );
+  const [sessionRevision, setSessionRevision] = useState<number | null>(null);
+  const [sessionLoadError, setSessionLoadError] = useState<string | null>(null);
+  const [sessionSaveError, setSessionSaveError] = useState<string | null>(null);
+  const [sessionSaveNote, setSessionSaveNote] = useState<string | null>(null);
+  const [sessionSaveBusy, setSessionSaveBusy] = useState(false);
+  const sessionId = props.mode === "session" ? props.sessionId : null;
+  const aiDraft =
+    props.mode === "global"
+      ? { provider: props.provider, model: props.models[props.provider] }
+      : sessionAiDraft;
+  const selectedProvider =
+    aiDraft?.provider ?? (props.mode === "global" ? props.provider : "gemini");
+  const sessionAiDirty =
+    props.mode === "session" &&
+    sessionAiDraft !== null &&
+    persistedSessionAi !== null &&
+    (sessionAiDraft.provider !== persistedSessionAi.provider ||
+      sessionAiDraft.model !== persistedSessionAi.model);
 
   const refreshBackups = useCallback(async () => {
     try {
@@ -143,14 +174,42 @@ export default function SettingsPanel({
     void refreshBackups();
     void refreshLegacyCounts();
   }, [refreshBackups, refreshLegacyCounts]);
+  useEffect(() => {
+    if (sessionId === null) return;
+    let active = true;
+    setSessionAiDraft(null);
+    setPersistedSessionAi(null);
+    setSessionRevision(null);
+    setSessionLoadError(null);
+    setSessionSaveError(null);
+    setSessionSaveNote(null);
+    void getSession(sessionId)
+      .then((record) => {
+        if (!active) return;
+        const ai = { ...record.value.ai };
+        setSessionAiDraft(ai);
+        setPersistedSessionAi(ai);
+        setSessionRevision(record.revision);
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setSessionLoadError(
+          errorText(error, "Konfigurasi AI sesi gagal dimuat."),
+        );
+      });
+    return () => {
+      active = false;
+    };
+  }, [sessionId]);
 
   async function handleTest() {
+    if (!aiDraft) return;
     setTestState("busy");
     setTestNote(null);
     try {
       const result = await testAiConnection({
-        provider,
-        model: models[provider].trim(),
+        provider: aiDraft.provider,
+        model: aiDraft.model.trim(),
       });
       setTestNote(result.message);
     } catch (error) {
@@ -162,7 +221,56 @@ export default function SettingsPanel({
     }
   }
 
+  async function handleSaveSessionAi() {
+    if (props.mode !== "session" || !sessionAiDraft || sessionRevision === null)
+      return;
+    const { sessionId } = props;
+    const ai = {
+      provider: sessionAiDraft.provider,
+      model:
+        sessionAiDraft.model.trim() || DEFAULT_MODELS[sessionAiDraft.provider],
+    };
+    setSessionSaveBusy(true);
+    setSessionSaveError(null);
+    setSessionSaveNote(null);
+    try {
+      const saved = await updateSessionAi(sessionId, sessionRevision, ai);
+      setSessionAiDraft(saved.value.ai);
+      setPersistedSessionAi(saved.value.ai);
+      setSessionRevision(saved.revision);
+      setSessionSaveNote("Pengaturan AI sesi disimpan.");
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        if (error.code === "RUN_IN_PROGRESS") {
+          setSessionSaveError(
+            "Run sedang berjalan. Tunggu hingga selesai, lalu simpan lagi.",
+          );
+          return;
+        }
+        try {
+          const latest = await getSession(sessionId);
+          setPersistedSessionAi(latest.value.ai);
+          setSessionRevision(latest.revision);
+          setSessionSaveError(
+            "Konflik revision: konfigurasi terbaru dimuat; draft lokal tetap tersedia. Tinjau lalu simpan lagi.",
+          );
+        } catch (refreshError) {
+          setSessionSaveError(
+            `Konflik revision; draft lokal dipertahankan. ${errorText(refreshError, "Konfigurasi terbaru gagal dimuat.")}`,
+          );
+        }
+      } else {
+        setSessionSaveError(
+          `Simpan pengaturan AI sesi gagal: ${errorText(error, "Backend tidak tersedia.")}`,
+        );
+      }
+    } finally {
+      setSessionSaveBusy(false);
+    }
+  }
+
   async function handleSaveCredential() {
+    const provider = selectedProvider;
     const apiKey = credentialDrafts[provider].trim();
     if (!apiKey) return;
     setCredentialBusy(true);
@@ -300,6 +408,11 @@ export default function SettingsPanel({
 
   return (
     <div className="panel settings-page">
+      {props.mode === "session" && (
+        <button type="button" onClick={props.onReturnToSession}>
+          ← Kembali ke sesi
+        </button>
+      )}
       <h2 className="settings-page-title">Settings</h2>
       <section aria-label="Status backend" aria-live="polite">
         <h2>Backend lokal</h2>
@@ -317,9 +430,19 @@ export default function SettingsPanel({
           API key dikirim ke backend lokal dan disimpan di file .env yang
           diabaikan Git, lalu diprioritaskan atas key environment untuk provider
           tersebut. Nilainya tidak ditampilkan kembali atau disimpan di save
-          game. Provider dan model menjadi default game baru; sesi aktif
-          menyimpan pilihannya sendiri.
+          game.{" "}
+          {props.mode === "global"
+            ? "Provider dan model menjadi default untuk sesi baru; sesi aktif menyimpan pilihannya sendiri."
+            : "Perubahan provider dan model berlaku untuk sesi ini setelah disimpan; default sesi baru tetap terpisah."}
         </p>
+        {sessionLoadError && (
+          <p className="error" role="alert">
+            Gagal memuat konfigurasi AI sesi: {sessionLoadError}
+          </p>
+        )}
+        {props.mode === "session" && !aiDraft && !sessionLoadError && (
+          <p role="status">Memuat konfigurasi AI sesi…</p>
+        )}
         {aiSettingsError && (
           <p className="error" role="alert">
             {aiSettingsError}
@@ -338,43 +461,80 @@ export default function SettingsPanel({
           ))}
         </ul>
         <form onSubmit={(event) => event.preventDefault()}>
+          {aiDraft && (
+            <>
+              <label>
+                {props.mode === "global" ? "Provider default" : "Provider sesi"}
+                <select
+                  value={aiDraft.provider}
+                  disabled={sessionSaveBusy}
+                  onChange={(event) => {
+                    const next = event.target.value as ProviderId;
+                    if (props.mode === "global") {
+                      props.onProviderChange(next);
+                    } else {
+                      setSessionAiDraft((current) =>
+                        current
+                          ? {
+                              ...current,
+                              provider: next,
+                              model: DEFAULT_MODELS[next],
+                            }
+                          : current,
+                      );
+                      setSessionSaveError(null);
+                      setSessionSaveNote(null);
+                    }
+                    setTestNote(null);
+                  }}
+                >
+                  <option value="gemini">Gemini</option>
+                  <option value="openrouter">OpenRouter</option>
+                </select>
+              </label>
+              <label>
+                Model ID
+                <input
+                  type="text"
+                  value={aiDraft.model}
+                  maxLength={200}
+                  disabled={sessionSaveBusy}
+                  onChange={(event) => {
+                    if (props.mode === "global") {
+                      props.onModelChange(event.target.value);
+                    } else {
+                      setSessionAiDraft((current) =>
+                        current
+                          ? { ...current, model: event.target.value }
+                          : current,
+                      );
+                      setSessionSaveError(null);
+                      setSessionSaveNote(null);
+                    }
+                    setTestNote(null);
+                  }}
+                />
+              </label>
+            </>
+          )}
           <label>
-            Provider default
-            <select
-              value={provider}
-              onChange={(event) =>
-                onProviderChange(event.target.value as ProviderId)
-              }
-            >
-              <option value="gemini">Gemini</option>
-              <option value="openrouter">OpenRouter</option>
-            </select>
-          </label>
-          <label>
-            Model ID
-            <input
-              type="text"
-              value={models[provider]}
-              onChange={(event) => onModelChange(event.target.value)}
-            />
-          </label>
-          <label>
-            API key {provider === "gemini" ? "Gemini" : "OpenRouter"}
+            API key {selectedProvider === "gemini" ? "Gemini" : "OpenRouter"}
             <input
               type="password"
               autoComplete="off"
               spellCheck={false}
               maxLength={512}
-              value={credentialDrafts[provider]}
+              value={credentialDrafts[selectedProvider]}
               placeholder={
-                configured?.[provider]
+                configured?.[selectedProvider]
                   ? "Masukkan key baru untuk mengganti"
                   : "Tempel API key"
               }
+              disabled={!aiDraft}
               onChange={(event) => {
                 setCredentialDrafts((current) => ({
                   ...current,
-                  [provider]: event.target.value,
+                  [selectedProvider]: event.target.value,
                 }));
                 setCredentialNote(null);
               }}
@@ -383,24 +543,50 @@ export default function SettingsPanel({
           <button
             type="button"
             onClick={() => void handleSaveCredential()}
-            disabled={credentialBusy || !credentialDrafts[provider].trim()}
+            disabled={
+              !aiDraft ||
+              credentialBusy ||
+              !credentialDrafts[selectedProvider].trim()
+            }
           >
             {credentialBusy
               ? "Menyimpan API key…"
-              : configured?.[provider]
+              : configured?.[selectedProvider]
                 ? "Ganti API key"
                 : "Simpan API key"}
           </button>
           <button
             type="button"
             onClick={() => void handleTest()}
-            disabled={testState === "busy"}
+            disabled={testState === "busy" || !aiDraft}
           >
             {testState === "busy" ? "Menguji koneksi…" : "Uji koneksi server"}
           </button>
+          {props.mode === "session" && (
+            <button
+              type="button"
+              onClick={() => void handleSaveSessionAi()}
+              disabled={
+                !aiDraft ||
+                sessionRevision === null ||
+                sessionSaveBusy ||
+                !sessionAiDirty
+              }
+            >
+              {sessionSaveBusy
+                ? "Menyimpan pengaturan sesi…"
+                : "Simpan pengaturan sesi"}
+            </button>
+          )}
         </form>
         {credentialNote && <p role="status">{credentialNote}</p>}
         {testNote && <p role="status">{testNote}</p>}
+        {sessionSaveError && (
+          <p className="error" role="alert">
+            {sessionSaveError}
+          </p>
+        )}
+        {sessionSaveNote && <p role="status">{sessionSaveNote}</p>}
       </section>
 
       <section aria-label="Tampilan" className="settings-section">

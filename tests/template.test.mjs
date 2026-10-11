@@ -109,7 +109,7 @@ test.after(async () => {
   await server.close();
 });
 
-test("bundled example parses as a playable draft with ai", async () => {
+test("bundled example parses as a playable draft without AI config", async () => {
   const file = await readFile(
     new URL("../examples/game-template.json", import.meta.url),
     "utf8",
@@ -123,7 +123,7 @@ test("bundled example parses as a playable draft with ai", async () => {
     { itemId: "kamera_tua", quantity: 1 },
     { itemId: "kunci_mercusuar", quantity: 1 },
   ]);
-  assert.deepEqual(ai, { provider: "gemini", model: "gemini-2.5-flash" });
+  assert.equal(ai, undefined);
   const effectTypes = new Set(
     draft.items.flatMap((item) => item.effects.map((effect) => effect.type)),
   );
@@ -150,10 +150,7 @@ test("template round-trip preserves content and drops ids, timestamps, foreign f
   const game = fullGame(crypto.randomUUID());
   game.apiKey = "secret";
   game.state = { attributes: {} };
-  const bundle = template.exportTemplate(game, {
-    provider: "gemini",
-    model: "m",
-  });
+  const bundle = template.exportTemplate(game);
   assert.equal(bundle.format, "fworld-template");
   assert.equal(bundle.version, 1);
   const text = JSON.stringify(bundle);
@@ -174,7 +171,7 @@ test("template round-trip preserves content and drops ids, timestamps, foreign f
   assert.equal("updatedAt" in draft, false);
   assert.equal("apiKey" in draft, false);
   assert.equal("state" in draft, false);
-  assert.deepEqual(ai, { provider: "gemini", model: "m" });
+  assert.equal(ai, undefined);
 });
 
 test("skeleton template without title, player, or scenario parses as draft", () => {

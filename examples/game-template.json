@@ -320,6 +320,5 @@
       { "itemId": "kamera_tua", "quantity": 1 },
       { "itemId": "kunci_mercusuar", "quantity": 1 }
     ]
-  },
-  "ai": { "provider": "gemini", "model": "gemini-2.5-flash" }
+  }
 }

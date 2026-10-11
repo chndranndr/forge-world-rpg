@@ -13,7 +13,6 @@ import {
   validateDefinitionUpdate,
   validatePlayability,
 } from "../../shared/validation.js";
-import type { ProviderId } from "../llm";
 import {
   exportTemplate,
   MAX_TEMPLATE_BYTES,
@@ -110,7 +109,6 @@ export default function GameEditor({
   // Nilai input numerik/berbaris disimpan sebagai teks mentah; angka di draft
   // hanya berubah kalau teks bisa di-parse.
   const [raws, setRaws] = useState<Record<string, string>>({});
-  const [ai, setAi] = useState<AiConfig>(defaultAi);
   const [working, setWorking] = useState(false);
   const [saveNote, setSaveNote] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
@@ -358,7 +356,11 @@ export default function GameEditor({
         return;
       }
       setErrors([]);
-      const result = await startSession(current, revision ?? undefined, ai);
+      const result = await startSession(
+        current,
+        revision ?? undefined,
+        defaultAi,
+      );
       onStarted(result.session.value.id);
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
@@ -401,7 +403,7 @@ export default function GameEditor({
 
   const handleExportTemplate = () => {
     try {
-      const bundle = exportTemplate(current, ai);
+      const bundle = exportTemplate(current);
       const blob = new Blob([JSON.stringify(bundle, null, 2)], {
         type: "application/json",
       });
@@ -463,12 +465,6 @@ export default function GameEditor({
       ...draftNow,
       ...structuredClone(templateReview.draft),
     });
-    if (templateReview.ai) {
-      setAi({
-        provider: templateReview.ai.provider,
-        model: templateReview.ai.model,
-      });
-    }
     setTouched(true);
     setTemplateReview(null);
     setSaveNote("Template diterapkan ke draft; belum disimpan.");
@@ -1651,29 +1647,6 @@ export default function GameEditor({
         </button>
       </details>
 
-      <details className="card">
-        <summary>Pengaturan AI</summary>
-        <label>
-          Provider
-          <select
-            value={ai.provider}
-            onChange={(event) =>
-              setAi({ ...ai, provider: event.target.value as ProviderId })
-            }
-          >
-            <option value="gemini">Gemini</option>
-            <option value="openrouter">OpenRouter</option>
-          </select>
-        </label>
-        <label>
-          Model
-          <input
-            value={ai.model}
-            onChange={(event) => setAi({ ...ai, model: event.target.value })}
-          />
-        </label>
-      </details>
-
       <div className="sticky-actions">
         <button type="button" onClick={handleSave} disabled={working}>
           Simpan
@@ -1706,7 +1679,7 @@ export default function GameEditor({
             {templateReview.draft.npcs.length} NPC ·{" "}
             {templateReview.draft.startingInventory.length} inventaris awal
             {templateReview.ai
-              ? ` · ai ${templateReview.ai.provider}/${templateReview.ai.model}`
+              ? " · Pengaturan AI template akan diabaikan; default Settings digunakan."
               : ""}
           </p>
           {touched && (

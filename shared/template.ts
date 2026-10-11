@@ -16,10 +16,7 @@ export const MAX_TEMPLATE_BYTES = 2 * 1024 * 1024;
 
 export type TemplateDraft = Omit<GameDefinition, "id" | "updatedAt">;
 
-export function exportTemplate(
-  game: GameDefinition,
-  ai?: AiConfig,
-): GameTemplateBundle {
+export function exportTemplate(game: GameDefinition): GameTemplateBundle {
   const picked = pickGameDefinition(game);
   const draft: TemplateDraft = {
     title: picked.title,
@@ -42,7 +39,6 @@ export function exportTemplate(
     exportedAt: new Date().toISOString(),
     game: draft,
   };
-  if (ai) bundle.ai = { provider: ai.provider, model: ai.model };
   return bundle;
 }
 

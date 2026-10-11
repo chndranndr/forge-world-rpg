@@ -216,6 +216,10 @@ test("game update refreshes every session atomically and refuses active runs", (
     inputHash: "active-input",
     expectedRevision: 1,
   });
+  assert.throws(
+    () => db.updateSession(session.id, { ai: session.ai }, 1),
+    (error) => error.code === "RUN_IN_PROGRESS",
+  );
   const edited = definition();
   edited.title = "A new title";
   assert.throws(() => db.updateGame("game-1", edited, 1), api.ConflictError);

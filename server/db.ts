@@ -57,8 +57,8 @@ export class NotFoundError extends DatabaseError {
 }
 
 export class ConflictError extends DatabaseError {
-  constructor(message: string) {
-    super(message, "CONFLICT");
+  constructor(message: string, code = "CONFLICT") {
+    super(message, code);
   }
 }
 
@@ -880,7 +880,11 @@ export class GameDatabase {
         "SELECT 1 AS found FROM turns WHERE session_id = ? AND status = 'running'",
       )
       .get(sessionId);
-    if (running) throw new ConflictError("Session sedang menjalankan turn.");
+    if (running)
+      throw new ConflictError(
+        "Session sedang menjalankan turn.",
+        "RUN_IN_PROGRESS",
+      );
   }
 
   #insertGame(definition: GameDefinition, revision = 1): void {

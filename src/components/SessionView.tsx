@@ -9,12 +9,10 @@ import {
   listMessages,
   requestChoices,
   submitTurn,
-  updateSessionAi,
   useItem,
   type RunRecord,
   type SessionRecord,
 } from "../api";
-import { DEFAULT_MODELS, type ProviderId } from "../llm";
 import { storyIllustration } from "../illustrations";
 import type { Choice } from "../../shared/engine.js";
 import {
@@ -488,34 +486,6 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
     return executeRun(stored, false);
   }
 
-  async function handleAiChange(provider: ProviderId, model: string) {
-    if (!session) return;
-    if (
-      busyRef.current ||
-      pendingRun ||
-      (provider === session.ai.provider && model === session.ai.model)
-    )
-      return;
-    setBusy(true);
-    setError(null);
-    try {
-      const next = await updateSessionAi(sessionId, sessionRevision, {
-        provider,
-        model,
-      });
-      setRecord(next);
-      setChoices(null);
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 409) {
-        setChoices(null);
-        await load().catch(() => {});
-      }
-      setError(errorText(error, "Pengaturan AI gagal disimpan."));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   function handleOpening() {
     return startRun("opening", {});
   }
@@ -596,11 +566,7 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
           ← Library
         </button>
         <h2>{panel === "story" ? def.title : PANEL_LABELS[panel]}</h2>
-        <p className="eyebrow">
-          {panel === "story"
-            ? `Story · ${session.ai.model}`
-            : `${def.title} · ${session.ai.model}`}
-        </p>
+        <p className="eyebrow">{panel === "story" ? "Story" : def.title}</p>
       </header>
 
       {error && (
@@ -628,43 +594,6 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
               Turn committed:{" "}
               {new Set(messages.map((message) => message.turnId)).size}
             </p>
-          </section>
-          <section className="card" aria-label="Pengaturan AI session">
-            <h2>Model session</h2>
-            <p className="hint">
-              Provider dan model berlaku mulai turn berikutnya. Credential
-              disimpan di backend; status dan tes koneksi ada di Settings.
-            </p>
-            <label>
-              Provider
-              <select
-                value={session.ai.provider}
-                disabled={busy}
-                onChange={(event) => {
-                  const provider = event.target.value as ProviderId;
-                  void handleAiChange(provider, DEFAULT_MODELS[provider]);
-                }}
-              >
-                <option value="gemini">Gemini</option>
-                <option value="openrouter">OpenRouter</option>
-              </select>
-            </label>
-            <label>
-              Model ID
-              <input
-                type="text"
-                defaultValue={session.ai.model}
-                key={`${session.ai.provider}-model`}
-                disabled={busy}
-                onBlur={(event) =>
-                  void handleAiChange(
-                    session.ai.provider,
-                    event.target.value.trim() ||
-                      DEFAULT_MODELS[session.ai.provider],
-                  )
-                }
-              />
-            </label>
           </section>
 
           {messages.length === 0 && (

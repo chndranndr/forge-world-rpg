@@ -491,8 +491,7 @@ test("opening can include choices and repairs forbidden state changes", async ()
     {
       generateText: async (options) => {
         calls += 1;
-        if (calls === 2) assert.equal(options.tools, undefined);
-        await fakeStep(options);
+        assert.equal(options.tools, undefined);
         return {
           text: JSON.stringify({
             narrative: "The cafe opens.",
@@ -510,6 +509,7 @@ test("opening can include choices and repairs forbidden state changes", async ()
   );
   assert.equal(calls, 2);
   assert.equal(result.response.choices.length, 3);
+  assert.equal(result.response.narrative, "The cafe opens.");
 });
 
 test("uses OpenRouter only when selected in the session snapshot", async () => {

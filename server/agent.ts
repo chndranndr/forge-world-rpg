@@ -633,7 +633,7 @@ export async function runNarrator(
       }
     }
 
-    let result = await generateResponse(prompt, true);
+    let result = await generateResponse(prompt, input.kind !== "opening");
     let correctionCount = 0;
     let sawOutputLimit = false;
     while (true) {
