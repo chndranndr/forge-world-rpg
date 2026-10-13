@@ -1228,12 +1228,18 @@ test("hides actor-bound lore from a different principal", async () => {
     },
   );
 
-  const initialPrompt = prompts[0];
-  for (const value of [secret.id, secret.name, secret.summary, secret.body]) {
-    assert.equal(initialPrompt.text.includes(value), false, value);
-  }
-  assert.deepEqual(initialPrompt.value.context.lore, []);
   assert.equal(calls, 2);
+  for (const { text, value } of prompts) {
+    for (const hidden of [
+      secret.id,
+      secret.name,
+      secret.summary,
+      secret.body,
+    ]) {
+      assert.equal(text.includes(hidden), false, hidden);
+    }
+    assert.deepEqual(value.context.lore, []);
+  }
   assert.deepEqual(result.response.effects, []);
   assert.deepEqual(result.application.state.world.discoveredLoreIds, []);
 });
@@ -1315,6 +1321,7 @@ test("uses opaque discovery handles across a gated lore repair", async () => {
     result.response.effects.map(({ type }) => type),
     ["SET_FLAG", "DISCOVER_LORE"],
   );
+  assert.equal(result.response.effects[1].loreId, secret.id);
   assert.equal(result.application.state.world.flags.vaultOpen, true);
   assert.deepEqual(result.application.state.world.discoveredLoreIds, [
     secret.id,
