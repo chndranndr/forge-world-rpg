@@ -138,7 +138,11 @@ function stubProvider(t, responses, beforeRequest = () => {}) {
     const body = JSON.parse(text);
     const prompt = promptFromRequest(body);
     beforeRequest(prompt, body, requestNumber);
-    const content = responses[requestNumber];
+    const planned = responses[requestNumber];
+    const content =
+      typeof planned === "function"
+        ? planned(prompt, body, requestNumber)
+        : planned;
     if (!content)
       throw new Error(`Unexpected provider request ${requestNumber + 1}.`);
     requestNumber += 1;
@@ -461,22 +465,40 @@ test("runtime loads exact pinned discovery entries and rejects unauthorized or r
         narrative: "The player examines Aiko's private mural.",
         effects: [resourceEffect, actorDiscoveryEffect],
       },
-      {
-        narrative: "The player examines the mural and finds the hidden route.",
-        effects: [resourceEffect, discoveryEffect],
+      (prompt) => {
+        const candidate = prompt.context.lore.find(
+          (entry) => entry.discoveryCandidate,
+        );
+        assert.ok(candidate);
+        return {
+          narrative:
+            "The player examines the mural and finds the hidden route.",
+          effects: [
+            resourceEffect,
+            { type: "DISCOVER_LORE", loreId: candidate.id },
+          ],
+        };
       },
       invalidProposal,
       invalidProposal,
     ],
     (prompt, _body, requestNumber) => {
       if (requestNumber === 0) {
+        const serialized = JSON.stringify(prompt);
         actorCandidateVisible = prompt.context.lore.some(
           (entry) => entry.id === "secret:aiko-mural",
         );
         const candidate = prompt.context.lore.find(
-          (entry) => entry.id === "secret:mural",
+          (entry) => entry.discoveryCandidate,
         );
-        assert.equal(candidate?.discoveryCandidate, true);
+        assert.ok(candidate);
+        assert.match(candidate.id, /^discovery-candidate:[0-9a-f-]{36}$/);
+        assert.deepEqual(Object.keys(candidate).sort(), [
+          "discoveryCandidate",
+          "id",
+        ]);
+        assert.equal(serialized.includes("secret:mural"), false);
+        assert.equal(serialized.includes("secret:aiko-mural"), false);
       }
     },
   );

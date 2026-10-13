@@ -15,6 +15,7 @@ const FAKE_PROVIDER_KEY = "offline-upgrade-verify-only";
 const PACK_FILE = join(ROOT, "examples/lorebook-prontera.json");
 const GAME_FILE = join(ROOT, "examples/lorebook-game.json");
 const SECRET_ID = "secret:morroc-rest-mark";
+const DISCOVERY_HANDLE_TOKEN = "__current_discovery_handle__";
 const EARLY_EVENT =
   "The courier hid the sealed blue-wax letter beneath the west fountain before the first noon bell.";
 const PRIVATE_FACT =
@@ -164,6 +165,29 @@ function providerPrompt(body) {
   };
 }
 
+function currentDiscoveryHandle(body) {
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+  for (const message of messages) {
+    const parts =
+      typeof message?.content === "string"
+        ? [message.content]
+        : Array.isArray(message?.content)
+          ? message.content.map((part) => part?.text)
+          : [];
+    for (const part of parts) {
+      if (typeof part !== "string") continue;
+      try {
+        const prompt = JSON.parse(part);
+        const handle = prompt?.context?.lore?.find(
+          (entry) => entry.discoveryCandidate,
+        )?.id;
+        if (typeof handle === "string") return handle;
+      } catch {}
+    }
+  }
+  return undefined;
+}
+
 function installNetworkBoundary() {
   originalFetch = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
@@ -194,7 +218,27 @@ function installNetworkBoundary() {
       const captured = providerPrompt(body);
       providerTrace.push(captured);
       providerCalls += 1;
-      return providerReply(body, output ?? narrative());
+      let reply = output ?? narrative();
+      if (
+        reply.effects?.some(
+          (effect) =>
+            effect.type === "DISCOVER_LORE" &&
+            effect.loreId === DISCOVERY_HANDLE_TOKEN,
+        )
+      ) {
+        const handle = currentDiscoveryHandle(body);
+        assert.ok(handle, "No current opaque discovery handle was supplied.");
+        reply = {
+          ...reply,
+          effects: reply.effects.map((effect) =>
+            effect.type === "DISCOVER_LORE" &&
+            effect.loreId === DISCOVERY_HANDLE_TOKEN
+              ? { ...effect, loreId: handle }
+              : effect,
+          ),
+        };
+      }
+      return providerReply(body, reply);
     }
     blockedExternalFetches += 1;
     throw new Error(`Blocked outbound fetch to ${url.origin}${url.pathname}.`);
@@ -1623,7 +1667,9 @@ async function runAcceptance() {
     kind: "turn",
     input: "Inspect under the western water jar for the chalk crescent.",
     outputs: [
-      narrative({ effects: [{ type: "DISCOVER_LORE", loreId: SECRET_ID }] }),
+      narrative({
+        effects: [{ type: "DISCOVER_LORE", loreId: DISCOVERY_HANDLE_TOKEN }],
+      }),
     ],
   });
   assertSucceeded(validDiscovery.run, "Authored discovery at its source");

@@ -55,7 +55,7 @@ Simpan sumber, lisensi, revisi, canon, dan era pada provenance. Gunakan konten a
 
 Import JSON lorebook dibatasi 8 MiB, 5.000 entri, dan 20.000 links. Batas request HTTP juga mencakup envelope JSON. Dry-run hanya memvalidasi. Publikasi bersifat atomic dan versi yang sudah terbit tidak dapat diubah. Import ulang konten identik bersifat idempotent; revisi konten memerlukan nomor versi baru. Tidak ada crawler, wiki ingestion, atau CLI corpus besar.
 
-Di **Editor**, jalankan dry-run pada file JSON, terbitkan versi, lalu ikat versi itu ke game. Pencarian dan preview menampilkan entri sesuai lokasi. Turn narator menggabungkan lore lokal dengan hasil yang cocok dengan aksi sebelum menerapkan batas konteks. Entri discovery masuk ke konteks setelah engine memvalidasi efek `DISCOVER_LORE`.
+Di **Editor**, jalankan dry-run pada file JSON, terbitkan versi, lalu ikat versi itu ke game. Pencarian dan preview menampilkan entri sesuai lokasi. Turn narator menggabungkan lore lokal dengan hasil yang cocok dengan aksi sebelum menerapkan batas konteks. Lore ber-metadata `actorId` hanya tersedia saat NPC cocok menjadi principal narator, kecuali entri discovery yang sudah ditemukan. Untuk entri discovery yang belum ditemukan, model menerima ID acak sementara, bukan isi lore. Isi lengkap baru dikirim pada pemanggilan narator berikutnya setelah `DISCOVER_LORE` berhasil di-commit.
 
 Game dan session mengikat `{packId, version}` secara tepat. Session menyimpan pin versi dan peta lokasi saat mulai; perubahan template tidak mengganti pin session aktif. Save tanpa lore tetap memakai `fworld-save` v1. Save dengan lore memakai v2 dan manifest `loreDependencies` berisi versi serta digest, bukan body seluruh pack.
 

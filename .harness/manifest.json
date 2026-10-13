@@ -133,7 +133,7 @@
       "verify": [
         "npm.cmd run check",
         "npm.cmd test",
-        "npm.cmd run doctor (128 tests; typecheck, format, and builds passed on 2026-10-12)"
+        "npm.cmd run doctor (130/130 tests; typecheck, format, and builds passed on 2026-10-13)"
       ]
     },
     "repository_commands": {

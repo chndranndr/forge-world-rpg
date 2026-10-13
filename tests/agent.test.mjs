@@ -1221,9 +1221,7 @@ test("hides actor-bound lore from a different principal", async () => {
           text: JSON.stringify({
             narrative: "The mural remains unread.",
             effects:
-              calls === 1
-                ? [{ type: "DISCOVER_LORE", loreId: secret.id }]
-                : [],
+              calls === 1 ? [{ type: "DISCOVER_LORE", loreId: secret.id }] : [],
           }),
         };
       },
@@ -1247,9 +1245,7 @@ test("uses opaque discovery handles across a gated lore repair", async () => {
   session.state.world.flags = { vaultOpen: false };
   session.state.world.discoveredLoreIds = [];
   const worldMap = {
-    locations: [
-      { id: "loc:vault", name: "Vault", aliases: [], npcIds: [] },
-    ],
+    locations: [{ id: "loc:vault", name: "Vault", aliases: [], npcIds: [] }],
     connections: [],
     flags: { vaultOpen: false },
   };

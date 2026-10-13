@@ -214,6 +214,16 @@ const DISCOVERY_ACTION =
 const REVEAL_ACTION =
   /\b(?:tell|reveal|share|inform|ungkap|bagikan|sampaikan|ceritakan)\b|beri\s+tahu|kasih\s+tahu|memberitahu/iu;
 
+export function isLoreDiscoveryActionAllowed(
+  entry: LoreEntry,
+  action: string,
+): boolean {
+  const keywordMatch = (entry.metadata.discoveryKeywords ?? []).some(
+    (keyword) => containsPhrase(action, keyword),
+  );
+  return hasExplicitAction(action, DISCOVERY_ACTION) || keywordMatch;
+}
+
 function applyOne(
   game: GameDefinition,
   next: SessionState,
@@ -393,10 +403,7 @@ function applyOne(
         );
       }
       const action = context.playerAction ?? "";
-      const keywordMatch = (lore.metadata.discoveryKeywords ?? []).some(
-        (keyword) => containsPhrase(action, keyword),
-      );
-      if (!hasExplicitAction(action, DISCOVERY_ACTION) && !keywordMatch) {
+      if (!isLoreDiscoveryActionAllowed(lore, action)) {
         fail(`Aksi pemain tidak mengizinkan discovery "${lore.id}"`);
       }
       const discovered = next.world.discoveredLoreIds ?? [];

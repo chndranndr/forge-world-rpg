@@ -4650,8 +4650,7 @@ export class GameDatabase {
     }
     try {
       this.#db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
-    } catch {
-    }
+    } catch {}
     this.#db.close();
   }
 }
