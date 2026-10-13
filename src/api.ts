@@ -1,10 +1,23 @@
 import type {
   AiConfig,
   ExportBundle,
+  Fact,
   GameDefinition,
   GameSession,
   GameTemplateBundle,
+  ItemDefinition,
+  ItemEffect,
+  LoreEntry,
+  LoreKind,
+  LoreLink,
+  LorebookPack,
+  LorebookRef,
+  LorePackHeader,
   Message,
+  NpcDefinition,
+  SessionState,
+  WorldLocation,
+  WorldState,
 } from "../shared/types";
 import type { Choice } from "../shared/engine";
 
@@ -14,13 +27,128 @@ export interface Versioned<T> {
 }
 
 export type GameRecord = Versioned<GameDefinition>;
-export type SessionRecord = Versioned<GameSession>;
+export type PlayerNpc = Omit<
+  NpcDefinition,
+  "privateKnowledge" | "initialRelationships" | "attributes"
+>;
+export type PlayerItemEffect = Exclude<
+  ItemEffect,
+  | { type: "ADD_FACT" }
+  | { type: "REMOVE_FACT" }
+  | { type: "DISCOVER_LORE" }
+  | { type: "REVEAL_FACT" }
+  | { type: "SET_FLAG" }
+  | { type: "NPC_PRESENCE" }
+>;
+export type PlayerItem = Omit<ItemDefinition, "effects"> & {
+  effects: PlayerItemEffect[];
+};
+export type PlayerGameDefinition = Pick<
+  GameDefinition,
+  | "id"
+  | "title"
+  | "genre"
+  | "attributes"
+  | "resources"
+  | "relationships"
+  | "player"
+  | "startingInventory"
+  | "updatedAt"
+> & { items: PlayerItem[]; npcs: PlayerNpc[] };
+export type PlayerFact = Omit<Fact, "knownBy" | "revealableTo">;
+export type PlayerWorldState = Omit<
+  WorldState,
+  "flags" | "discoveredLoreIds" | "npcPresence" | "activeCharacters"
+>;
+export type PlayerSessionState = Omit<
+  SessionState,
+  "facts" | "world" | "relationships"
+> & {
+  facts: PlayerFact[];
+  world: PlayerWorldState;
+};
+export type PlayerSession = Omit<
+  GameSession,
+  "definitionSnapshot" | "state" | "worldMap"
+> & {
+  definitionSnapshot: PlayerGameDefinition;
+  state: PlayerSessionState;
+};
+export type SessionRecord = Versioned<PlayerSession>;
+export type PlayerMessage = Omit<Message, "knownBy">;
+export type PlayerLoreEntry = Pick<
+  LoreEntry,
+  | "id"
+  | "kind"
+  | "name"
+  | "aliases"
+  | "parentId"
+  | "summary"
+  | "body"
+  | "tags"
+  | "visibility"
+  | "provenance"
+>;
+export type SessionLoreEntry = Omit<PlayerLoreEntry, "body">;
+
+export interface SessionWorldPerson extends Pick<
+  PlayerNpc,
+  "id" | "name" | "role" | "description"
+> {
+  relationships: Array<{
+    id: string;
+    name: string;
+    min: number;
+    max: number;
+    value: number;
+  }>;
+}
+
+export interface SessionWorldView {
+  location: { id?: string; name: string; summary?: string } | null;
+  locations: Array<Pick<WorldLocation, "id" | "name" | "parentId" | "summary">>;
+  people: SessionWorldPerson[];
+  facts: Array<Pick<PlayerFact, "id" | "text" | "createdAt" | "source">>;
+  activities: SessionLoreEntry[];
+  discoveries: SessionLoreEntry[];
+}
+
+export interface LorebookList {
+  packs: LorePackHeader[];
+  total: number;
+}
+
+export interface LorebookImportResult {
+  pack: LorePackHeader;
+  entries: number;
+  links: number;
+  digest: string;
+  dryRun: boolean;
+  existing: boolean;
+}
+
+export interface LoreEntryPage {
+  entries: PlayerLoreEntry[];
+  total: number;
+}
+
+export interface LoreLinkPage {
+  links: LoreLink[];
+  total: number;
+}
+
+export interface LorePreview {
+  entries: SessionLoreEntry[];
+  locationId?: string;
+  activeNpcIds: string[];
+  omitted: string[];
+}
 
 export type RunStatus = "running" | "succeeded" | "failed" | "interrupted";
 
 export interface RunResult {
   session?: SessionRecord;
-  messages?: Message[];
+  messages?: PlayerMessage[];
   choices?: Choice[];
   boundRevision?: number;
 }
@@ -100,6 +228,19 @@ function json(method: string, value?: unknown): RequestInit {
     ...(value === undefined ? {} : { body: JSON.stringify(value) }),
   };
 }
+function querySuffix(values: object): string {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(values)) {
+    if (value !== undefined) query.set(key, String(value));
+  }
+  const params = query.toString();
+  return params ? `?${params}` : "";
+}
+
+export interface PageOptions {
+  limit?: number;
+  offset?: number;
+}
 
 export function getHealth(): Promise<{
   status: "ok";
@@ -160,11 +301,66 @@ export function startSession(
 export function getSession(id: string): Promise<SessionRecord> {
   return api(`/sessions/${encodeURIComponent(id)}`);
 }
+export function getSessionWorld(sessionId: string): Promise<SessionWorldView> {
+  return api(`/sessions/${encodeURIComponent(sessionId)}/world`);
+}
+
+export function listLorebooks(
+  options: PageOptions = {},
+): Promise<LorebookList> {
+  return api(`/lorebooks${querySuffix(options)}`);
+}
+
+export function importLorebook(
+  lorebook: unknown,
+  dryRun?: boolean,
+): Promise<LorebookImportResult> {
+  return api(
+    "/lorebooks/import",
+    json("POST", { lorebook, ...(dryRun === undefined ? {} : { dryRun }) }),
+  );
+}
+
+export function listLoreEntries(
+  ref: LorebookRef,
+  options: PageOptions & {
+    query?: string;
+    kind?: LoreKind;
+    parentId?: string;
+  } = {},
+): Promise<LoreEntryPage> {
+  return api(
+    `/lorebooks/${encodeURIComponent(ref.packId)}/versions/${ref.version}/entries${querySuffix(options)}`,
+  );
+}
+
+export function listLoreLinks(
+  ref: LorebookRef,
+  entryId: string,
+  options: PageOptions = {},
+): Promise<LoreLinkPage> {
+  return api(
+    `/lorebooks/${encodeURIComponent(ref.packId)}/versions/${ref.version}/links${querySuffix({ entryId, ...options })}`,
+  );
+}
+
+export function exportLorebook(ref: LorebookRef): Promise<LorebookPack> {
+  return api(
+    `/lorebooks/${encodeURIComponent(ref.packId)}/versions/${ref.version}/export`,
+  );
+}
+
+export function previewLore(
+  definition: GameDefinition,
+  options: { locationId?: string; query?: string } = {},
+): Promise<LorePreview> {
+  return api("/lorebooks/preview", json("POST", { definition, ...options }));
+}
 
 export function listMessages(
   sessionId: string,
   options: { beforeSequence?: number; limit?: number } = {},
-): Promise<{ messages: Message[]; nextBeforeSequence: number | null }> {
+): Promise<{ messages: PlayerMessage[]; nextBeforeSequence: number | null }> {
   const query = new URLSearchParams();
   if (options.beforeSequence !== undefined)
     query.set("beforeSequence", String(options.beforeSequence));

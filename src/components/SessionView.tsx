@@ -5,23 +5,20 @@ import {
   exportSave,
   getRun,
   getSession,
+  getSessionWorld,
   importSave,
   listMessages,
   requestChoices,
   submitTurn,
   useItem,
+  type PlayerItemEffect,
   type RunRecord,
   type SessionRecord,
+  type SessionWorldView,
 } from "../api";
 import { storyIllustration } from "../illustrations";
 import type { Choice } from "../../shared/engine.js";
-import {
-  PLAYER_ID,
-  type GameDefinition,
-  type ItemDefinition,
-  type ItemEffect,
-  type Message,
-} from "../types";
+import { type ItemDefinition, type Message } from "../types";
 
 interface SessionViewProps {
   sessionId: string;
@@ -53,30 +50,40 @@ function choicesStorageKey(sessionId: string): string {
   return `fworld:choices:${encodeURIComponent(sessionId)}`;
 }
 
+function isObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isChoice(value: unknown): value is Choice {
+  return (
+    isObject(value) &&
+    typeof value.id === "string" &&
+    value.id.trim() !== "" &&
+    typeof value.label === "string" &&
+    value.label.trim() !== "" &&
+    Object.keys(value).every((key) => key === "id" || key === "label")
+  );
+}
+
+function isChoiceList(value: unknown): value is Choice[] {
+  return Array.isArray(value) && value.length <= 3 && value.every(isChoice);
+}
+
 function readCachedChoices(sessionId: string): BoundChoices | null {
   try {
     if (typeof sessionStorage === "undefined") return null;
     const raw = sessionStorage.getItem(choicesStorageKey(sessionId));
     if (!raw) return null;
-    const value = JSON.parse(raw) as Partial<BoundChoices>;
+    const value: unknown = JSON.parse(raw);
     if (
+      !isObject(value) ||
+      typeof value.boundRevision !== "number" ||
       !Number.isSafeInteger(value.boundRevision) ||
-      !Array.isArray(value.list) ||
-      value.list.length !== 3 ||
-      !value.list.every(
-        (choice) =>
-          choice &&
-          typeof choice.id === "string" &&
-          typeof choice.label === "string" &&
-          choice.label.trim(),
-      )
+      !isChoiceList(value.list)
     ) {
       return null;
     }
-    return {
-      list: value.list,
-      boundRevision: value.boundRevision as number,
-    };
+    return { list: value.list, boundRevision: value.boundRevision };
   } catch {
     return null;
   }
@@ -122,6 +129,7 @@ function clearPendingRun(sessionId: string, run: StoredRun): void {
 }
 
 function errorText(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) return `${error.code}: ${error.message}`;
   return error instanceof Error ? error.message : fallback;
 }
 
@@ -149,7 +157,7 @@ const PANEL_ICONS: Record<Panel, string> = {
   facts: "≡",
 };
 
-function effectLabel(effect: ItemEffect): string {
+function effectLabel(effect: PlayerItemEffect): string {
   switch (effect.type) {
     case "ATTRIBUTE_CHANGE":
     case "RESOURCE_CHANGE":
@@ -158,10 +166,6 @@ function effectLabel(effect: ItemEffect): string {
     case "ADD_ITEM":
     case "REMOVE_ITEM":
       return `${effect.type === "ADD_ITEM" ? "+" : "-"}${effect.quantity} ${effect.target}`;
-    case "ADD_FACT":
-      return `catat fakta: ${effect.text}`;
-    case "REMOVE_FACT":
-      return `hapus fakta ${effect.target}`;
   }
 }
 
@@ -173,6 +177,8 @@ function itemStatus(item: ItemDefinition, quantity: number): string {
 export default function SessionView({ sessionId, onBack }: SessionViewProps) {
   const [record, setRecord] = useState<SessionRecord | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [worldView, setWorldView] = useState<SessionWorldView | null>(null);
+  const [worldError, setWorldError] = useState<string | null>(null);
   const [nextBeforeSequence, setNextBeforeSequence] = useState<number | null>(
     null,
   );
@@ -193,7 +199,6 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
   const [retryAction, setRetryAction] = useState<StoredRun | null>(null);
   const busyRef = useRef(false);
   const resumedRef = useRef(false);
-  const requestedChoicesRef = useRef(new Set<string>());
 
   const errorRef = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
@@ -211,11 +216,16 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
       setMessages(history.messages);
       setNextBeforeSequence(history.nextBeforeSequence);
       setLoadError(null);
+      try {
+        setWorldView(await getSessionWorld(sessionId));
+        setWorldError(null);
+      } catch (error) {
+        setWorldView(null);
+        setWorldError(errorText(error, "Data dunia sesi gagal dimuat."));
+      }
       return loadedSession;
     } catch (error) {
-      setLoadError(
-        error instanceof Error ? error.message : "Session gagal dimuat.",
-      );
+      setLoadError(errorText(error, "Session gagal dimuat."));
       throw error;
     } finally {
       setLoading(false);
@@ -311,12 +321,12 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
           setChoices(null);
           await load().catch(() => {});
           setError(
-            `Data berubah di backend. Data terbaru dimuat ulang: ${error.message}`,
+            `Data berubah di backend. Data terbaru dimuat ulang: ${errorText(error, "Konflik data.")}`,
           );
         } else {
           setPendingRun(stored);
           setError(
-            `Status run belum diketahui. ID yang sama tetap disimpan: ${error instanceof Error ? error.message : "Backend tidak tersedia."}`,
+            `Status run belum diketahui. ID yang sama tetap disimpan: ${errorText(error, "Backend tidak tersedia.")}`,
           );
         }
         busyRef.current = false;
@@ -332,7 +342,7 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
         latest = await load();
       } catch (error) {
         setError(
-          `Run selesai (${run.status}), tetapi data terbaru gagal dimuat: ${error instanceof Error ? error.message : "backend tidak tersedia."}`,
+          `Run selesai (${run.status}), tetapi data terbaru gagal dimuat: ${errorText(error, "Backend tidak tersedia.")}`,
         );
         busyRef.current = false;
         setBusy(false);
@@ -340,7 +350,11 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
       }
       if (run.status !== "succeeded") {
         setChoices(null);
-        setError(run.error?.message ?? `Run ${run.status}.`);
+        setError(
+          run.error
+            ? `${run.error.code}: ${run.error.message}`
+            : `Run ${run.status}.`,
+        );
         if (stored.kind !== "item") {
           setRetryAction({
             ...stored,
@@ -354,36 +368,38 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
       }
       if (stored.kind === "choices") {
         const boundRevision = run.result?.boundRevision;
-        const nextChoices = run.result?.choices ?? [];
+        const nextChoices: unknown = run.result?.choices ?? [];
         if (
           boundRevision === undefined ||
           boundRevision !== latest.revision ||
-          nextChoices.length !== 3
+          !isChoiceList(nextChoices)
         ) {
           setChoices(null);
           setError(
             boundRevision !== undefined && boundRevision !== latest.revision
               ? "Pilihan dibuang karena sesi berubah saat dibuat."
-              : "AI belum menghasilkan tepat 3 pilihan. Coba lagi.",
+              : "Respons saran aksi tidak valid. Silakan minta saran lagi.",
           );
-          setRetryAction({
-            ...stored,
-            requestId: crypto.randomUUID(),
-            expectedRevision: latest.revision,
-          });
           busyRef.current = false;
           setBusy(false);
           return false;
         }
         setChoices({ list: nextChoices, boundRevision });
-        setSavedNote("Pilihan diperbarui untuk revision ini.");
-      } else {
-        const nextChoices = run.result?.choices ?? [];
-        setChoices(
-          nextChoices.length === 3
-            ? { list: nextChoices, boundRevision: latest.revision }
-            : null,
+        setSavedNote(
+          nextChoices.length
+            ? "Saran aksi diperbarui untuk revisi ini."
+            : "Belum ada saran aksi untuk revisi ini.",
         );
+      } else {
+        const nextChoices: unknown = run.result?.choices ?? [];
+        if (isChoiceList(nextChoices)) {
+          setChoices({ list: nextChoices, boundRevision: latest.revision });
+        } else {
+          setChoices(null);
+          setError(
+            "Respons saran aksi tidak valid. Minta saran secara manual.",
+          );
+        }
         setSavedNote(
           stored.kind === "opening"
             ? "Scene awal tersimpan."
@@ -425,30 +441,6 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
     }
   }, [choices, sessionId]);
 
-  useEffect(() => {
-    if (!record || record.value.id !== sessionId || messages.length === 0)
-      return;
-    if (
-      choices?.boundRevision === record.revision &&
-      choices.list.length === 3
-    ) {
-      return;
-    }
-    if (pendingRun || busyRef.current) return;
-
-    const requestKey = `${sessionId}:${record.revision}`;
-    if (requestedChoicesRef.current.has(requestKey)) return;
-    requestedChoicesRef.current.add(requestKey);
-    void executeRun(
-      {
-        kind: "choices",
-        requestId: crypto.randomUUID(),
-        expectedRevision: record.revision,
-      },
-      false,
-    );
-  }, [choices, executeRun, messages.length, pendingRun, record, sessionId]);
-
   if (!session || !record) {
     return (
       <section className="card">
@@ -467,7 +459,7 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
     );
   }
 
-  const def: GameDefinition = session.definitionSnapshot;
+  const def = session.definitionSnapshot;
   const state = session.state;
   const sessionRevision = record.revision;
 
@@ -518,7 +510,7 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
       link.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Export gagal.");
+      setError(errorText(err, "Export gagal."));
     }
   }
 
@@ -532,7 +524,7 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
       if (err instanceof ApiError && err.status === 409) {
         await load().catch(() => {});
       }
-      setError(err instanceof Error ? err.message : "Import gagal.");
+      setError(errorText(err, "Import gagal."));
     }
   }
 
@@ -546,16 +538,9 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
     }
   }
 
-  const activeChoices =
-    choices &&
-    choices.boundRevision === record.revision &&
-    choices.list.length === 3
-      ? choices.list
-      : [];
-
-  const visibleFacts = state.facts.filter(
-    (fact) => fact.visibility === "public" || fact.knownBy.includes(PLAYER_ID),
-  );
+  const choicesAvailable =
+    choices !== null && choices.boundRevision === record.revision;
+  const activeChoices = choicesAvailable ? choices.list : [];
 
   const lastCheck = [...messages].reverse().find((message) => message.check);
 
@@ -586,8 +571,11 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
               alt=""
             />
             <p className="hint">
-              Lokasi: {state.world.location || "(belum ditentukan)"} · Waktu:{" "}
-              {state.world.time || "(belum ditentukan)"}
+              Lokasi:{" "}
+              {worldView?.location?.name ??
+                state.world.location ??
+                "(belum ditentukan)"}{" "}
+              · Waktu: {state.world.time || "(belum ditentukan)"}
             </p>
             <p className="hint">Scene: {state.world.scene || "(belum ada)"}</p>
             <p className="hint">
@@ -649,14 +637,18 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
           {savedNote && !busy && <p role="status">{savedNote}</p>}
 
           {messages.length > 0 && (
-            <section className="card" aria-label="Pilihan aksi">
-              <h2>3 pilihan aksi</h2>
+            <section className="card" aria-label="Saran aksi">
+              <h2>Saran aksi</h2>
               <p className="hint">
-                Pilih salah satu, atau tulis tindakan sendiri di bawah.
+                Saran dibuat hanya saat diminta. Kamu juga bisa menulis tindakan
+                sendiri.
               </p>
-              {activeChoices.length !== 3 && (
+              {choicesAvailable && activeChoices.length === 0 && (
+                <p className="hint">Belum ada saran aksi untuk revisi ini.</p>
+              )}
+              {!choicesAvailable && !busy && (
                 <p className="hint">
-                  {busy ? "Menyiapkan 3 pilihan…" : "3 pilihan belum tersedia."}
+                  Saran aksi belum diminta untuk revisi ini.
                 </p>
               )}
               <ul className="choices-list">
@@ -674,6 +666,15 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
                   </li>
                 ))}
               </ul>
+              <button
+                type="button"
+                onClick={() => void startRun("choices", {})}
+                disabled={busy || pendingRun !== null}
+              >
+                {busy && pendingRun?.kind === "choices"
+                  ? "Meminta saran…"
+                  : "Sarankan aksi"}
+              </button>
             </section>
           )}
 
@@ -856,74 +857,76 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
       )}
 
       {panel === "people" && (
-        <section className="panel session-panel" aria-label="Karakter">
-          {state.relationships.length === 0 && (
-            <p className="hint">Belum ada NPC terdaftar.</p>
+        <section className="panel session-panel" aria-label="Karakter sekitar">
+          {worldError && (
+            <p className="error" role="alert">
+              {worldError}
+            </p>
           )}
-          {state.relationships.map((entry) => {
-            const npc = def.npcs.find(
-              (candidate) => candidate.id === entry.npcId,
-            );
-            if (!npc) return null;
-            const active = state.world.activeCharacters.includes(npc.id);
-            return (
-              <article key={entry.npcId} className="person-row">
-                <div className="person-head">
-                  <div className="avatar" aria-hidden="true">
-                    {npc.name.trim().slice(0, 1).toUpperCase() || "?"}
-                  </div>
-                  <div className="person-copy">
-                    <div className="row">
-                      <h3>{npc.name}</h3>
-                      <span className="hint">
-                        {active ? "Aktif" : "Tidak aktif"}
-                      </span>
-                    </div>
-                    {npc.role && <p className="hint">Peran: {npc.role}</p>}
-                  </div>
+          {(worldView?.people.length ?? 0) === 0 && (
+            <p className="hint">Tidak ada karakter yang hadir di lokasi ini.</p>
+          )}
+          {worldView?.people.map((person) => (
+            <article key={person.id} className="person-row">
+              <div className="person-head">
+                <div className="avatar" aria-hidden="true">
+                  {person.name.trim().slice(0, 1).toUpperCase() || "?"}
                 </div>
-                {npc.description && <p>{npc.description}</p>}
-                {npc.personality.length > 0 && (
-                  <p className="hint">Sifat: {npc.personality.join(", ")}</p>
-                )}
-                {npc.goals.length > 0 && (
-                  <p className="hint">Tujuan: {npc.goals.join("; ")}</p>
-                )}
+                <div className="person-copy">
+                  <h3>{person.name}</h3>
+                  {person.role && <p className="hint">Peran: {person.role}</p>}
+                </div>
+              </div>
+              {person.description && <p>{person.description}</p>}
+              {person.relationships.length > 0 && (
                 <div className="stat-list">
-                  {def.relationships.map((rel) => {
-                    const value = entry.values[rel.id] ?? rel.defaultValue;
-                    return (
-                      <div key={rel.id} className="stat-row">
-                        <div className="row">
-                          <span>{rel.name}</span>
-                          <strong>
-                            {value} ({rel.min}–{rel.max})
-                          </strong>
-                        </div>
-                        <meter
-                          min={rel.min}
-                          max={rel.max}
-                          value={value}
-                          aria-label={`${rel.name}: ${value} (${rel.min}–${rel.max})`}
-                        />
+                  {person.relationships.map((relationship) => (
+                    <div key={relationship.id} className="stat-row">
+                      <div className="row">
+                        <span>{relationship.name}</span>
+                        <strong>
+                          {relationship.value} ({relationship.min}–
+                          {relationship.max})
+                        </strong>
                       </div>
-                    );
-                  })}
+                      <meter
+                        min={relationship.min}
+                        max={relationship.max}
+                        value={relationship.value}
+                        aria-label={`${relationship.name}: ${relationship.value} (${relationship.min}–${relationship.max})`}
+                      />
+                    </div>
+                  ))}
                 </div>
-              </article>
-            );
-          })}
+              )}
+            </article>
+          ))}
         </section>
       )}
 
       {panel === "facts" && (
         <section className="panel session-panel" aria-label="Dunia dan fakta">
+          {worldError && (
+            <p className="error" role="alert">
+              {worldError}
+            </p>
+          )}
           <h2>Dunia</h2>
           <dl className="world-details">
             <div>
               <dt>Lokasi</dt>
-              <dd>{state.world.location || "(belum ditentukan)"}</dd>
+              <dd>
+                {worldView?.location?.name ??
+                  state.world.location ??
+                  "(belum ditentukan)"}
+              </dd>
             </div>
+            {worldView?.location?.summary && (
+              <div>
+                <dt>Deskripsi</dt>
+                <dd>{worldView.location.summary}</dd>
+              </div>
+            )}
             <div>
               <dt>Waktu</dt>
               <dd>{state.world.time || "(belum ditentukan)"}</dd>
@@ -932,32 +935,64 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
               <dt>Scene</dt>
               <dd>{state.world.scene || "(belum ada)"}</dd>
             </div>
-            <div>
-              <dt>Karakter aktif</dt>
-              <dd>
-                {state.world.activeCharacters.join(", ") || "(belum ada)"}
-              </dd>
-            </div>
           </dl>
 
-          <h3>Fakta yang diketahui pemain</h3>
-          {visibleFacts.length === 0 && (
-            <p className="hint">Belum ada fakta.</p>
+          <h3>Lokasi yang diketahui</h3>
+          {(worldView?.locations.length ?? 0) === 0 ? (
+            <p className="hint">Belum ada lokasi lain yang diketahui.</p>
+          ) : (
+            <ul className="fact-list">
+              {worldView?.locations.map((location) => (
+                <li key={location.id} className="fact-row">
+                  <strong>{location.name}</strong>
+                  {location.summary && (
+                    <p className="hint">{location.summary}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
           )}
-          <ul className="fact-list">
-            {visibleFacts.map((fact) => (
-              <li key={fact.id} className="fact-row">
-                {fact.text}{" "}
-                <span className="hint">
-                  ({fact.visibility}
-                  {fact.knownBy.length > 0
-                    ? `, diketahui: ${fact.knownBy.join(", ")}`
-                    : ""}
-                  )
-                </span>
-              </li>
-            ))}
-          </ul>
+
+          <h3>Fakta yang diketahui pemain</h3>
+          {(worldView?.facts.length ?? 0) === 0 ? (
+            <p className="hint">Belum ada fakta.</p>
+          ) : (
+            <ul className="fact-list">
+              {worldView?.facts.map((fact) => (
+                <li key={fact.id} className="fact-row">
+                  {fact.text}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <h3>Aktivitas di sekitar</h3>
+          {(worldView?.activities.length ?? 0) === 0 ? (
+            <p className="hint">Belum ada aktivitas yang relevan.</p>
+          ) : (
+            <ul className="fact-list">
+              {worldView?.activities.map((entry) => (
+                <li key={entry.id} className="fact-row">
+                  <strong>{entry.name}</strong>
+                  {entry.summary && <p>{entry.summary}</p>}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <h3>Penemuan</h3>
+          {(worldView?.discoveries.length ?? 0) === 0 ? (
+            <p className="hint">Belum ada penemuan.</p>
+          ) : (
+            <ul className="fact-list">
+              {worldView?.discoveries.map((entry) => (
+                <li key={entry.id} className="fact-row">
+                  <strong>{entry.name}</strong>
+                  {entry.summary && <p>{entry.summary}</p>}
+                </li>
+              ))}
+            </ul>
+          )}
 
           <h3>History lengkap</h3>
           {messages.length === 0 && <p className="hint">Belum ada history.</p>}

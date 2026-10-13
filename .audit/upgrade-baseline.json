@@ -1,0 +1,37 @@
+{
+  "revision": "e83c46b7042e979d87dfc634c023e3bad754db29",
+  "command": "node scripts/upgrade-baseline.mjs",
+  "provider": "offline injected generateText",
+  "billedTokens": "unverified; no real provider request",
+  "fixtures": [
+    {
+      "id": "upgrade-legacy-baseline",
+      "totalContextChars": {
+        "min": 8393,
+        "p50": 9657,
+        "p95": 10083,
+        "max": 10091
+      },
+      "activeNpcs": 7,
+      "localAssemblyMs": { "p50": 0.302, "p95": 0.488 }
+    },
+    {
+      "id": "upgrade-ragnarok-baseline",
+      "totalContextChars": {
+        "min": 8457,
+        "p50": 9802,
+        "p95": 10229,
+        "max": 10238
+      },
+      "activeNpcs": 7,
+      "localAssemblyMs": { "p50": 0.271, "p95": 0.356 }
+    }
+  ],
+  "samplesPerFixture": 100,
+  "fixedActionsPerFixture": 20,
+  "networkDisabled": true,
+  "databaseOpened": false,
+  "fixtureAndSessionUnchanged": true,
+  "baselineTests": { "passed": 106, "failed": 0 },
+  "doctorAfterFormatting": "npm.cmd run doctor passed after formatting the supplied planning files, with 106 tests, typechecks, formatting, and client/server builds."
+}

@@ -31,6 +31,14 @@ export interface RelationshipDefinition {
 
 export type EffectOperation = "ADD" | "SUBTRACT" | "SET";
 
+export type AddFactEffect = {
+  type: "ADD_FACT";
+  text: string;
+  visibility?: FactVisibility;
+  knownBy?: string[];
+  revealableTo?: string[];
+};
+
 export type ItemEffect =
   | {
       type: "ATTRIBUTE_CHANGE";
@@ -53,8 +61,12 @@ export type ItemEffect =
     }
   | { type: "ADD_ITEM"; target: string; quantity: number }
   | { type: "REMOVE_ITEM"; target: string; quantity: number }
-  | { type: "ADD_FACT"; text: string }
-  | { type: "REMOVE_FACT"; target: string };
+  | AddFactEffect
+  | { type: "REMOVE_FACT"; target: string }
+  | { type: "DISCOVER_LORE"; loreId: string }
+  | { type: "REVEAL_FACT"; factId: string; npcId: string }
+  | { type: "SET_FLAG"; target: string; value: boolean }
+  | { type: "NPC_PRESENCE"; npcId: string; present: boolean };
 
 export interface ItemDefinition {
   id: string;
@@ -104,6 +116,151 @@ export interface StartingInventoryEntry {
   quantity: number;
 }
 
+export interface LorebookRef {
+  packId: string;
+  version: number;
+}
+
+export interface LoreDependency extends LorebookRef {
+  digest: string;
+}
+
+export type LoreKind =
+  | "world"
+  | "region"
+  | "location"
+  | "place"
+  | "npc"
+  | "faction"
+  | "history"
+  | "monster"
+  | "item"
+  | "activity"
+  | "other";
+
+export type LoreVisibility = "public" | "narrator" | "discovery";
+
+export interface LoreProvenance {
+  sourceId: string;
+  sourceUrl?: string;
+  license?: string;
+  revision?: string;
+  canon?: "anime-2004" | "game" | "manhwa" | "original" | "mixed";
+  era?: string;
+}
+
+export interface LoreMetadata {
+  actorId?: string;
+  itemId?: string;
+  discoverAt?: string[];
+  discoveryKeywords?: string[];
+  requiredFlag?: string;
+  blockedByFlag?: string;
+}
+
+export interface LoreEntry {
+  id: string;
+  kind: LoreKind;
+  name: string;
+  aliases: string[];
+  parentId?: string;
+  summary: string;
+  body: string;
+  tags: string[];
+  visibility: LoreVisibility;
+  metadata: LoreMetadata;
+  provenance: LoreProvenance;
+}
+
+export type LoreLinkRelation =
+  "PARENT_OF" | "CONNECTED_TO" | "LOCATED_IN" | "PRESENT_AT" | "RELATED_TO";
+
+export interface LoreLink {
+  fromId: string;
+  toId: string;
+  relation: LoreLinkRelation;
+}
+
+export const LOREBOOK_FORMAT = "fworld-lorebook";
+export const LOREBOOK_VERSION = 1;
+
+export interface LorebookPack {
+  format: typeof LOREBOOK_FORMAT;
+  version: typeof LOREBOOK_VERSION;
+  pack: {
+    id: string;
+    version: number;
+    name: string;
+    description?: string;
+  };
+  entries: LoreEntry[];
+  links: LoreLink[];
+}
+
+export interface LorePackHeader {
+  id: string;
+  version: number;
+  name: string;
+  description?: string;
+  entryCount: number;
+  linkCount: number;
+  digest: string;
+}
+
+export interface WorldLocation {
+  id: string;
+  name: string;
+  aliases: string[];
+  summary?: string;
+  parentId?: string;
+  npcIds: string[];
+  requiredFlag?: string;
+}
+
+export interface WorldConnection {
+  fromId: string;
+  toId: string;
+  blockedByFlag?: string;
+}
+
+export interface WorldMap {
+  locations: WorldLocation[];
+  connections: WorldConnection[];
+  flags?: Record<string, boolean>;
+}
+
+export type NpcPresence = Record<string, "present" | "absent">;
+
+export interface StorySummary {
+  sessionId: string;
+  fromSequence: number;
+  toSequence: number;
+  summary: string;
+  sourceDigest: string;
+  visibility: "public" | "private";
+  knownBy: string[];
+  createdAt: string;
+}
+
+export interface ContextSectionTelemetry {
+  chars: number;
+  count: number;
+  omitted: number;
+}
+
+export interface ContextTelemetry {
+  contextChars: number;
+  approximateTokens: number;
+  tokenEstimateMethod: string;
+  sections: Record<string, ContextSectionTelemetry>;
+  selectedLoreIds: string[];
+  omissions: string[];
+  toolCalls: number;
+  repairs: number;
+}
+
+export type MessageVisibility = "public" | "private";
+
 export interface GameDefinition {
   id: string;
   title: string;
@@ -119,6 +276,9 @@ export interface GameDefinition {
   player: PlayerDefinition;
   npcs: NpcDefinition[];
   startingInventory: StartingInventoryEntry[];
+  worldMap?: WorldMap;
+  startingLocationId?: string;
+  lorebookRefs?: LorebookRef[];
   updatedAt: string;
 }
 
@@ -127,6 +287,10 @@ export interface WorldState {
   time: string;
   scene: string;
   activeCharacters: string[];
+  locationId?: string;
+  flags?: Record<string, boolean>;
+  discoveredLoreIds?: string[];
+  npcPresence?: NpcPresence;
 }
 
 export type FactVisibility = "public" | "private";
@@ -136,6 +300,7 @@ export interface Fact {
   text: string;
   visibility: FactVisibility;
   knownBy: string[];
+  revealableTo?: string[];
   createdAt: string;
   source: "config" | "story";
 }
@@ -172,6 +337,8 @@ export interface GameSession {
   ai: AiConfig;
   nextSequence: number;
   updatedAt: string;
+  worldMap?: WorldMap;
+  lorebookRefs?: LorebookRef[];
 }
 
 export type MessageRole = "PLAYER" | "NPC" | "NARRATOR" | "SYSTEM_EVENT";
@@ -196,21 +363,30 @@ export interface Message {
   role: MessageRole;
   speakerId?: string;
   content: string;
+  visibility?: MessageVisibility;
+  knownBy?: string[];
   check?: CheckRecord;
   createdAt: string;
 }
 
 export const EXPORT_FORMAT = "fworld-save";
 export const EXPORT_VERSION = 1;
+export const EXPORT_VERSION_WITH_LORE = 2;
 
-export interface ExportBundle {
+interface ExportBundleBase {
   format: typeof EXPORT_FORMAT;
-  version: number;
   exportedAt: string;
   game: GameDefinition;
   session: GameSession;
   messages: Message[];
 }
+
+export type ExportBundle =
+  | (ExportBundleBase & { version: 1; loreDependencies?: never })
+  | (ExportBundleBase & {
+      version: typeof EXPORT_VERSION_WITH_LORE;
+      loreDependencies: LoreDependency[];
+    });
 
 export const TEMPLATE_FORMAT = "fworld-template";
 export const TEMPLATE_VERSION = 1;

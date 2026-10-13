@@ -1,10 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
-import { applyEffects, useItem as applyItem } from "../shared/engine.js";
+import { useItem as applyItem } from "../shared/engine.js";
 import type { Message, SessionState } from "../shared/types.js";
+import { resolveMovement } from "../shared/world.js";
 import {
   NarratorContextError,
   NarratorResponseError,
+  narratorParticipants,
   runNarrator,
+  selectPrincipalNpc,
 } from "./agent.js";
 import type { GameDatabase, RunKind, RunRecord, StoredSession } from "./db.js";
 
@@ -45,7 +48,10 @@ function errorForStorage(error: unknown): { code: string; message: string } {
   if (error instanceof NarratorContextError) {
     return { code: "CONTEXT_TOO_LARGE", message: error.message };
   }
-  if (error instanceof Error && error.name === "EngineError") {
+  if (
+    error instanceof Error &&
+    (error.name === "EngineError" || error.name === "WorldError")
+  ) {
     return { code: "INVALID_PROPOSAL", message: error.message.slice(0, 500) };
   }
   if (
@@ -144,14 +150,75 @@ async function runStarted(
     }
 
     const kind: NarratorKind = input.work.kind;
-    const history = db.getHistory(session.id);
+    const playerAction = input.work.kind === "turn" ? input.work.input : "";
+    const worldMap = db.getWorldMap(session);
+    const movement =
+      kind === "turn"
+        ? resolveMovement(worldMap, session.state.world, playerAction)
+        : undefined;
+    const principalNpcId =
+      kind === "turn"
+        ? selectPrincipalNpc(session, playerAction, worldMap)
+        : undefined;
+    const history = db.getRecentHistory(session.id, 24, principalNpcId);
+    const loreRefs =
+      session.lorebookRefs ?? session.definitionSnapshot.lorebookRefs ?? [];
+    const locationId =
+      movement?.kind === "allowed"
+        ? movement.toId
+        : session.state.world.locationId;
+    const discoveredLoreIds = session.state.world.discoveredLoreIds ?? [];
+    const asksHistory =
+      /\b(?:history|historical|past|sejarah|masa lalu|latar belakang)\b/iu.test(
+        playerAction,
+      );
+    const loreOptions = {
+      ...(worldMap && locationId ? { locationId } : {}),
+      ...(kind === "turn" && playerAction ? { query: playerAction } : {}),
+      discoveredLoreIds,
+      limit: kind === "turn" ? 18 : 10,
+    };
+    const retrievedLore = loreRefs.length
+      ? kind === "turn" && worldMap
+        ? db.retrieveLoreForTurn(loreRefs, loreOptions)
+        : db.retrieveLore(loreRefs, { ...loreOptions, narrator: true })
+      : [];
+    const loreEntries = retrievedLore.filter(
+      (entry) =>
+        (asksHistory || entry.kind !== "history") &&
+        (entry.visibility !== "discovery" ||
+          discoveredLoreIds.includes(entry.id) ||
+          !entry.metadata.actorId ||
+          entry.metadata.actorId === principalNpcId),
+    );
+    const storySummaries =
+      kind === "opening"
+        ? []
+        : db.getStorySummaries(session.id, {
+            ...(principalNpcId ? { npcId: principalNpcId } : {}),
+            ...(kind === "turn" && playerAction ? { query: playerAction } : {}),
+            limit: 8,
+          });
     const attempts = new Map<number, string>();
     const outcome = await runNarrator({
       session,
       history,
       kind,
-      playerAction: input.work.kind === "turn" ? input.work.input : "",
+      playerAction,
       providerKey: input.providerKey ?? "",
+      ...(worldMap ? { worldMap } : {}),
+      ...(movement ? { movement } : {}),
+      lore: loreEntries,
+      storySummaries,
+      effectContext: {
+        ...(worldMap ? { worldMap } : {}),
+        loreEntries,
+        playerAction,
+      },
+      estimateTokens: (chars, provider, model) =>
+        db.estimateTokens(chars, provider, model),
+      onContext: (telemetry) =>
+        db.saveContextTelemetry(session.id, input.requestId, telemetry),
       searchMemory: async (query, options) => {
         options.signal.throwIfAborted();
         return db
@@ -190,9 +257,6 @@ async function runStarted(
           "Pembuatan pilihan tidak boleh mengubah state atau check.",
         );
       }
-      if (!outcome.response.choices.length) {
-        throw new Error("Model tidak memberikan pilihan.");
-      }
       const result = {
         choices: outcome.response.choices,
         boundRevision: session.revision,
@@ -201,21 +265,24 @@ async function runStarted(
       return;
     }
 
-    if (
-      kind === "opening" &&
-      (outcome.response.effects.length || outcome.check)
-    ) {
-      throw new Error(
-        "Scene awal tidak boleh mengubah state atau meminta check.",
-      );
-    }
     const now = new Date().toISOString();
     const turnId = randomUUID();
     const messages: Message[] = [];
     let nextState: SessionState = structuredClone(session.state);
     if (kind === "turn") {
-      if (input.work.kind !== "turn")
-        throw new Error("Aksi turn tidak tersedia.");
+      if (input.work.kind !== "turn" || !movement) {
+        throw new Error("Aksi turn atau movement candidate tidak tersedia.");
+      }
+      const applied = outcome.application;
+      if (!applied) {
+        throw new Error("Narrator did not validate turn effects.");
+      }
+      nextState = applied.state;
+      const recipients = narratorParticipants(session, worldMap);
+      const messageScope = {
+        visibility: "private" as const,
+        knownBy: recipients,
+      };
       messages.push({
         id: randomUUID(),
         sessionId: session.id,
@@ -223,20 +290,9 @@ async function runStarted(
         sequence: session.nextSequence,
         role: "PLAYER",
         content: input.work.input,
+        ...messageScope,
         createdAt: now,
       });
-      const applied = applyEffects(
-        session.definitionSnapshot,
-        session.state,
-        outcome.response.effects,
-      );
-      nextState = applied.state;
-      if (outcome.response.world) {
-        nextState.world = {
-          ...nextState.world,
-          ...outcome.response.world,
-        };
-      }
       messages.push({
         id: randomUUID(),
         sessionId: session.id,
@@ -245,6 +301,7 @@ async function runStarted(
         role: "NARRATOR",
         content: outcome.response.narrative,
         ...(outcome.check ? { check: outcome.check } : {}),
+        ...messageScope,
         createdAt: now,
       });
       if (applied.applied.length) {
@@ -255,10 +312,12 @@ async function runStarted(
           sequence: session.nextSequence + 2,
           role: "SYSTEM_EVENT",
           content: applied.applied.join(" | "),
+          ...messageScope,
           createdAt: now,
         });
       }
     } else {
+      const recipients = narratorParticipants(session, worldMap);
       messages.push({
         id: randomUUID(),
         sessionId: session.id,
@@ -266,6 +325,8 @@ async function runStarted(
         sequence: session.nextSequence,
         role: "NARRATOR",
         content: outcome.response.narrative,
+        visibility: "private",
+        knownBy: recipients,
         createdAt: now,
       });
     }
@@ -308,8 +369,24 @@ async function commitItem(
     (entry) => entry.id === itemId,
   );
   if (!item) throw new Error(`Item "${itemId}" tidak dikenal.`);
-  const result = applyItem(session.definitionSnapshot, session.state, itemId);
+  const worldMap = db.getWorldMap(session);
+  const loreRefs =
+    session.lorebookRefs ?? session.definitionSnapshot.lorebookRefs ?? [];
+  const loreEntries = item.effects.flatMap((effect) => {
+    if (effect.type !== "DISCOVER_LORE") return [];
+    const entry = db.getLoreEntry(loreRefs, effect.loreId);
+    return entry ? [entry] : [];
+  });
+  const result = applyItem(session.definitionSnapshot, session.state, itemId, {
+    ...(worldMap ? { worldMap } : {}),
+    loreEntries,
+    playerAction: `use ${item.name}`,
+  });
   const now = new Date().toISOString();
+  const recipients = narratorParticipants(
+    { ...session, state: result.state },
+    worldMap,
+  );
   const message: Message = {
     id: randomUUID(),
     sessionId: session.id,
@@ -319,6 +396,8 @@ async function commitItem(
     content: result.applied.length
       ? `${item.name} digunakan. ${result.applied.join(" | ")}`
       : `${item.name} digunakan tanpa efek.`,
+    visibility: "private",
+    knownBy: recipients,
     createdAt: now,
   };
   const updatedSession = {

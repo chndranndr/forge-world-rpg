@@ -43,6 +43,24 @@ Uji koneksi memakai prompt singkat dan tidak memvalidasi ukuran context cerita. 
 
 Gunakan **Settings → Migrasi data IndexedDB** dari origin canonical untuk mengunduh atau mentransfer data lama. Transfer memvalidasi seluruh store, memakai Web Lock, memverifikasi read-back, dan membiarkan IndexedDB lama utuh. Gunakan **Backup backend** untuk backup/pemulihan SQLite. Restore save JSON v1 membuat salinan dengan ID baru; template JSON tetap di alur Create Game.
 
+## Format lorebook dan save
+
+SQLite memakai schema v2. Database v1 dimigrasikan saat dibuka; restore memvalidasi dan memigrasikan salinan staging sebelum mengganti database aktif. Backup SQLite mencakup pack lore, indeks, pin session, history, dan ringkasan cerita. Credential provider tetap berada di luar backup.
+
+`examples/lorebook-prontera.json` adalah pack kecil dengan 21 entri berprosa asli, berlisensi CC0-1.0. `examples/lorebook-game.json` adalah template playable yang merujuk versi pack tersebut. Artikel lore tidak otomatis menjadi NPC playable, item inventory, atau effects. Pemetaan memakai `metadata.actorId` atau `metadata.itemId` yang harus menunjuk definisi game.
+
+Pack memakai `format: "fworld-lorebook"` dan `version: 1`. Header `pack` memiliki `id`, versi publikasi numerik, dan nama. Setiap entri memiliki ID ber-namespace, jenis, nama/alias, summary, body, tags, visibility, metadata, serta provenance. Links memakai ID entri yang sama. `CONNECTED_TO` sudah bidirectional; jangan menambahkan pasangan reverse yang sama. Parent lore boleh menunjuk region atau world tanpa menjadikannya tujuan perjalanan.
+
+Simpan sumber, lisensi, revisi, canon, dan era pada provenance. Gunakan konten asli atau sumber yang izinnya sudah diperiksa. Field lisensi mencatat atribusi, bukan memverifikasi hak penggunaan. Jangan memasukkan credential, executable HTML, atau artikel pihak ketiga tanpa izin.
+
+Import JSON lorebook dibatasi 8 MiB, 5.000 entri, dan 20.000 links. Batas request HTTP juga mencakup envelope JSON. Dry-run hanya memvalidasi. Publikasi bersifat atomic dan versi yang sudah terbit tidak dapat diubah. Import ulang konten identik bersifat idempotent; revisi konten memerlukan nomor versi baru. Tidak ada crawler, wiki ingestion, atau CLI corpus besar.
+
+Di **Editor**, jalankan dry-run pada file JSON, terbitkan versi, lalu ikat versi itu ke game. Pencarian dan preview menampilkan entri sesuai lokasi. Turn narator menggabungkan lore lokal dengan hasil yang cocok dengan aksi sebelum menerapkan batas konteks. Entri discovery masuk ke konteks setelah engine memvalidasi efek `DISCOVER_LORE`.
+
+Game dan session mengikat `{packId, version}` secara tepat. Session menyimpan pin versi dan peta lokasi saat mulai; perubahan template tidak mengganti pin session aktif. Save tanpa lore tetap memakai `fworld-save` v1. Save dengan lore memakai v2 dan manifest `loreDependencies` berisi versi serta digest, bukan body seluruh pack.
+
+Untuk memindahkan save v2, pindahkan juga export JSON setiap versi pack. Install pack terlebih dahulu, lalu restore save. `LORE_DEPENDENCY_MISSING` berarti versi belum tersedia; ketidakcocokan digest ditolak tanpa menulis sebagian save. Jangan mengganti versi yang hilang dengan versi terbaru. Template lama dan save v1 tanpa lore tetap dapat dipakai.
+
 ## Perintah
 
 | Tujuan                    | Perintah                 |

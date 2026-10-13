@@ -9,16 +9,18 @@ let vite;
 let serverApi;
 let databaseApi;
 let turnApi;
+let loreApi;
 
 test.before(async () => {
   vite = await createViteServer({
     server: { middlewareMode: true, hmr: false },
     appType: "custom",
   });
-  [serverApi, databaseApi, turnApi] = await Promise.all([
+  [serverApi, databaseApi, turnApi, loreApi] = await Promise.all([
     vite.ssrLoadModule("/server/main.ts"),
     vite.ssrLoadModule("/server/db.ts"),
     vite.ssrLoadModule("/server/turn.ts"),
+    vite.ssrLoadModule("/shared/lore.ts"),
   ]);
 });
 
@@ -77,7 +79,7 @@ test("persists context overflow before any AI attempt or state commit", async (t
   assert.equal(run.error.code, "CONTEXT_TOO_LARGE");
   assert.match(
     run.error.message,
-    /Konteks wajib berisi \d+ karakter, melebihi batas 24000;/i,
+    /\d+ karakter.*batasnya 24000 karakter dan 6000 token/i,
   );
   assert.match(run.error.message, /ringkas konfigurasi game atau aksi pemain/i);
 
@@ -141,6 +143,37 @@ test("local API enforces origin and JSON writes, returns revisions, and restores
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
+
+  const pack = JSON.parse(
+    readFileSync(
+      new URL("../examples/lorebook-prontera.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const envelope = JSON.stringify({ lorebook: pack, dryRun: true });
+  const envelopeBytes =
+    Buffer.byteLength(JSON.stringify({ lorebook: null, dryRun: false })) -
+    Buffer.byteLength("null");
+  const requestLimit = loreApi.MAX_LOREBOOK_BYTES + envelopeBytes;
+  const paddedBody = `${envelope}${" ".repeat(
+    requestLimit - Buffer.byteLength(envelope),
+  )}`;
+  const imported = await fetch(`${base}/lorebooks/import`, {
+    method: "POST",
+    headers: {
+      Origin: "http://127.0.0.1:5173",
+      "Content-Type": "application/json",
+    },
+    body: paddedBody,
+  });
+  assert.equal(
+    imported.status,
+    200,
+    `wrapped max-size lorebook rejected: ${JSON.stringify(await imported.clone().json())}`,
+  );
+  const dryRun = await imported.json();
+  assert.equal(dryRun.dryRun, true);
+  assert.equal(dryRun.entries, pack.entries.length);
 
   const settingsBefore = await fetch(`${base}/ai/settings`, {
     headers: { Origin: "http://127.0.0.1:5173" },
@@ -269,14 +302,74 @@ test("local API enforces origin and JSON writes, returns revisions, and restores
   );
   assert.equal(stale.status, 409);
 
+  const transcriptSessionId = sessionStart.session.value.id;
+  const transcriptSession = database.getSession(transcriptSessionId);
+  const transcriptRequestId = "transcript-scope";
+  const transcriptMessages = [
+    {
+      id: "transcript-public",
+      sessionId: transcriptSessionId,
+      turnId: transcriptRequestId,
+      sequence: 0,
+      role: "NARRATOR",
+      content: "The old public passage.",
+      visibility: "public",
+      createdAt: "2026-10-12T00:00:00.000Z",
+    },
+    {
+      id: "transcript-player",
+      sessionId: transcriptSessionId,
+      turnId: transcriptRequestId,
+      sequence: 1,
+      role: "NARRATOR",
+      content: "The player knows this.",
+      visibility: "private",
+      knownBy: ["player"],
+      createdAt: "2026-10-12T00:00:01.000Z",
+    },
+    ...Array.from({ length: 55 }, (_, index) => ({
+      id: `transcript-hidden-${index}`,
+      sessionId: transcriptSessionId,
+      turnId: transcriptRequestId,
+      sequence: index + 2,
+      role: "NARRATOR",
+      content: `Private NPC passage ${index}.`,
+      visibility: "private",
+      knownBy: [],
+      createdAt: "2026-10-12T00:00:02.000Z",
+    })),
+  ];
+  database.startRun({
+    sessionId: transcriptSessionId,
+    requestId: transcriptRequestId,
+    inputHash: "transcript-scope-hash",
+    expectedRevision: transcriptSession.revision,
+  });
+  database.commitRun(transcriptSessionId, transcriptRequestId, {
+    state: transcriptSession.state,
+    messages: transcriptMessages,
+    result: { committed: transcriptMessages.length },
+  });
   const page = await fetch(
-    `${base}/sessions/${sessionStart.session.value.id}/messages`,
+    `${base}/sessions/${transcriptSessionId}/messages?limit=1`,
     { headers: { Origin: "http://127.0.0.1:5173" } },
   );
-  assert.deepEqual(await page.json(), {
-    messages: [],
-    nextBeforeSequence: null,
-  });
+  const firstPage = await page.json();
+  assert.deepEqual(
+    firstPage.messages.map((message) => message.sequence),
+    [1],
+  );
+  assert.equal(firstPage.nextBeforeSequence, 1);
+  const previousPage = await fetch(
+    `${base}/sessions/${transcriptSessionId}/messages?limit=1&beforeSequence=1`,
+    { headers: { Origin: "http://127.0.0.1:5173" } },
+  );
+  const secondPage = await previousPage.json();
+  assert.deepEqual(
+    secondPage.messages.map((message) => message.sequence),
+    [0],
+  );
+  assert.equal(secondPage.nextBeforeSequence, null);
 
   const backupResponse = await fetch(`${base}/backups`, json("POST", {}));
   assert.equal(backupResponse.status, 201);

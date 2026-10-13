@@ -21,11 +21,18 @@ import {
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
+  PLAYER_ID,
   type AiConfig,
   type GameDefinition,
   type GameSession,
+  type LoreEntry,
+  type LoreKind,
+  type LorebookRef,
   type Message,
+  type WorldLocation,
 } from "../shared/types.js";
+import { MAX_LOREBOOK_BYTES } from "../shared/lore.js";
+import { sceneParticipants } from "../shared/world.js";
 import { exportTemplate } from "../shared/template.js";
 import {
   ConflictError,
@@ -40,6 +47,11 @@ import {
 import { getSessionRun, startSessionRun } from "./turn.js";
 
 const JSON_LIMIT = 2 * 1024 * 1024;
+const LOREBOOK_IMPORT_ENVELOPE_BYTES =
+  Buffer.byteLength(JSON.stringify({ lorebook: null, dryRun: false })) -
+  Buffer.byteLength("null");
+const LOREBOOK_IMPORT_LIMIT =
+  MAX_LOREBOOK_BYTES + LOREBOOK_IMPORT_ENVELOPE_BYTES;
 const TRANSFER_LIMIT = 32 * 1024 * 1024;
 const CANONICAL_ORIGIN = "http://127.0.0.1:5173";
 const ID_PATTERN =
@@ -135,7 +147,9 @@ function publicRun(run: RunRecord) {
         : run.status === "interrupted"
           ? "interrupted"
           : run.status,
-    ...(run.result === undefined ? {} : { result: run.result }),
+    ...(run.result === undefined
+      ? {}
+      : { result: publicRunResult(run.result) }),
     ...(error
       ? {
           error: {
@@ -147,6 +161,166 @@ function publicRun(run: RunRecord) {
         }
       : {}),
   };
+}
+function publicItemEffects(value: unknown): unknown[] {
+  if (!Array.isArray(value))
+    throw new CorruptDatabaseError("Item effects tidak valid.");
+  return value.filter((effect) => {
+    if (!isObject(effect) || typeof effect.type !== "string")
+      throw new CorruptDatabaseError("Item effect tidak valid.");
+    switch (effect.type) {
+      case "ADD_FACT":
+      case "REMOVE_FACT":
+      case "DISCOVER_LORE":
+      case "REVEAL_FACT":
+      case "SET_FLAG":
+      case "NPC_PRESENCE":
+        return false;
+      case "ATTRIBUTE_CHANGE":
+      case "RESOURCE_CHANGE":
+      case "RELATIONSHIP_CHANGE":
+      case "ADD_ITEM":
+      case "REMOVE_ITEM":
+        return true;
+      default:
+        throw new CorruptDatabaseError("Item effect tidak dikenal.");
+    }
+  });
+}
+
+function publicSession(value: unknown): Record<string, unknown> {
+  if (
+    !isObject(value) ||
+    !isObject(value.definitionSnapshot) ||
+    !isObject(value.state)
+  ) {
+    throw new CorruptDatabaseError(
+      "Session tidak valid untuk proyeksi pemain.",
+    );
+  }
+  const definition = value.definitionSnapshot;
+  const state = value.state;
+  const world = isObject(state.world) ? state.world : undefined;
+  if (
+    !world ||
+    !Array.isArray(definition.npcs) ||
+    !Array.isArray(definition.items) ||
+    !Array.isArray(state.facts)
+  ) {
+    throw new CorruptDatabaseError(
+      "Session tidak valid untuk proyeksi pemain.",
+    );
+  }
+  const npcs = definition.npcs.map((npc) => {
+    if (!isObject(npc))
+      throw new CorruptDatabaseError("NPC session tidak valid.");
+    const {
+      privateKnowledge: _privateKnowledge,
+      initialRelationships: _initialRelationships,
+      attributes: _attributes,
+      ...visible
+    } = npc;
+    return visible;
+  });
+  const items = definition.items.map((item) => {
+    if (!isObject(item))
+      throw new CorruptDatabaseError("Item session tidak valid.");
+    return { ...item, effects: publicItemEffects(item.effects) };
+  });
+  const facts = state.facts.flatMap((fact) => {
+    if (!isObject(fact))
+      throw new CorruptDatabaseError("Fact session tidak valid.");
+    const knownBy = Array.isArray(fact.knownBy) ? fact.knownBy : [];
+    if (fact.visibility !== "public" && !knownBy.includes(PLAYER_ID)) return [];
+    const { knownBy: _knownBy, revealableTo: _revealableTo, ...visible } = fact;
+    return [visible];
+  });
+  const safeDefinition = {
+    id: definition.id,
+    title: definition.title,
+    ...(definition.genre === undefined ? {} : { genre: definition.genre }),
+    attributes: definition.attributes,
+    resources: definition.resources,
+    relationships: definition.relationships,
+    items,
+    player: definition.player,
+    npcs,
+    startingInventory: definition.startingInventory,
+    ...(definition.lorebookRefs === undefined
+      ? {}
+      : { lorebookRefs: definition.lorebookRefs }),
+    updatedAt: definition.updatedAt,
+  };
+  const safeWorld = {
+    location: world.location,
+    time: world.time,
+    scene: world.scene,
+    ...(world.locationId === undefined ? {} : { locationId: world.locationId }),
+  };
+  return {
+    id: value.id,
+    gameId: value.gameId,
+    definitionSnapshot: safeDefinition,
+    state: {
+      attributes: state.attributes,
+      resources: state.resources,
+      inventory: state.inventory,
+      facts,
+      world: safeWorld,
+    },
+    ai: value.ai,
+    nextSequence: value.nextSequence,
+    updatedAt: value.updatedAt,
+    ...(value.lorebookRefs === undefined
+      ? {}
+      : { lorebookRefs: value.lorebookRefs }),
+  };
+}
+
+function publicRunResult(value: unknown): Record<string, unknown> {
+  if (!isObject(value))
+    throw new CorruptDatabaseError("Run result tidak valid.");
+  const result: Record<string, unknown> = {};
+  if (value.session !== undefined) {
+    if (
+      !isObject(value.session) ||
+      !isObject(value.session.value) ||
+      !Number.isSafeInteger(value.session.revision)
+    ) {
+      throw new CorruptDatabaseError("Run session result tidak valid.");
+    }
+    result.session = {
+      value: publicSession(value.session.value),
+      revision: value.session.revision,
+    };
+  }
+  if (value.messages !== undefined) {
+    if (!Array.isArray(value.messages))
+      throw new CorruptDatabaseError("Run messages tidak valid.");
+    result.messages = publicMessages(value.messages);
+  }
+  if (value.choices !== undefined) {
+    if (!Array.isArray(value.choices) || value.choices.length > 3)
+      throw new CorruptDatabaseError("Run choices tidak valid.");
+    result.choices = value.choices.map((choice) => {
+      if (
+        !isObject(choice) ||
+        typeof choice.id !== "string" ||
+        typeof choice.label !== "string" ||
+        !choice.id.trim() ||
+        !choice.label.trim()
+      ) {
+        throw new CorruptDatabaseError("Run choices tidak valid.");
+      }
+      return { id: choice.id, label: choice.label };
+    });
+  }
+  if (value.boundRevision !== undefined) {
+    if (!Number.isSafeInteger(value.boundRevision))
+      throw new CorruptDatabaseError("Run boundRevision tidak valid.");
+    result.boundRevision = value.boundRevision;
+  }
+  return result;
 }
 
 function errorBody(error: unknown, requestId?: string) {
@@ -404,8 +578,265 @@ function allowedRequest(
   }
 }
 
-function publicMessages(messages: Message[]) {
-  return messages;
+function publicMessages(messages: unknown[]): Record<string, unknown>[] {
+  return messages.flatMap((message) => {
+    if (!isObject(message)) return [];
+    const knownBy = Array.isArray(message.knownBy) ? message.knownBy : [];
+    if (message.visibility === "private" && !knownBy.includes(PLAYER_ID))
+      return [];
+    const { knownBy: _knownBy, ...visible } = message;
+    return [visible];
+  });
+}
+
+function strictQuery(url: URL, allowed: string[]): Map<string, string> {
+  const allowedSet = new Set(allowed);
+  const values = new Map<string, string>();
+  for (const [key, value] of url.searchParams) {
+    if (!allowedSet.has(key))
+      throw new ValidationError(`Parameter query tidak dikenal: ${key}.`);
+    if (values.has(key))
+      throw new ValidationError(`Parameter query ${key} tidak boleh berulang.`);
+    values.set(key, value);
+  }
+  return values;
+}
+
+function queryInteger(
+  values: Map<string, string>,
+  key: string,
+  minimum: number,
+): number | undefined {
+  const raw = values.get(key);
+  if (raw === undefined) return undefined;
+  if (!/^(0|[1-9]\d*)$/.test(raw))
+    throw new ValidationError(`Parameter ${key} harus integer.`);
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < minimum)
+    throw new ValidationError(`Parameter ${key} harus integer >= ${minimum}.`);
+  return value;
+}
+
+function queryText(
+  values: Map<string, string>,
+  key: string,
+  maxBytes: number,
+): string | undefined {
+  const value = values.get(key);
+  if (value === undefined) return undefined;
+  if (Buffer.byteLength(value, "utf8") > maxBytes)
+    throw new ValidationError(`Parameter ${key} terlalu panjang.`);
+  return value;
+}
+
+function requiredQueryText(
+  value: unknown,
+  label: string,
+  maxBytes: number,
+): string {
+  if (
+    typeof value !== "string" ||
+    Buffer.byteLength(value, "utf8") > maxBytes
+  ) {
+    throw new ValidationError(`${label} tidak valid atau terlalu panjang.`);
+  }
+  return value;
+}
+
+function requiredPathVersion(value: unknown): number {
+  if (typeof value !== "string" || !/^[1-9]\d*$/.test(value)) {
+    throw new ValidationError("Versi lorebook harus integer positif.");
+  }
+  const version = Number(value);
+  if (!Number.isSafeInteger(version))
+    throw new ValidationError("Versi lorebook tidak valid.");
+  return version;
+}
+
+const LORE_KINDS: readonly LoreKind[] = [
+  "world",
+  "region",
+  "location",
+  "place",
+  "npc",
+  "faction",
+  "history",
+  "monster",
+  "item",
+  "activity",
+  "other",
+];
+
+function isLoreKind(value: string): value is LoreKind {
+  return LORE_KINDS.some((kind) => kind === value);
+}
+
+function publicLoreEntry(
+  entry: LoreEntry,
+  includeBody = false,
+): Record<string, unknown> {
+  if (entry.visibility === "narrator")
+    throw new CorruptDatabaseError(
+      "Narrator-only lore tidak dapat dipublikasikan.",
+    );
+  return {
+    id: entry.id,
+    kind: entry.kind,
+    name: entry.name,
+    aliases: entry.aliases,
+    ...(entry.parentId === undefined ? {} : { parentId: entry.parentId }),
+    summary: entry.summary,
+    ...(includeBody ? { body: entry.body } : {}),
+    tags: entry.tags,
+    visibility: entry.visibility,
+    provenance: entry.provenance,
+  };
+}
+
+function playerWorld(db: GameDatabase, session: GameSession) {
+  const map = db.getWorldMap(session);
+  const world = session.state.world;
+  const locationId = world.locationId;
+  const current = map?.locations.find((location) => location.id === locationId);
+  const refs = session.lorebookRefs ?? [];
+  const discoveredIds = world.discoveredLoreIds ?? [];
+  const localEntries =
+    refs.length > 0
+      ? db.retrieveLore(refs, {
+          ...(locationId === undefined ? {} : { locationId }),
+          discoveredLoreIds: discoveredIds,
+          limit: 20,
+        })
+      : [];
+  const facts = session.state.facts
+    .filter(
+      (fact) =>
+        fact.visibility === "public" || fact.knownBy.includes(PLAYER_ID),
+    )
+    .slice(0, 50)
+    .map(({ id, text, createdAt, source }) => ({
+      id,
+      text,
+      createdAt,
+      source,
+    }));
+  const people = sceneParticipants(
+    map,
+    locationId,
+    world.npcPresence,
+    session.definitionSnapshot.npcs.map((npc) => npc.id),
+  )
+    .filter((id) => id !== PLAYER_ID)
+    .flatMap((id) => {
+      const npc = session.definitionSnapshot.npcs.find(
+        (candidate) => candidate.id === id,
+      );
+      if (!npc) return [];
+      const relationship = session.state.relationships.find(
+        (entry) => entry.npcId === id,
+      );
+      return [
+        {
+          id: npc.id,
+          name: npc.name,
+          ...(npc.role === undefined ? {} : { role: npc.role }),
+          ...(npc.description === undefined
+            ? {}
+            : { description: npc.description }),
+          relationships: session.definitionSnapshot.relationships.map(
+            (definition) => ({
+              id: definition.id,
+              name: definition.name,
+              min: definition.min,
+              max: definition.max,
+              value:
+                relationship?.values[definition.id] ?? definition.defaultValue,
+            }),
+          ),
+        },
+      ];
+    });
+  const locations = new Map<
+    string,
+    { id: string; name: string; summary?: string; parentId?: string }
+  >();
+  const addLocation = (location: WorldLocation | undefined) => {
+    if (!location || locations.size >= 20) return;
+    locations.set(location.id, {
+      id: location.id,
+      name: location.name,
+      ...(location.summary === undefined ? {} : { summary: location.summary }),
+      ...(location.parentId === undefined
+        ? {}
+        : { parentId: location.parentId }),
+    });
+  };
+  addLocation(current);
+  if (current && map) {
+    for (const connection of map.connections) {
+      const isFrom = connection.fromId === current.id;
+      const isTo = connection.toId === current.id;
+      if (!isFrom && !isTo) continue;
+      if (
+        connection.blockedByFlag &&
+        world.flags?.[connection.blockedByFlag] === true
+      ) {
+        continue;
+      }
+      const neighborId = isFrom ? connection.toId : connection.fromId;
+      const neighbor = map.locations.find(
+        (location) => location.id === neighborId,
+      );
+      if (
+        neighbor?.requiredFlag &&
+        world.flags?.[neighbor.requiredFlag] !== true
+      ) {
+        continue;
+      }
+      addLocation(neighbor);
+    }
+  }
+  const discoveries: LoreEntry[] = [];
+  for (const loreId of discoveredIds.slice(0, 100)) {
+    if (discoveries.length >= 20 || refs.length === 0) break;
+    const entry = db.getLoreEntry(refs, loreId);
+    if (
+      entry &&
+      (entry.visibility === "public" || entry.visibility === "discovery")
+    ) {
+      discoveries.push(entry);
+      if (entry.kind === "location" || entry.kind === "place") {
+        addLocation({
+          id: entry.id,
+          name: entry.name,
+          aliases: entry.aliases,
+          npcIds: [],
+          ...(entry.parentId === undefined ? {} : { parentId: entry.parentId }),
+          summary: entry.summary,
+        });
+      }
+    }
+  }
+  const locationName = current?.name || world.location;
+  return {
+    location:
+      locationName.trim() === ""
+        ? null
+        : {
+            ...(locationId === undefined ? {} : { id: locationId }),
+            name: locationName,
+            ...(current?.summary === undefined
+              ? {}
+              : { summary: current.summary }),
+          },
+    locations: [...locations.values()],
+    people,
+    facts,
+    activities: localEntries
+      .filter((entry) => entry.kind === "activity")
+      .map((entry) => publicLoreEntry(entry)),
+    discoveries: discoveries.map((entry) => publicLoreEntry(entry)),
+  };
 }
 
 function validateRequestId(value: unknown): string {
@@ -577,7 +1008,13 @@ export function createHttpServer(
             const large =
               pathname === "/api/saves" ||
               pathname === "/api/migrations/legacy";
-            body = await readJson(request, large ? TRANSFER_LIMIT : JSON_LIMIT);
+            const limit =
+              pathname === "/api/lorebooks/import"
+                ? LOREBOOK_IMPORT_LIMIT
+                : large
+                  ? TRANSFER_LIMIT
+                  : JSON_LIMIT;
+            body = await readJson(request, limit);
             if (isObject(body) && typeof body.requestId === "string")
               requestId = body.requestId;
           } else if (method !== "GET" && method !== "HEAD") {
@@ -591,10 +1028,135 @@ export function createHttpServer(
           if (pathname === "/api/health" && method === "GET") {
             jsonResponse(response, 200, {
               status: "ok",
-              schemaVersion: 1,
+              schemaVersion: 2,
               nodeVersion: process.versions.node,
             });
             return;
+          }
+          if (pathname === "/api/lorebooks" && method === "GET") {
+            const query = strictQuery(url, ["limit", "offset"]);
+            const limit = queryInteger(query, "limit", 1);
+            const offset = queryInteger(query, "offset", 0);
+            jsonResponse(
+              response,
+              200,
+              db.listLorebooks({
+                ...(limit === undefined ? {} : { limit }),
+                ...(offset === undefined ? {} : { offset }),
+              }),
+            );
+            return;
+          }
+          if (pathname === "/api/lorebooks/import" && method === "POST") {
+            const input = objectBody(
+              body,
+              ["lorebook", "dryRun"],
+              ["lorebook"],
+            );
+            if (
+              input.dryRun !== undefined &&
+              typeof input.dryRun !== "boolean"
+            ) {
+              throw new ValidationError("dryRun harus boolean.");
+            }
+            jsonResponse(
+              response,
+              200,
+              db.importLorebook(input.lorebook, {
+                ...(input.dryRun === undefined ? {} : { dryRun: input.dryRun }),
+              }),
+            );
+            return;
+          }
+          if (pathname === "/api/lorebooks/preview" && method === "POST") {
+            const input = objectBody(
+              body,
+              ["definition", "locationId", "query"],
+              ["definition"],
+            );
+            const locationId =
+              input.locationId === undefined
+                ? undefined
+                : requiredString(input.locationId, "locationId", 256);
+            const query =
+              input.query === undefined
+                ? undefined
+                : requiredQueryText(input.query, "query", 512);
+            const preview = db.previewLore(input.definition, {
+              ...(locationId === undefined ? {} : { locationId }),
+              ...(query === undefined ? {} : { query }),
+            });
+            jsonResponse(response, 200, {
+              ...preview,
+              entries: preview.entries.map((entry) => publicLoreEntry(entry)),
+            });
+            return;
+          }
+          const lorebookRoute = pathname.match(
+            /^\/api\/lorebooks\/([^/]+)\/versions\/([^/]+)\/(entries|links|export)$/,
+          );
+          if (lorebookRoute) {
+            const ref: LorebookRef = {
+              packId: requiredString(lorebookRoute[1], "packId", 256),
+              version: requiredPathVersion(lorebookRoute[2]),
+            };
+            const resource = lorebookRoute[3];
+            if (resource === "entries" && method === "GET") {
+              const query = strictQuery(url, [
+                "query",
+                "kind",
+                "parentId",
+                "limit",
+                "offset",
+              ]);
+              const kindValue = query.get("kind");
+              if (kindValue !== undefined && !isLoreKind(kindValue))
+                throw new ValidationError("Lore kind tidak dikenal.");
+              const parentId = query.get("parentId");
+              const search = queryText(query, "query", 512);
+              const limit = queryInteger(query, "limit", 1);
+              const offset = queryInteger(query, "offset", 0);
+              const page = db.listLoreEntries(ref, {
+                ...(search === undefined ? {} : { query: search }),
+                ...(kindValue === undefined ? {} : { kind: kindValue }),
+                ...(parentId === undefined
+                  ? {}
+                  : { parentId: requiredString(parentId, "parentId", 256) }),
+                ...(limit === undefined ? {} : { limit }),
+                ...(offset === undefined ? {} : { offset }),
+              });
+              jsonResponse(response, 200, {
+                ...page,
+                entries: page.entries.map((entry) =>
+                  publicLoreEntry(entry, true),
+                ),
+              });
+              return;
+            }
+            if (resource === "links" && method === "GET") {
+              const query = strictQuery(url, ["entryId", "limit", "offset"]);
+              const entryId = requiredString(
+                query.get("entryId"),
+                "entryId",
+                256,
+              );
+              const limit = queryInteger(query, "limit", 1);
+              const offset = queryInteger(query, "offset", 0);
+              jsonResponse(
+                response,
+                200,
+                db.listLoreLinks(ref, entryId, {
+                  ...(limit === undefined ? {} : { limit }),
+                  ...(offset === undefined ? {} : { offset }),
+                }),
+              );
+              return;
+            }
+            if (resource === "export" && method === "GET") {
+              strictQuery(url, []);
+              jsonResponse(response, 200, db.exportLorebook(ref));
+              return;
+            }
           }
           if (pathname === "/api/games" && method === "GET") {
             jsonResponse(response, 200, db.listGames().map(versioned));
@@ -615,21 +1177,24 @@ export function createHttpServer(
               ["definition", "expectedGameRevision", "ai"],
               ["definition", "ai"],
             );
-            jsonResponse(
-              response,
-              201,
-              db.startSessionForDefinition({
-                definition: input.definition,
-                ...(input.expectedGameRevision === undefined
-                  ? {}
-                  : {
-                      expectedGameRevision: requiredRevision(
-                        input.expectedGameRevision,
-                      ),
-                    }),
-                ai: parseAi(input.ai),
-              }),
-            );
+            const started = db.startSessionForDefinition({
+              definition: input.definition,
+              ...(input.expectedGameRevision === undefined
+                ? {}
+                : {
+                    expectedGameRevision: requiredRevision(
+                      input.expectedGameRevision,
+                    ),
+                  }),
+              ai: parseAi(input.ai),
+            });
+            jsonResponse(response, 201, {
+              ...started,
+              session: {
+                value: publicSession(started.session.value),
+                revision: started.session.revision,
+              },
+            });
             return;
           }
           if (pathname === "/api/saves" && method === "POST") {
@@ -748,7 +1313,14 @@ export function createHttpServer(
             if (sub === "sessions" && method === "GET") {
               if (!db.getGame(id))
                 throw new NotFoundError("Game tidak ditemukan.");
-              jsonResponse(response, 200, db.listSessions(id).map(versioned));
+              jsonResponse(
+                response,
+                200,
+                db.listSessions(id).map((session) => ({
+                  value: publicSession(session),
+                  revision: session.revision,
+                })),
+              );
               return;
             }
             if (sub === "template" && method === "GET") {
@@ -831,7 +1403,17 @@ export function createHttpServer(
             if (!action && method === "GET") {
               const session = db.getSession(id);
               if (!session) throw new NotFoundError("Session tidak ditemukan.");
-              jsonResponse(response, 200, versioned(session));
+              jsonResponse(response, 200, {
+                value: publicSession(session),
+                revision: session.revision,
+              });
+              return;
+            }
+            if (action === "world" && method === "GET") {
+              strictQuery(url, []);
+              const session = db.getSession(id);
+              if (!session) throw new NotFoundError("Session tidak ditemukan.");
+              jsonResponse(response, 200, playerWorld(db, session));
               return;
             }
             if (action === "messages" && method === "GET") {
@@ -862,7 +1444,10 @@ export function createHttpServer(
                 { ai: parseAi(input.ai) },
                 requiredRevision(input.expectedRevision),
               );
-              jsonResponse(response, 200, versioned(updated));
+              jsonResponse(response, 200, {
+                value: publicSession(updated),
+                revision: updated.revision,
+              });
               return;
             }
             if (action === "save" && method === "GET") {

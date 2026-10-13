@@ -1,0 +1,470 @@
+{
+  "format": "fworld-lorebook",
+  "version": 1,
+  "pack": {
+    "id": "fworld-original-ro",
+    "version": 1,
+    "name": "Fworld Original: The Sograt Letter",
+    "description": "Short original places, people, history, and activities for the sample story."
+  },
+  "entries": [
+    {
+      "id": "region:sograt-road",
+      "kind": "region",
+      "name": "The Sograt Road",
+      "aliases": ["Sograt crossing", "the desert road"],
+      "summary": "A dry route links the capital gate, Morroc, and several landmarks.",
+      "body": "In this original setting, travelers leave short route notes at staffed gates and shaded stops. The road's useful knowledge is practical: water, turns, and who last carried a parcel.",
+      "tags": ["route", "desert", "travel"],
+      "visibility": "public",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "original"
+      }
+    },
+    {
+      "id": "loc:prontera",
+      "kind": "location",
+      "name": "Prontera",
+      "aliases": ["Prontera Gate", "capital gate"],
+      "parentId": "region:sograt-road",
+      "summary": "A walled city gate where outbound parcels and traveler questions are entered in a small ledger.",
+      "body": "In this original version of the story, the quiet gate is a place to check the day's deliveries, ask about road conditions, and compare written route notes.",
+      "tags": ["gate", "ledger", "starting-place"],
+      "visibility": "public",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "original"
+      }
+    },
+    {
+      "id": "loc:morroc",
+      "kind": "location",
+      "name": "Morroc",
+      "aliases": ["Morroc town", "desert-side town"],
+      "parentId": "region:sograt-road",
+      "summary": "A compact town where the main road meets market errands and local travel notes.",
+      "body": "Travelers pause here to refill water and compare directions. Local advice tends to name a landmark rather than promise a precise distance.",
+      "tags": ["town", "road", "travel"],
+      "visibility": "public",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "original"
+      }
+    },
+    {
+      "id": "place:morroc_market",
+      "kind": "place",
+      "name": "Morroc Market",
+      "aliases": ["Morroc bazaar", "the market"],
+      "parentId": "loc:morroc",
+      "summary": "A close-packed market where sellers and runners exchange practical travel goods and small messages.",
+      "body": "Stallholders keep their own short notes for unclaimed parcels and receipts. A blank line on a slip is often an invitation to ask, not proof that a delivery was lost.",
+      "tags": ["market", "errands", "receipts"],
+      "visibility": "public",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "original"
+      }
+    },
+    {
+      "id": "loc:pyramid",
+      "kind": "location",
+      "name": "The Pyramid",
+      "aliases": ["Pyramid trail", "stone landmark"],
+      "parentId": "region:sograt-road",
+      "summary": "A stone landmark beyond a marked trail from Morroc, with a scout watching the approach.",
+      "body": "Visitors check the trail marker before moving farther from town. In this original account, the structure is simply a landmark on the route; its details come from what travelers observe here.",
+      "tags": ["landmark", "trail", "scouting"],
+      "visibility": "public",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "original"
+      }
+    },
+    {
+      "id": "loc:sograt",
+      "kind": "location",
+      "name": "Sograt",
+      "aliases": ["Sograt road", "open desert stretch"],
+      "parentId": "region:sograt-road",
+      "summary": "An open stretch of hot road where travelers plan shaded rests.",
+      "body": "People cross in short stages, using a few familiar patches of shade. A cup of water and an honest estimate of the next stop matter more than a hurried pace.",
+      "tags": ["road", "shade", "travel"],
+      "visibility": "public",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "original"
+      }
+    },
+    {
+      "id": "history:morroc",
+      "kind": "history",
+      "name": "Morroc's Shared Road Ledger",
+      "aliases": ["Morroc ledger history", "the first route ledger"],
+      "parentId": "loc:morroc",
+      "summary": "Morroc's route notes grew from practical records of water stops and parcel handoffs.",
+      "body": "Local tellers say the first shared ledger began after two couriers arrived with matching notes but different last-mile directions. Its keeper began recording landmarks and handoffs, not names, so travelers could correct a route without claiming another person's story.",
+      "tags": ["history", "ledger", "couriers"],
+      "visibility": "public",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "original"
+      }
+    },
+    {
+      "id": "activity:prontera-ledger-check",
+      "kind": "activity",
+      "name": "Check the Gate Ledger",
+      "aliases": ["compare the outbound list", "gate ledger check"],
+      "summary": "Compare the day's outbound entries with a courier's route note.",
+      "body": "Ask the gate keeper to read the relevant entries aloud, then compare their times and parcel marks with a route strip. The ledger records what was written, not what a traveler meant.",
+      "tags": ["local", "ledger", "conversation"],
+      "visibility": "public",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "original"
+      }
+    },
+    {
+      "id": "activity:morroc-route-notes",
+      "kind": "activity",
+      "name": "Compare Morroc Route Notes",
+      "aliases": ["ask about local directions", "route-note comparison"],
+      "summary": "Compare familiar landmarks and water stops with a local travel note.",
+      "body": "A traveler can ask which landmark a note refers to and whether the water stop is still usable. Different accounts can be checked side by side without assuming either person is mistaken.",
+      "tags": ["local", "directions", "conversation"],
+      "visibility": "public",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "original"
+      }
+    },
+    {
+      "id": "activity:market-receipt-check",
+      "kind": "activity",
+      "name": "Ask About an Unclaimed Receipt",
+      "aliases": ["market receipt question", "check the stall notes"],
+      "summary": "Ask a stallholder whether a blank receipt line matches an ordinary market handoff.",
+      "body": "A visitor can ask which stall issued a receipt and whether its blank note line was meant for a later name. The answer comes from the seller's record and the details of that handoff.",
+      "tags": ["local", "market", "receipts"],
+      "visibility": "public",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "original"
+      }
+    },
+    {
+      "id": "activity:pyramid-marker-check",
+      "kind": "activity",
+      "name": "Read the Pyramid Trail Marker",
+      "aliases": ["check the trail marker", "trail return-point check"],
+      "summary": "Read the trail marker and note which turn leads back toward Morroc.",
+      "body": "The scout can point out the return marker and explain how its lettering distinguishes the townward path from the farther trail. Visitors are free to pause and ask before continuing.",
+      "tags": ["local", "trail", "scouting"],
+      "visibility": "public",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "original"
+      }
+    },
+    {
+      "id": "activity:sograt-shade-plan",
+      "kind": "activity",
+      "name": "Plan a Shaded Rest",
+      "aliases": ["choose a rest stop", "shade-stop planning"],
+      "summary": "Compare the next stretch with the shaded places used by local travelers.",
+      "body": "A guide can describe the shade along the route and help estimate a comfortable pause. Travelers decide for themselves when to stop and how much water to carry.",
+      "tags": ["local", "rest", "travel"],
+      "visibility": "public",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "original"
+      }
+    },
+    {
+      "id": "npc:edrin",
+      "kind": "npc",
+      "name": "Edrin",
+      "aliases": ["Prontera ledger keeper", "gate clerk"],
+      "summary": "A patient ledger keeper at the Prontera gate who prefers dates and parcel marks to guesses.",
+      "body": "Edrin handles questions about the day's outbound entries in a formal, patient manner. He asks travelers to distinguish what they saw from what they were told.",
+      "tags": ["npc", "prontera", "ledger"],
+      "visibility": "public",
+      "metadata": { "actorId": "npc:prontera_guard" },
+      "provenance": {
+        "sourceId": "fworld-original",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "original"
+      }
+    },
+    {
+      "id": "npc:sava",
+      "kind": "npc",
+      "name": "Sava",
+      "aliases": ["Morroc gate keeper", "arrival guard"],
+      "summary": "A practical gate keeper who checks travelers arriving by the Morroc road.",
+      "body": "Sava keeps the arrival line moving and answers direct questions about local routes. A clear landmark is more useful to Sava than a confident but vague direction.",
+      "tags": ["npc", "morroc", "gate"],
+      "visibility": "public",
+      "metadata": { "actorId": "npc:morroc_guard" },
+      "provenance": {
+        "sourceId": "fworld-original",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "original"
+      }
+    },
+    {
+      "id": "npc:nima",
+      "kind": "npc",
+      "name": "Nima",
+      "aliases": ["market seller", "Morroc merchant"],
+      "summary": "A cheerful market seller who keeps an eye on useful travel goods and unclaimed slips.",
+      "body": "Nima knows which stalls handle ordinary supplies and is quick to notice when a receipt has been left without a name. She prefers a specific question to a broad guess about the market.",
+      "tags": ["npc", "market", "receipts"],
+      "visibility": "public",
+      "metadata": { "actorId": "npc:merchant" },
+      "provenance": {
+        "sourceId": "fworld-original",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "original"
+      }
+    },
+    {
+      "id": "npc:piri",
+      "kind": "npc",
+      "name": "Piri",
+      "aliases": ["market runner", "stall runner"],
+      "summary": "A quick market runner who carries short errands between stalls.",
+      "body": "Piri is curious about small details and moves easily through the busy aisles. Give Piri a stall, a color, or a time to narrow down an errand.",
+      "tags": ["npc", "market", "errands"],
+      "visibility": "public",
+      "metadata": { "actorId": "npc:market_runner" },
+      "provenance": {
+        "sourceId": "fworld-original",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "original"
+      }
+    },
+    {
+      "id": "npc:teren",
+      "kind": "npc",
+      "name": "Teren",
+      "aliases": ["Pyramid scout", "trail scout"],
+      "summary": "A steady scout near the Pyramid trail who points out the return marker.",
+      "body": "Teren keeps visitors oriented near the approach and would rather guide someone back before dusk than hurry them farther along the trail.",
+      "tags": ["npc", "pyramid", "trail"],
+      "visibility": "public",
+      "metadata": { "actorId": "npc:pyramid_scout" },
+      "provenance": {
+        "sourceId": "fworld-original",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "original"
+      }
+    },
+    {
+      "id": "npc:ami",
+      "kind": "npc",
+      "name": "Ami",
+      "aliases": ["Sograt guide", "road guide"],
+      "summary": "A kind route guide who remembers shaded rest points across Sograt.",
+      "body": "Ami gives careful advice about where travelers can pause and listens for the conditions of the road that day before recommending a pace.",
+      "tags": ["npc", "sograt", "guide"],
+      "visibility": "public",
+      "metadata": { "actorId": "npc:sograt_guide" },
+      "provenance": {
+        "sourceId": "fworld-original",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "original"
+      }
+    },
+    {
+      "id": "npc:vero",
+      "kind": "npc",
+      "name": "Vero",
+      "aliases": ["caravan cook", "road cook"],
+      "summary": "A sociable caravan cook who pays attention to water and shared meals.",
+      "body": "Vero is generous with practical conversation about the caravan's pace and supplies. A simple question about who borrowed a cup is easier to answer than a claim about the whole road.",
+      "tags": ["npc", "sograt", "caravan"],
+      "visibility": "public",
+      "metadata": { "actorId": "npc:caravan_cook" },
+      "provenance": {
+        "sourceId": "fworld-original",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "original"
+      }
+    },
+    {
+      "id": "secret:morroc-rest-mark",
+      "kind": "other",
+      "name": "The Hidden Shade Mark",
+      "aliases": ["chalk crescent", "the water-jar mark"],
+      "summary": "A small chalk mark beneath a town water jar points toward a shaded turn.",
+      "body": "A chalk crescent under the western water jar points to a shaded turn just off the road. It was drawn small so only someone checking the jar would notice it.",
+      "tags": ["secret", "discovery", "morroc"],
+      "visibility": "discovery",
+      "metadata": {
+        "discoverAt": ["loc:morroc"],
+        "discoveryKeywords": ["chalk crescent", "under the western water jar"]
+      },
+      "provenance": {
+        "sourceId": "fworld-original",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "original"
+      }
+    },
+    {
+      "id": "secret:narrator-ledger-cue",
+      "kind": "other",
+      "name": "Unshared Ledger Detail",
+      "aliases": ["private ledger cue"],
+      "summary": "A narrator-only continuity detail, not a player-facing fact.",
+      "body": "A tiny second pinprick beside the market copy is a private continuity clue: the ledger was handled twice, but the mark identifies no person and is not available to the player.",
+      "tags": ["secret", "narrator-only", "ledger"],
+      "visibility": "narrator",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "original"
+      }
+    }
+  ],
+  "links": [
+    {
+      "fromId": "region:sograt-road",
+      "toId": "loc:prontera",
+      "relation": "PARENT_OF"
+    },
+    {
+      "fromId": "region:sograt-road",
+      "toId": "loc:morroc",
+      "relation": "PARENT_OF"
+    },
+    {
+      "fromId": "region:sograt-road",
+      "toId": "loc:pyramid",
+      "relation": "PARENT_OF"
+    },
+    {
+      "fromId": "region:sograt-road",
+      "toId": "loc:sograt",
+      "relation": "PARENT_OF"
+    },
+    {
+      "fromId": "loc:morroc",
+      "toId": "place:morroc_market",
+      "relation": "PARENT_OF"
+    },
+    {
+      "fromId": "loc:morroc",
+      "toId": "history:morroc",
+      "relation": "PARENT_OF"
+    },
+    {
+      "fromId": "loc:prontera",
+      "toId": "loc:morroc",
+      "relation": "CONNECTED_TO"
+    },
+    {
+      "fromId": "loc:morroc",
+      "toId": "place:morroc_market",
+      "relation": "CONNECTED_TO"
+    },
+    {
+      "fromId": "loc:morroc",
+      "toId": "loc:pyramid",
+      "relation": "CONNECTED_TO"
+    },
+    {
+      "fromId": "loc:morroc",
+      "toId": "loc:sograt",
+      "relation": "CONNECTED_TO"
+    },
+    {
+      "fromId": "activity:prontera-ledger-check",
+      "toId": "loc:prontera",
+      "relation": "LOCATED_IN"
+    },
+    {
+      "fromId": "activity:morroc-route-notes",
+      "toId": "loc:morroc",
+      "relation": "LOCATED_IN"
+    },
+    {
+      "fromId": "activity:market-receipt-check",
+      "toId": "place:morroc_market",
+      "relation": "LOCATED_IN"
+    },
+    {
+      "fromId": "activity:pyramid-marker-check",
+      "toId": "loc:pyramid",
+      "relation": "LOCATED_IN"
+    },
+    {
+      "fromId": "activity:sograt-shade-plan",
+      "toId": "loc:sograt",
+      "relation": "LOCATED_IN"
+    },
+    { "fromId": "npc:edrin", "toId": "loc:prontera", "relation": "PRESENT_AT" },
+    { "fromId": "npc:sava", "toId": "loc:morroc", "relation": "PRESENT_AT" },
+    {
+      "fromId": "npc:nima",
+      "toId": "place:morroc_market",
+      "relation": "PRESENT_AT"
+    },
+    {
+      "fromId": "npc:piri",
+      "toId": "place:morroc_market",
+      "relation": "PRESENT_AT"
+    },
+    { "fromId": "npc:teren", "toId": "loc:pyramid", "relation": "PRESENT_AT" },
+    { "fromId": "npc:ami", "toId": "loc:sograt", "relation": "PRESENT_AT" },
+    { "fromId": "npc:vero", "toId": "loc:sograt", "relation": "PRESENT_AT" }
+  ]
+}

@@ -1,4 +1,5 @@
 import { PLAYER_ID } from "./types.js";
+import { sceneParticipants } from "./world.js";
 
 import type {
   AttributeDefinition,
@@ -10,12 +11,23 @@ import type {
   GameDefinition,
   ItemDefinition,
   ItemEffect,
+  LoreEntry,
   RelationshipDefinition,
   ResourceDefinition,
   SessionState,
+  WorldMap,
 } from "./types.js";
 
-export function buildInitialState(game: GameDefinition): SessionState {
+export interface EffectContext {
+  worldMap?: WorldMap;
+  loreEntries?: LoreEntry[];
+  playerAction?: string;
+}
+
+export function buildInitialState(
+  game: GameDefinition,
+  worldMap = game.worldMap,
+): SessionState {
   const attributes: Record<string, number> = {};
   for (const attribute of game.attributes) {
     attributes[attribute.id] =
@@ -39,19 +51,27 @@ export function buildInitialState(game: GameDefinition): SessionState {
     return { npcId: npc.id, values };
   });
   const facts: SessionState["facts"] = [];
-  return {
-    attributes,
-    resources,
-    inventory,
-    relationships,
-    facts,
-    world: {
-      location: "",
-      time: "",
-      scene: game.scenario.startingSituation,
-      activeCharacters: [PLAYER_ID, ...game.npcs.map((npc) => npc.id)],
-    },
+  const start = worldMap?.locations.find(
+    (location) => location.id === game.startingLocationId,
+  );
+  const world: SessionState["world"] = {
+    location: start?.name ?? "",
+    time: "",
+    scene: game.scenario.startingSituation,
+    activeCharacters: sceneParticipants(
+      worldMap,
+      start?.id,
+      {},
+      game.npcs.map((npc) => npc.id),
+    ),
   };
+  if (worldMap) {
+    world.flags = structuredClone(worldMap.flags ?? {});
+    world.discoveredLoreIds = [];
+    world.npcPresence = {};
+    if (start) world.locationId = start.id;
+  }
+  return { attributes, resources, inventory, relationships, facts, world };
 }
 
 export class EngineError extends Error {
@@ -125,10 +145,80 @@ function compute(
   }
 }
 
+const NEGATED_ACTION_PREFIX =
+  /(?:\bnot|\bnever|\bwon't|\bcannot|\bcan't|\bdon't|\bdont|\btidak|\bnggak|\bgak|\bjangan|\bbatal)\s+(?:[\p{L}\p{N}_]+\s+){0,4}$/iu;
+
+function containsPhrase(text: string, phrase: string): boolean {
+  const normalizedTextValue = text
+    .normalize("NFKC")
+    .trim()
+    .replace(/\s+/gu, " ")
+    .toLocaleLowerCase("en-US");
+  const normalizedPhrase = phrase
+    .normalize("NFKC")
+    .trim()
+    .replace(/\s+/gu, " ")
+    .toLocaleLowerCase("en-US");
+  if (!normalizedPhrase) return false;
+  let offset = 0;
+  while (offset < normalizedTextValue.length) {
+    const index = normalizedTextValue.indexOf(normalizedPhrase, offset);
+    if (index < 0) return false;
+    const before = normalizedTextValue[index - 1];
+    const after = normalizedTextValue[index + normalizedPhrase.length];
+    if (
+      (before === undefined || !/[\p{L}\p{N}_]/u.test(before)) &&
+      (after === undefined || !/[\p{L}\p{N}_]/u.test(after))
+    ) {
+      const prefix = normalizedTextValue.slice(Math.max(0, index - 48), index);
+      if (!NEGATED_ACTION_PREFIX.test(prefix)) return true;
+    }
+    offset = index + 1;
+  }
+  return false;
+}
+
+function hasExplicitAction(action: string, intent: RegExp): boolean {
+  const match = intent.exec(action);
+  if (!match || match.index === undefined) return false;
+  const prefix = action.slice(Math.max(0, match.index - 48), match.index);
+  return !NEGATED_ACTION_PREFIX.test(prefix);
+}
+
+function validateEffectRecipients(
+  game: GameDefinition,
+  recipientIds: string[],
+  label: string,
+): void {
+  const knownIds = new Set([PLAYER_ID, ...game.npcs.map((npc) => npc.id)]);
+  if (recipientIds.some((id) => !knownIds.has(id))) {
+    fail(`${label} merujuk penerima yang tidak dikenal`);
+  }
+}
+
+function refreshActiveCharacters(
+  game: GameDefinition,
+  next: SessionState,
+  context?: EffectContext,
+): void {
+  next.world.activeCharacters = sceneParticipants(
+    context?.worldMap,
+    next.world.locationId,
+    next.world.npcPresence,
+    game.npcs.map((npc) => npc.id),
+  );
+}
+
+const DISCOVERY_ACTION =
+  /\b(?:inspect|read|search|examine|investigate|periksa|baca|cari|selidiki)\b/iu;
+const REVEAL_ACTION =
+  /\b(?:tell|reveal|share|inform|ungkap|bagikan|sampaikan|ceritakan)\b|beri\s+tahu|kasih\s+tahu|memberitahu/iu;
+
 function applyOne(
   game: GameDefinition,
   next: SessionState,
   effect: ItemEffect,
+  context?: EffectContext,
 ): string {
   switch (effect.type) {
     case "ATTRIBUTE_CHANGE": {
@@ -223,14 +313,26 @@ function applyOne(
       return `${item.name} dihapus sebanyak ${effect.quantity}`;
     }
     case "ADD_FACT": {
-      if (effect.text.trim().length === 0) {
-        fail("Fakta tidak boleh kosong");
+      if (effect.text.trim().length === 0) fail("Fakta tidak boleh kosong");
+      if (
+        effect.visibility !== undefined &&
+        effect.visibility !== "public" &&
+        effect.visibility !== "private"
+      ) {
+        fail("Visibilitas fakta tidak dikenal");
       }
+      const knownBy = effect.knownBy ?? [];
+      const revealableTo = effect.revealableTo ?? [];
+      validateEffectRecipients(game, knownBy, "knownBy");
+      validateEffectRecipients(game, revealableTo, "revealableTo");
       const fact: Fact = {
         id: crypto.randomUUID(),
         text: effect.text,
-        visibility: "public",
-        knownBy: [],
+        visibility: effect.visibility ?? "public",
+        knownBy: [...knownBy],
+        ...(effect.revealableTo === undefined
+          ? {}
+          : { revealableTo: [...revealableTo] }),
         createdAt: new Date().toISOString(),
         source: "story",
       };
@@ -243,6 +345,123 @@ function applyOne(
       next.facts.splice(next.facts.indexOf(fact), 1);
       return `Fakta dihapus: "${fact.text}"`;
     }
+    case "DISCOVER_LORE": {
+      if (!context?.worldMap)
+        fail("DISCOVER_LORE membutuhkan world map yang dipin");
+      const lore = context.loreEntries?.find(
+        (entry) => entry.id === effect.loreId,
+      );
+      if (!lore || lore.visibility !== "discovery") {
+        fail(
+          `Lore discovery "${effect.loreId}" tidak ditemukan atau tidak dapat ditemukan`,
+        );
+      }
+      const currentLocationId = next.world.locationId;
+      if (
+        !currentLocationId ||
+        !context.worldMap.locations.some(
+          ({ id }) => id === currentLocationId,
+        ) ||
+        !lore.metadata.discoverAt?.includes(currentLocationId)
+      ) {
+        fail(`Lore "${lore.id}" tidak dapat ditemukan di lokasi ini`);
+      }
+      for (const flag of [
+        lore.metadata.requiredFlag,
+        lore.metadata.blockedByFlag,
+      ]) {
+        if (flag && !Object.hasOwn(context.worldMap.flags ?? {}, flag)) {
+          fail(
+            `Lore "${lore.id}" merujuk flag "${flag}" yang tidak dideklarasikan`,
+          );
+        }
+      }
+      if (
+        lore.metadata.requiredFlag &&
+        next.world.flags?.[lore.metadata.requiredFlag] !== true
+      ) {
+        fail(
+          `Lore "${lore.id}" membutuhkan flag "${lore.metadata.requiredFlag}"`,
+        );
+      }
+      if (
+        lore.metadata.blockedByFlag &&
+        next.world.flags?.[lore.metadata.blockedByFlag] === true
+      ) {
+        fail(
+          `Lore "${lore.id}" diblokir oleh flag "${lore.metadata.blockedByFlag}"`,
+        );
+      }
+      const action = context.playerAction ?? "";
+      const keywordMatch = (lore.metadata.discoveryKeywords ?? []).some(
+        (keyword) => containsPhrase(action, keyword),
+      );
+      if (!hasExplicitAction(action, DISCOVERY_ACTION) && !keywordMatch) {
+        fail(`Aksi pemain tidak mengizinkan discovery "${lore.id}"`);
+      }
+      const discovered = next.world.discoveredLoreIds ?? [];
+      if (!discovered.includes(lore.id)) {
+        next.world.discoveredLoreIds = [...discovered, lore.id];
+      }
+      return `Lore ditemukan: "${lore.name}"`;
+    }
+    case "REVEAL_FACT": {
+      const fact = next.facts.find((entry) => entry.id === effect.factId);
+      if (!fact) fail(`Fakta "${effect.factId}" tidak ditemukan`);
+      if (fact.visibility !== "private") {
+        fail(`Fakta "${fact.id}" bukan fakta privat`);
+      }
+      if (!fact.revealableTo?.includes(effect.npcId)) {
+        fail(`Fakta "${fact.id}" tidak mengizinkan penerima "${effect.npcId}"`);
+      }
+      if (
+        effect.npcId !== PLAYER_ID &&
+        (!game.npcs.some((npc) => npc.id === effect.npcId) ||
+          !next.world.activeCharacters.includes(effect.npcId))
+      ) {
+        fail(`Penerima "${effect.npcId}" bukan pemain atau NPC yang hadir`);
+      }
+      if (!hasExplicitAction(context?.playerAction ?? "", REVEAL_ACTION)) {
+        fail("REVEAL_FACT membutuhkan aksi tell/reveal/share yang eksplisit");
+      }
+      if (!fact.knownBy.includes(effect.npcId)) {
+        fact.knownBy.push(effect.npcId);
+      }
+      return `Fakta "${fact.id}" dibagikan kepada "${effect.npcId}"`;
+    }
+    case "SET_FLAG": {
+      if (
+        !context?.worldMap ||
+        !Object.hasOwn(context.worldMap.flags ?? {}, effect.target)
+      ) {
+        fail(`Flag "${effect.target}" tidak dideklarasikan dalam world map`);
+      }
+      if (typeof effect.value !== "boolean")
+        fail("SET_FLAG membutuhkan value boolean");
+      next.world.flags = {
+        ...(next.world.flags ?? context.worldMap.flags ?? {}),
+        [effect.target]: effect.value,
+      };
+      return `Flag "${effect.target}" disetel`;
+    }
+    case "NPC_PRESENCE": {
+      if (!game.npcs.some((npc) => npc.id === effect.npcId)) {
+        fail(`NPC "${effect.npcId}" tidak dikenal`);
+      }
+      if (typeof effect.present !== "boolean") {
+        fail("NPC_PRESENCE membutuhkan present boolean");
+      }
+      next.world.npcPresence = {
+        ...(next.world.npcPresence ?? {}),
+        [effect.npcId]: effect.present ? "present" : "absent",
+      };
+      refreshActiveCharacters(game, next, context);
+      return `Kehadiran NPC "${effect.npcId}" diperbarui`;
+    }
+    default: {
+      const unhandled: never = effect;
+      return fail(`Tipe effect tidak dikenal: "${String(unhandled)}"`);
+    }
   }
 }
 
@@ -250,11 +469,12 @@ export function applyEffects(
   game: GameDefinition,
   state: SessionState,
   effects: ItemEffect[],
+  context?: EffectContext,
 ): ApplyResult {
   const next = structuredClone(state);
   const applied: string[] = [];
   for (const effect of effects) {
-    applied.push(applyOne(game, next, effect));
+    applied.push(applyOne(game, next, effect, context));
   }
   return { state: next, applied };
 }
@@ -336,13 +556,14 @@ export function useItem(
   game: GameDefinition,
   state: SessionState,
   itemId: string,
+  context?: EffectContext,
 ): ApplyResult {
   const item = findItem(game, itemId);
   const owned = state.inventory.find((entry) => entry.itemId === itemId);
   if (!owned || owned.quantity < 1) {
     fail(`${item.name} tidak ada di inventaris`);
   }
-  const result = applyEffects(game, state, item.effects);
+  const result = applyEffects(game, state, item.effects, context);
   if (item.consumable) {
     const entry = result.state.inventory.find((inv) => inv.itemId === itemId);
     if (!entry || entry.quantity < 1) {
@@ -370,7 +591,12 @@ export interface NarrativeProposal {
   type: "narrative";
   narrative: string;
   effects: ItemEffect[];
-  world?: { location?: string; time?: string; scene?: string };
+  world?: {
+    location?: string;
+    locationId?: string;
+    time?: string;
+    scene?: string;
+  };
   choices: Choice[];
 }
 
@@ -398,33 +624,69 @@ function parseQuantityNumber(raw: unknown): number {
   fail("Quantity harus bilangan bulat minimal 1");
 }
 
+function parseRequiredText(raw: unknown, label: string): string {
+  if (typeof raw !== "string" || !raw.trim())
+    fail(`${label} harus string tidak kosong`);
+  return raw.trim();
+}
+
+function parseStringList(raw: unknown, label: string): string[] {
+  if (!Array.isArray(raw)) fail(`${label} harus array string`);
+  const entries: string[] = [];
+  for (const value of raw) entries.push(parseRequiredText(value, label));
+  return entries;
+}
+const EFFECT_FIELDS: Record<string, readonly string[]> = {
+  ATTRIBUTE_CHANGE: ["type", "target", "operation", "value"],
+  RESOURCE_CHANGE: ["type", "target", "operation", "value"],
+  RELATIONSHIP_CHANGE: ["type", "target", "npcId", "operation", "value"],
+  ADD_ITEM: ["type", "target", "quantity"],
+  REMOVE_ITEM: ["type", "target", "quantity"],
+  ADD_FACT: ["type", "text", "visibility", "knownBy", "revealableTo"],
+  REMOVE_FACT: ["type", "target"],
+  DISCOVER_LORE: ["type", "loreId"],
+  REVEAL_FACT: ["type", "factId", "npcId"],
+  SET_FLAG: ["type", "target", "value"],
+  NPC_PRESENCE: ["type", "npcId", "present"],
+};
+
+function assertOnlyKeys(
+  object: Record<string, unknown>,
+  fields: readonly string[],
+  label: string,
+): void {
+  const unexpected = Object.keys(object).find((key) => !fields.includes(key));
+  if (unexpected) fail(`${label} contains unsupported field "${unexpected}"`);
+}
+
 function parseEffect(raw: unknown): ItemEffect {
-  if (raw === null || typeof raw !== "object") {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     fail("Effect harus berupa object");
   }
   const obj = raw as Record<string, unknown>;
   const type = obj.type;
-  if (typeof type !== "string") fail("Effect membutuhkan type string");
-  const target = typeof obj.target === "string" ? obj.target.trim() : "";
-  const npcId =
-    typeof obj.npcId === "string" && obj.npcId.trim()
-      ? obj.npcId.trim()
-      : undefined;
+  if (typeof type !== "string" || !Object.hasOwn(EFFECT_FIELDS, type)) {
+    fail(`Tipe effect tidak dikenal: "${String(type)}"`);
+  }
+  assertOnlyKeys(obj, EFFECT_FIELDS[type], `Effect ${type}`);
 
   switch (type) {
     case "ATTRIBUTE_CHANGE":
     case "RESOURCE_CHANGE":
       return {
         type,
-        target,
+        target: parseRequiredText(obj.target, `${type}.target`),
         operation: parseOperation(obj.operation),
         value: parseValue(obj.value),
       };
     case "RELATIONSHIP_CHANGE":
       return {
         type,
-        target,
-        npcId,
+        target: parseRequiredText(obj.target, `${type}.target`),
+        npcId:
+          obj.npcId === undefined
+            ? undefined
+            : parseRequiredText(obj.npcId, `${type}.npcId`),
         operation: parseOperation(obj.operation),
         value: parseValue(obj.value),
       };
@@ -432,28 +694,78 @@ function parseEffect(raw: unknown): ItemEffect {
     case "REMOVE_ITEM":
       return {
         type,
-        target,
+        target: parseRequiredText(obj.target, `${type}.target`),
         quantity: parseQuantityNumber(obj.quantity),
       };
     case "ADD_FACT": {
-      const text = typeof obj.text === "string" ? obj.text.trim() : "";
-      if (!text) fail("ADD_FACT membutuhkan text");
-      return { type, text };
+      const effect: Extract<ItemEffect, { type: "ADD_FACT" }> = {
+        type,
+        text: parseRequiredText(obj.text, "ADD_FACT.text"),
+      };
+      if (obj.visibility !== undefined) {
+        if (obj.visibility !== "public" && obj.visibility !== "private") {
+          fail("ADD_FACT.visibility harus public atau private");
+        }
+        effect.visibility = obj.visibility;
+      }
+      if (obj.knownBy !== undefined)
+        effect.knownBy = parseStringList(obj.knownBy, "ADD_FACT.knownBy");
+      if (obj.revealableTo !== undefined) {
+        effect.revealableTo = parseStringList(
+          obj.revealableTo,
+          "ADD_FACT.revealableTo",
+        );
+      }
+      return effect;
     }
     case "REMOVE_FACT":
-      return { type, target };
+      return {
+        type,
+        target: parseRequiredText(obj.target, "REMOVE_FACT.target"),
+      };
+    case "DISCOVER_LORE":
+      return {
+        type,
+        loreId: parseRequiredText(obj.loreId, "DISCOVER_LORE.loreId"),
+      };
+    case "REVEAL_FACT":
+      return {
+        type,
+        factId: parseRequiredText(obj.factId, "REVEAL_FACT.factId"),
+        npcId: parseRequiredText(obj.npcId, "REVEAL_FACT.npcId"),
+      };
+    case "SET_FLAG":
+      if (typeof obj.value !== "boolean") fail("SET_FLAG.value harus boolean");
+      return {
+        type,
+        target: parseRequiredText(obj.target, "SET_FLAG.target"),
+        value: obj.value,
+      };
+    case "NPC_PRESENCE":
+      if (typeof obj.present !== "boolean")
+        fail("NPC_PRESENCE.present harus boolean");
+      return {
+        type,
+        npcId: parseRequiredText(obj.npcId, "NPC_PRESENCE.npcId"),
+        present: obj.present,
+      };
     default:
       fail(`Tipe effect tidak dikenal: "${type}"`);
   }
 }
 
 export function parseTurnResponse(raw: unknown): TurnResponse {
-  if (raw === null || typeof raw !== "object") {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     fail("Respons AI bukan JSON object");
   }
   const obj = raw as Record<string, unknown>;
 
   if (obj.requiresCheck === true) {
+    assertOnlyKeys(
+      obj,
+      ["requiresCheck", "attribute", "difficulty", "mode", "npcId"],
+      "Check request",
+    );
     const attribute = obj.attribute;
     const difficulty = obj.difficulty;
     if (typeof attribute !== "string" || !attribute.trim()) {
@@ -463,61 +775,96 @@ export function parseTurnResponse(raw: unknown): TurnResponse {
       fail("Check request membutuhkan difficulty angka");
     }
     const mode =
-      typeof obj.mode === "string" && obj.mode in CHECK_MODES
+      typeof obj.mode === "string" && Object.hasOwn(CHECK_MODES, obj.mode)
         ? (obj.mode as CheckMode)
         : "NORMAL";
     const npcId =
-      typeof obj.npcId === "string" && obj.npcId.trim()
-        ? obj.npcId.trim()
-        : undefined;
+      obj.npcId === undefined ||
+      (typeof obj.npcId === "string" && !obj.npcId.trim())
+        ? undefined
+        : parseRequiredText(obj.npcId, "Check request npcId");
     return {
       type: "check_request",
-      params: { attributeId: attribute.trim(), difficulty, mode, npcId },
+      params: {
+        attributeId: attribute.trim(),
+        difficulty,
+        mode,
+        ...(npcId === undefined ? {} : { npcId }),
+      },
     };
   }
 
   const narrative = obj.narrative;
+  assertOnlyKeys(
+    obj,
+    ["narrative", "effects", "world", "choices"],
+    "Narrative response",
+  );
   if (typeof narrative !== "string" || !narrative.trim()) {
     fail("Respons AI membutuhkan narrative string");
   }
 
   const effects: ItemEffect[] = [];
-  if (Array.isArray(obj.effects)) {
-    for (const effect of obj.effects) {
-      effects.push(parseEffect(effect));
-    }
+  if (obj.effects !== undefined) {
+    if (!Array.isArray(obj.effects)) fail("effects harus array");
+    for (const effect of obj.effects) effects.push(parseEffect(effect));
   }
 
   let world: NarrativeProposal["world"];
-  const rawWorld = obj.world;
-  if (rawWorld !== null && typeof rawWorld === "object") {
-    const w = rawWorld as Record<string, unknown>;
-    const location =
-      typeof w.location === "string" && w.location.trim()
-        ? w.location.trim()
-        : undefined;
-    const time =
-      typeof w.time === "string" && w.time.trim() ? w.time.trim() : undefined;
-    const scene =
-      typeof w.scene === "string" && w.scene.trim()
-        ? w.scene.trim()
-        : undefined;
-    if (location || time || scene) {
-      world = { location, time, scene };
+  if (obj.world !== undefined && obj.world !== null) {
+    if (typeof obj.world !== "object" || Array.isArray(obj.world)) {
+      fail("world harus object");
+    }
+    const rawWorld = obj.world as Record<string, unknown>;
+    assertOnlyKeys(
+      rawWorld,
+      ["location", "locationId", "time", "scene"],
+      "world",
+    );
+    const worldText = (
+      key: "location" | "time" | "scene",
+    ): string | undefined => {
+      const value = rawWorld[key];
+      if (value === undefined) return undefined;
+      if (typeof value !== "string") fail(`world.${key} harus string`);
+      return value.trim() || undefined;
+    };
+    const location = worldText("location");
+    const time = worldText("time");
+    const scene = worldText("scene");
+    const locationId =
+      rawWorld.locationId === undefined
+        ? undefined
+        : parseRequiredText(rawWorld.locationId, "world.locationId");
+    if (location || locationId || time || scene) {
+      world = {
+        ...(location ? { location } : {}),
+        ...(locationId ? { locationId } : {}),
+        ...(time ? { time } : {}),
+        ...(scene ? { scene } : {}),
+      };
     }
   }
 
   const choices: Choice[] = [];
-  if (Array.isArray(obj.choices)) {
-    for (const raw of obj.choices) {
-      if (raw === null || typeof raw !== "object") continue;
-      const choice = raw as Record<string, unknown>;
-      const label = typeof choice.label === "string" ? choice.label.trim() : "";
-      if (!label) continue;
-      const id =
-        typeof choice.id === "string" && choice.id.trim()
-          ? choice.id.trim()
-          : `choice-${choices.length + 1}`;
+  if (obj.choices !== undefined) {
+    if (!Array.isArray(obj.choices)) fail("choices harus array");
+    if (obj.choices.length > 3) fail("choices maksimal berjumlah 3");
+    const ids = new Set<string>();
+    for (const rawChoice of obj.choices) {
+      if (
+        rawChoice === null ||
+        typeof rawChoice !== "object" ||
+        Array.isArray(rawChoice)
+      ) {
+        fail("Setiap choice harus berupa object");
+      }
+      const choice = rawChoice as Record<string, unknown>;
+      assertOnlyKeys(choice, ["id", "label"], "choice");
+      const label = parseRequiredText(choice.label, "choice.label");
+      const id = parseRequiredText(choice.id, "choice.id");
+      if (ids.has(id)) fail(`choice.id duplikat: "${id}"`);
+      ids.add(id);
       choices.push({ id, label });
     }
   }

@@ -29,6 +29,13 @@ export function exportTemplate(game: GameDefinition): GameTemplateBundle {
     npcs: picked.npcs,
     startingInventory: picked.startingInventory,
   };
+  if (picked.worldMap !== undefined) draft.worldMap = picked.worldMap;
+  if (picked.startingLocationId !== undefined) {
+    draft.startingLocationId = picked.startingLocationId;
+  }
+  if (picked.lorebookRefs !== undefined) {
+    draft.lorebookRefs = picked.lorebookRefs;
+  }
   if (picked.description !== undefined) draft.description = picked.description;
   if (picked.genre !== undefined) draft.genre = picked.genre;
   if (picked.tone !== undefined) draft.tone = picked.tone;
@@ -101,6 +108,13 @@ export function parseTemplate(raw: unknown): {
     npcs: game.npcs,
     startingInventory: game.startingInventory,
   };
+  if (game.worldMap !== undefined) draft.worldMap = game.worldMap;
+  if (game.startingLocationId !== undefined) {
+    draft.startingLocationId = game.startingLocationId;
+  }
+  if (game.lorebookRefs !== undefined) {
+    draft.lorebookRefs = game.lorebookRefs;
+  }
   if (game.description !== undefined) draft.description = game.description;
   if (game.genre !== undefined) draft.genre = game.genre;
   if (game.tone !== undefined) draft.tone = game.tone;

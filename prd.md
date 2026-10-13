@@ -39,7 +39,7 @@ Cerita berkembang secara emergent berdasarkan:
 - fakta yang sudah terjadi
 - state dunia saat ini
 
-Pada setiap scene, AI menampilkan **3 pilihan aksi** dan kolom **aksi bebas** sekaligus. Pilihan yang diklik masuk ke alur aksi pemain yang sama dengan teks yang diketik.
+Pada setiap scene, kolom **aksi bebas** selalu tersedia. AI boleh memberi **0–3 pilihan aksi** yang relevan. Pilihan yang diklik masuk ke alur aksi pemain yang sama dengan teks yang diketik; daftar kosong tidak memicu request AI tambahan.
 
 ---
 
@@ -737,6 +737,12 @@ Example:
 }
 ```
 
+Game boleh memakai peta lokasi kecil dan lorebook versi tertentu. Session yang memakai peta menyimpan `locationId` stabil, sedangkan `location` tetap menjadi label tampilan. Tujuan perjalanan berasal dari aksi player, harus memiliki koneksi langsung yang diizinkan, dan baru berubah setelah run valid di-commit. Penyebutan nama tempat dalam percakapan tidak memindahkan player. Game lama tanpa peta atau lorebook tetap memakai lokasi freeform.
+
+NPC aktif berasal dari lokasi yang sudah di-commit dan override presence yang tervalidasi. Kandidat tujuan belum mengubah NPC aktif. Entri lore berupa artikel NPC/item tidak memberi actor, inventory, atau effects tanpa pemetaan ke definisi game.
+
+Pack lore bersifat immutable per versi. Session mengikat versi serta peta saat mulai; edit template tidak mengganti pin session aktif. Format pack, atribusi, manifest save v2, dan pemulihan dependency dijelaskan di [README.md](README.md#format-lorebook-dan-save).
+
 ---
 
 # 18. Fact System
@@ -843,13 +849,13 @@ I put the coffee on Aiko's table.
 "Looks like the rain isn't stopping anytime soon."
 ```
 
-Kolom aksi bebas selalu tersedia bersama tiga pilihan yang dibuat AI. AI merespons dalam karakter, melanjutkan scene, lalu menyediakan tiga pilihan untuk langkah berikutnya.
+Kolom aksi bebas selalu tersedia. AI merespons dalam karakter dan melanjutkan scene; pilihan untuk langkah berikutnya bersifat opsional, paling banyak tiga.
 
 ---
 
-# 21. Tiga Pilihan Aksi
+# 21. Pilihan Aksi Opsional
 
-Setiap scene menyediakan tepat tiga opsi tindakan yang relevan dengan keadaan terbaru.
+Setiap scene boleh menyediakan nol sampai tiga opsi tindakan yang relevan dengan keadaan terbaru. User dapat meminta saran melalui tombol "Sarankan aksi"; request ini tidak mengubah state atau history cerita.
 
 Example:
 
@@ -876,7 +882,7 @@ Offer Aiko your umbrella.
 
 # 22. Pilihan dan Aksi Bebas
 
-Tiga pilihan aksi dan kolom untuk menulis aksi bebas tampil bersamaan setelah scene tersedia. Tidak ada perpindahan mode input. Memilih satu opsi mengirim labelnya sebagai aksi pemain biasa.
+Pilihan aksi yang tersedia tampil bersama kolom aksi bebas setelah scene tersedia. Tidak ada perpindahan mode input. Memilih satu opsi mengirim labelnya sebagai aksi pemain biasa; tidak ada opsi bukan error.
 
 ---
 
@@ -1089,7 +1095,7 @@ Conceptual response:
 }
 ```
 
-Setiap respons pembuka dan turn menyediakan tepat tiga pilihan; kolom aksi bebas selalu tampil di UI.
+Respons pembuka dan turn boleh menyediakan nol sampai tiga pilihan; kolom aksi bebas selalu tampil di UI. Request saran terpisah hanya dijalankan atas tindakan user, bukan saat membuka kembali session atau menerima daftar kosong.
 
 ---
 
@@ -1180,6 +1186,12 @@ Aiko does NOT know:
 ```
 
 Model tidak boleh menggunakan fakta kedua dalam dialog Aiko.
+
+History dan ringkasan episode mengikuti visibility serta `knownBy`, bukan hanya fakta. Percakapan lama tanpa metadata penerima dianggap tidak diketahui oleh NPC. Scope pengetahuan difilter sebelum batas hasil retrieval; tool request dari model tidak dapat mengganti NPC penerima yang ditentukan server dari aksi player.
+
+Discovery dan pengungkapan fakta privat memakai effects bertipe dengan izin sumber, lokasi, penerima, serta aksi player yang tervalidasi. Prosa model saja bukan bukti discovery atau izin membagikan rahasia.
+
+Ringkasan episode diambil secara deterministik dari rentang message yang sudah di-commit dan dibuat di luar jalur turn utama. Ringkasan tidak mengubah fakta, lokasi, rewards, atau effects; kegagalan compaction tidak menggagalkan gameplay. Canonical state tetap milik engine.
 
 ---
 
@@ -1720,7 +1732,7 @@ User dapat bermain menggunakan free text kapan saja.
 
 ## FR-12
 
-Setiap scene menyediakan tiga pilihan aksi bersama kolom free text.
+Setiap scene mempertahankan kolom free text dan boleh menyediakan nol sampai tiga pilihan aksi. User dapat meminta saran tanpa mengubah state cerita.
 
 ## FR-13
 
@@ -1811,7 +1823,7 @@ Respons lengkap tanpa streaming cukup untuk MVP. Streaming dapat ditambahkan set
 
 ## NFR-06 — Persistence
 
-State yang sudah tersimpan tidak boleh hilang ketika user refresh atau membuka kembali aplikasi pada browser profile dan origin yang sama. Export/import save diperlukan untuk backup manual; penghapusan data browser tidak bisa dicegah oleh aplikasi.
+State yang sudah di-commit disimpan pada SQLite backend lokal dan tetap tersedia setelah refresh atau restart. Draft editor belum disimpan tetap berada di memory browser. Export/import save dan backup SQLite menyediakan pemulihan manual; lore-bound save v2 memerlukan versi pack dan digest yang tepat sebelum restore.
 
 ---
 
@@ -1995,7 +2007,7 @@ MVP dianggap playable jika user dapat:
 9. menentukan starting inventory;
 10. memulai session;
 11. berbicara bebas dengan NPC;
-12. memilih salah satu dari tiga aksi atau menulis aksi bebas;
+12. memilih aksi yang disarankan, meminta saran, atau menulis aksi bebas;
 13. melakukan stat check;
 14. menerima atau kehilangan item;
 15. menggunakan resource;
@@ -2067,7 +2079,7 @@ Resource updates
 ### P2 — UX
 
 ```text
-Tiga pilihan aksi yang selalu tampil bersama aksi bebas
+Nol sampai tiga pilihan aksi opsional bersama aksi bebas
 
 Streaming (optional, bukan syarat MVP)
 

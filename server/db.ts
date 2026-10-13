@@ -1,7 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
-import { resolve } from "node:path";
+import { mkdir, rename, rm } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import { backup, DatabaseSync } from "node:sqlite";
 import { buildInitialState } from "../shared/engine.js";
+import {
+  parseLorebookPack,
+  LorebookValidationError,
+  MAX_LOREBOOK_BYTES,
+} from "../shared/lore.js";
+import { parseWorldMap, resolveLocation } from "../shared/world.js";
 import {
   createExportBundle,
   hasDangerousKeysDeep,
@@ -15,24 +22,49 @@ import {
   EXPORT_FORMAT,
   EXPORT_VERSION,
   type AiConfig,
+  type ContextTelemetry,
   type ExportBundle,
   type GameDefinition,
   type GameSession,
+  type LorebookPack,
+  type LorebookRef,
+  type LoreDependency,
+  type LoreEntry,
+  type LoreKind,
+  type LoreLink,
+  type LorePackHeader,
   type Message,
   type NpcDefinition,
   type SessionState,
+  type StorySummary,
+  type WorldLocation,
+  type WorldMap,
 } from "../shared/types.js";
 
 export { ImportError } from "../shared/validation.js";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const DOCUMENT_LIMIT = 2 * 1024 * 1024;
 const TRANSFER_LIMIT = 32 * 1024 * 1024;
 const ID_LIMIT = 256;
+const LOREBOOK_LIMIT = MAX_LOREBOOK_BYTES;
+const LOREBOOK_BATCH_SIZE = 250;
+const MAX_SUMMARY_RANGES_PER_CALL = 5;
+const SUMMARY_MAX_BYTES = 4_000;
+const SUMMARY_EXCERPT_BYTES = 280;
+const SUMMARY_IDLE_RETRY_MS = 30_000;
 const ROLES = new Set(["PLAYER", "NPC", "NARRATOR", "SYSTEM_EVENT"]);
 const RUN_STATUSES = new Set(["running", "committed", "failed", "interrupted"]);
 const AI_KINDS = new Set(["turn", "opening", "choices", "connection_test"]);
 const AI_STATUSES = new Set(["running", "succeeded", "failed", "unknown"]);
+const MESSAGE_AUDIENCE_SCOPE = `(
+  m.visibility = 'public' OR (
+    m.visibility = 'private' AND EXISTS (
+      SELECT 1 FROM json_each(COALESCE(m.known_by_json, '[]')) known
+      WHERE known.value = ?
+    )
+  ) OR (m.visibility IS NULL AND ? = 'player')
+)`;
 
 export class DatabaseError extends Error {
   constructor(
@@ -255,6 +287,225 @@ function canonicalJson(value: unknown): string {
   if (text === undefined) throw new ValidationError("Nilai JSON tidak valid.");
   return text;
 }
+const LORE_KINDS: Record<LoreKind, true> = {
+  world: true,
+  region: true,
+  location: true,
+  place: true,
+  npc: true,
+  faction: true,
+  history: true,
+  monster: true,
+  item: true,
+  activity: true,
+  other: true,
+};
+
+function isLoreKind(value: string): value is LoreKind {
+  return Object.hasOwn(LORE_KINDS, value);
+}
+const LORE_LINK_RELATIONS: Record<LoreLink["relation"], true> = {
+  PARENT_OF: true,
+  CONNECTED_TO: true,
+  LOCATED_IN: true,
+  PRESENT_AT: true,
+  RELATED_TO: true,
+};
+
+function isLoreLinkRelation(value: unknown): value is LoreLink["relation"] {
+  return typeof value === "string" && Object.hasOwn(LORE_LINK_RELATIONS, value);
+}
+
+function loreLinkRelation(value: unknown): LoreLink["relation"] {
+  if (!isLoreLinkRelation(value)) {
+    throw new CorruptDatabaseError("Lore link relation rusak.");
+  }
+  return value;
+}
+
+function parseLoreRefs(raw: unknown): LorebookRef[] {
+  if (!Array.isArray(raw) || raw.length > 64) {
+    throw new ValidationError(
+      "lorebookRefs harus array dengan paling banyak 64 versi.",
+    );
+  }
+  const refs: LorebookRef[] = [];
+  const seen = new Set<string>();
+  for (const [index, item] of raw.entries()) {
+    if (
+      !isObject(item) ||
+      Object.keys(item).some((key) => !["packId", "version"].includes(key))
+    ) {
+      throw new ValidationError(
+        `lorebookRefs[${index}] harus berisi packId dan version saja.`,
+      );
+    }
+    assertId(item.packId, `lorebookRefs[${index}].packId`);
+    if (!Number.isSafeInteger(item.version) || Number(item.version) < 1) {
+      throw new ValidationError(
+        `lorebookRefs[${index}].version harus integer positif.`,
+      );
+    }
+    const ref = { packId: item.packId, version: Number(item.version) };
+    const key = `${ref.packId}\u0000${ref.version}`;
+    if (seen.has(key)) {
+      throw new ValidationError(
+        `lorebookRefs duplikat: ${ref.packId}@${ref.version}.`,
+      );
+    }
+    seen.add(key);
+    refs.push(ref);
+  }
+  return refs;
+}
+function sameLoreRefs(left: LorebookRef[], right: LorebookRef[]): boolean {
+  const key = (refs: LorebookRef[]) =>
+    refs.map((ref) => `${ref.packId}\u0000${ref.version}`).sort();
+  return canonicalJson(key(left)) === canonicalJson(key(right));
+}
+
+function validateContextTelemetry(raw: unknown): ContextTelemetry {
+  const keys = [
+    "contextChars",
+    "approximateTokens",
+    "tokenEstimateMethod",
+    "sections",
+    "selectedLoreIds",
+    "omissions",
+    "toolCalls",
+    "repairs",
+  ];
+  if (
+    !isObject(raw) ||
+    Object.keys(raw).some((key) => !keys.includes(key)) ||
+    keys.some((key) => !Object.hasOwn(raw, key))
+  ) {
+    throw new ValidationError(
+      "Context telemetry harus berisi field yang diizinkan.",
+    );
+  }
+  const count = (value: unknown, label: string, max = 10_000_000): number => {
+    if (
+      !Number.isSafeInteger(value) ||
+      Number(value) < 0 ||
+      Number(value) > max
+    ) {
+      throw new ValidationError(`${label} tidak valid.`);
+    }
+    return Number(value);
+  };
+  const credentialLike = (value: string): boolean =>
+    /^(?:sk-(?:or-v1-|proj-)?[A-Za-z0-9_-]{16,}|AIza[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-|eyJ[A-Za-z0-9_-]{20,}\.)/i.test(
+      value,
+    );
+  if (
+    typeof raw.tokenEstimateMethod !== "string" ||
+    !/^[A-Za-z0-9_./:-]{1,64}$/.test(raw.tokenEstimateMethod) ||
+    credentialLike(raw.tokenEstimateMethod)
+  ) {
+    throw new ValidationError("tokenEstimateMethod tidak valid.");
+  }
+  if (!isObject(raw.sections) || Object.keys(raw.sections).length > 32) {
+    throw new ValidationError("sections tidak valid.");
+  }
+  const sections: ContextTelemetry["sections"] = {};
+  for (const [name, value] of Object.entries(raw.sections)) {
+    if (
+      !/^[A-Za-z0-9_.:-]{1,64}$/.test(name) ||
+      credentialLike(name) ||
+      !isObject(value) ||
+      Object.keys(value).some(
+        (key) => !["chars", "count", "omitted"].includes(key),
+      ) ||
+      ["chars", "count", "omitted"].some((key) => !Object.hasOwn(value, key))
+    ) {
+      throw new ValidationError("Context section telemetry tidak valid.");
+    }
+    sections[name] = {
+      chars: count(value.chars, "section.chars"),
+      count: count(value.count, "section.count", 1_000_000),
+      omitted: count(value.omitted, "section.omitted", 1_000_000),
+    };
+  }
+  const safeList = (value: unknown, label: string): string[] => {
+    if (!Array.isArray(value) || value.length > 512) {
+      throw new ValidationError(`${label} tidak valid.`);
+    }
+    return value.map((item) => {
+      if (
+        typeof item !== "string" ||
+        !/^[\p{L}\p{N}_.:/-]{1,256}$/u.test(item) ||
+        credentialLike(item)
+      ) {
+        throw new ValidationError(`${label} harus berisi identifier saja.`);
+      }
+      return item;
+    });
+  };
+  return {
+    contextChars: count(raw.contextChars, "contextChars"),
+    approximateTokens: count(raw.approximateTokens, "approximateTokens"),
+    tokenEstimateMethod: raw.tokenEstimateMethod,
+    sections,
+    selectedLoreIds: safeList(raw.selectedLoreIds, "selectedLoreIds"),
+    omissions: safeList(raw.omissions, "omissions"),
+    toolCalls: count(raw.toolCalls, "toolCalls", 1_000_000),
+    repairs: count(raw.repairs, "repairs", 1_000_000),
+  };
+}
+
+function parseLorebook(raw: unknown): LorebookPack {
+  jsonText(raw, LOREBOOK_LIMIT);
+  assertNoDangerousKeys(raw);
+  try {
+    return parseLorebookPack(raw);
+  } catch (error) {
+    if (error instanceof LorebookValidationError) {
+      throw new ValidationError(error.problems.join(" "));
+    }
+    throw new ValidationError(
+      `Lorebook tidak valid: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+function canonicalLorebook(pack: LorebookPack): LorebookPack {
+  return {
+    ...pack,
+    pack: { ...pack.pack },
+    entries: [...pack.entries].sort((a, b) => a.id.localeCompare(b.id)),
+    links: [...pack.links].sort(
+      (a, b) =>
+        a.fromId.localeCompare(b.fromId) ||
+        a.toId.localeCompare(b.toId) ||
+        a.relation.localeCompare(b.relation),
+    ),
+  };
+}
+
+function pageOptions(
+  options: { limit?: number; offset?: number },
+  defaultLimit = 50,
+): { limit: number; offset: number } {
+  const limit = options.limit ?? defaultLimit;
+  const offset = options.offset ?? 0;
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+    throw new ValidationError("limit harus integer 1 sampai 100.");
+  }
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > 1_000_000) {
+    throw new ValidationError("offset harus integer 0 sampai 1000000.");
+  }
+  return { limit, offset };
+}
+
+function assertTokenCount(
+  value: unknown,
+  label: string,
+): asserts value is number {
+  if (!Number.isSafeInteger(value) || Number(value) < 0) {
+    throw new ValidationError(`${label} harus integer >= 0.`);
+  }
+}
 
 function assertId(value: unknown, label = "id"): asserts value is string {
   if (
@@ -393,17 +644,36 @@ function assertPlainArray(
   }
 }
 
+function withoutLorebookRefs<T extends GameDefinition | GameSession>(
+  value: T,
+): Omit<T, "lorebookRefs"> {
+  const { lorebookRefs: _lorebookRefs, ...rest } = value;
+  return rest;
+}
+
 function makeBundle(
   game: GameDefinition,
   session: GameSession,
   messages: Message[],
 ): ExportBundle {
+  const validationMap = session.worldMap ?? game.worldMap;
+  const validationGame = withoutLorebookRefs(
+    validationMap === undefined ? game : { ...game, worldMap: validationMap },
+  );
+  const validationSnapshot = withoutLorebookRefs({
+    ...session.definitionSnapshot,
+    ...(validationMap === undefined ? {} : { worldMap: validationMap }),
+  });
+  const validationSession = withoutLorebookRefs({
+    ...session,
+    definitionSnapshot: validationSnapshot,
+  });
   return {
     format: EXPORT_FORMAT,
     version: EXPORT_VERSION,
     exportedAt: new Date().toISOString(),
-    game,
-    session,
+    game: validationGame,
+    session: validationSession,
     messages,
   };
 }
@@ -422,12 +692,35 @@ function validateSessionDocument(
     throw new ValidationError("Snapshot gameId tidak cocok dengan session.");
   }
   const ai = normalizeAi(session.ai);
+  const lorebookRefs =
+    session.lorebookRefs === undefined
+      ? undefined
+      : parseLoreRefs(session.lorebookRefs);
+  if (
+    !sameLoreRefs(
+      parseLoreRefs(definition.lorebookRefs ?? []),
+      parseLoreRefs(session.lorebookRefs ?? []),
+    )
+  ) {
+    throw new ValidationError(
+      "Session lorebookRefs tidak cocok dengan snapshot.",
+    );
+  }
+  const worldMap =
+    session.worldMap === undefined
+      ? undefined
+      : parseWorldMap(
+          session.worldMap,
+          definition.npcs.map((npc) => npc.id),
+        );
   if (typeof session.updatedAt !== "string" || !session.updatedAt) {
     throw new ValidationError("session.updatedAt harus string tidak kosong.");
   }
   const stateOnly = {
     ...session,
     definitionSnapshot: definition,
+    ...(lorebookRefs === undefined ? {} : { lorebookRefs }),
+    ...(worldMap === undefined ? {} : { worldMap }),
     ai,
     nextSequence: 0,
   };
@@ -444,9 +737,18 @@ function validateSessionDocument(
     throw new ValidationError("nextSequence tidak sesuai messages.");
   }
   const checked = validateExportBundle(
-    makeBundle(definition, session, messages),
+    makeBundle(
+      definition,
+      { ...stateOnly, nextSequence: session.nextSequence },
+      messages,
+    ),
   );
-  return checked.session;
+  return {
+    ...checked.session,
+    definitionSnapshot: definition,
+    ...(lorebookRefs === undefined ? {} : { lorebookRefs }),
+    ...(worldMap === undefined ? {} : { worldMap }),
+  };
 }
 
 function validateMessages(
@@ -465,6 +767,12 @@ function validateMessages(
       typeof message.createdAt !== "string" ||
       (message.speakerId !== undefined &&
         typeof message.speakerId !== "string") ||
+      (message.visibility !== undefined &&
+        message.visibility !== "public" &&
+        message.visibility !== "private") ||
+      (message.knownBy !== undefined &&
+        (!Array.isArray(message.knownBy) ||
+          message.knownBy.some((id) => typeof id !== "string"))) ||
       (message.check !== undefined && !isObject(message.check))
     ) {
       throw new ValidationError(`messages[${index}] shape tidak valid.`);
@@ -474,6 +782,11 @@ function validateMessages(
     assertId(message.sessionId, `messages[${index}].sessionId`);
     assertId(message.turnId, `messages[${index}].turnId`);
     assertSequence(message.sequence);
+    if (Array.isArray(message.knownBy)) {
+      for (const recipient of message.knownBy) {
+        assertId(recipient, `messages[${index}].knownBy`);
+      }
+    }
     if (Buffer.byteLength(message.content, "utf8") > DOCUMENT_LIMIT) {
       throw new ValidationError(`messages[${index}] content terlalu besar.`);
     }
@@ -592,11 +905,122 @@ function makeFtsQuery(query: string): string {
     .map((token) => `"${token.replaceAll('"', '""')}"`)
     .join(" AND ");
 }
+const TOPIC_STOP_WORDS: Record<string, true> = {
+  a: true,
+  an: true,
+  and: true,
+  are: true,
+  at: true,
+  about: true,
+  can: true,
+  could: true,
+  did: true,
+  do: true,
+  for: true,
+  from: true,
+  go: true,
+  head: true,
+  here: true,
+  i: true,
+  in: true,
+  is: true,
+  it: true,
+  ke: true,
+  kita: true,
+  kamu: true,
+  me: true,
+  move: true,
+  my: true,
+  of: true,
+  on: true,
+  please: true,
+  saya: true,
+  she: true,
+  tell: true,
+  the: true,
+  there: true,
+  they: true,
+  this: true,
+  to: true,
+  travel: true,
+  aku: true,
+  arrive: true,
+  bicara: true,
+  berangkat: true,
+  berbicara: true,
+  dari: true,
+  di: true,
+  ngobrol: true,
+  pindah: true,
+  pergi: true,
+  cerita: true,
+  ceritakan: true,
+  tanya: true,
+  menuju: true,
+  tiba: true,
+  talk: true,
+  ask: true,
+  say: true,
+  said: true,
+  speak: true,
+  where: true,
+  what: true,
+  now: true,
+  current: true,
+  currently: true,
+  mau: true,
+  ingin: true,
+  tolong: true,
+  tentang: true,
+  yang: true,
+  dan: true,
+  atau: true,
+  ini: true,
+  itu: true,
+  apa: true,
+  dengan: true,
+  sekitar: true,
+  tadi: true,
+  sekarang: true,
+};
+
+function makeTopicFtsQuery(
+  query: string,
+  operator: "AND" | "OR",
+  omittedTerms?: ReadonlySet<string>,
+): string {
+  if (Buffer.byteLength(query, "utf8") > 512) {
+    throw new ValidationError("Query terlalu panjang.");
+  }
+  const tokens =
+    query
+      .normalize("NFKC")
+      .toLocaleLowerCase()
+      .match(/[\p{L}\p{N}_-]+/gu) ?? [];
+  const topic = [
+    ...new Set(
+      tokens.filter(
+        (token) =>
+          token.length > 1 &&
+          !Object.hasOwn(TOPIC_STOP_WORDS, token) &&
+          (!omittedTerms || !omittedTerms.has(token)),
+      ),
+    ),
+  ].slice(0, 10);
+  return topic.length
+    ? topic
+        .map((token) => `"${token.replaceAll('"', '""')}"`)
+        .join(` ${operator} `)
+    : "";
+}
 
 export class GameDatabase {
   readonly #db: DatabaseSync;
   readonly #path: string;
   #closed = false;
+  #summaryImmediate: ReturnType<typeof setImmediate> | undefined;
+  #summaryRetryTimer: ReturnType<typeof setTimeout> | undefined;
+  #summaryMaintenanceRunning = false;
 
   constructor(databasePath: string) {
     if (typeof databasePath !== "string" || !databasePath.trim()) {
@@ -623,6 +1047,7 @@ export class GameDatabase {
         )
         .run(now());
     });
+    this.#scheduleSummaryMaintenance();
   }
 
   #migrate(): void {
@@ -636,101 +1061,306 @@ export class GameDatabase {
       );
     }
     if (version === SCHEMA_VERSION) return;
+    if (version === 0) {
+      this.#transaction(() => {
+        this.#db.exec(`
+          CREATE TABLE games (
+            id TEXT PRIMARY KEY NOT NULL,
+            definition_json TEXT NOT NULL CHECK (json_valid(definition_json)),
+            revision INTEGER NOT NULL CHECK (revision > 0),
+            updated_at TEXT NOT NULL
+          ) STRICT;
+          CREATE TABLE sessions (
+            id TEXT PRIMARY KEY NOT NULL,
+            game_id TEXT NOT NULL REFERENCES games(id) ON DELETE RESTRICT,
+            definition_snapshot_json TEXT NOT NULL CHECK (json_valid(definition_snapshot_json)),
+            state_json TEXT NOT NULL CHECK (json_valid(state_json)),
+            ai_json TEXT NOT NULL CHECK (json_valid(ai_json)),
+            next_sequence INTEGER NOT NULL CHECK (next_sequence >= 0),
+            revision INTEGER NOT NULL CHECK (revision > 0),
+            updated_at TEXT NOT NULL
+          ) STRICT;
+          CREATE INDEX sessions_by_game ON sessions(game_id, updated_at DESC);
+          CREATE TABLE messages (
+            id TEXT PRIMARY KEY NOT NULL,
+            session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+            turn_id TEXT NOT NULL,
+            sequence INTEGER NOT NULL CHECK (sequence >= 0),
+            role TEXT NOT NULL CHECK (role IN ('PLAYER','NPC','NARRATOR','SYSTEM_EVENT')),
+            speaker_id TEXT,
+            content TEXT NOT NULL,
+            check_json TEXT CHECK (check_json IS NULL OR json_valid(check_json)),
+            created_at TEXT NOT NULL,
+            UNIQUE (session_id, sequence)
+          ) STRICT;
+          CREATE INDEX messages_page ON messages(session_id, sequence);
+          CREATE VIRTUAL TABLE messages_fts USING fts5(
+            content, content='messages', content_rowid='rowid',
+            tokenize='unicode61 remove_diacritics 2'
+          );
+          CREATE TRIGGER messages_ai AFTER INSERT ON messages BEGIN
+            INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+          END;
+          CREATE TRIGGER messages_ad AFTER DELETE ON messages BEGIN
+            INSERT INTO messages_fts(messages_fts, rowid, content)
+            VALUES ('delete', old.rowid, old.content);
+          END;
+          CREATE TRIGGER messages_au AFTER UPDATE OF content ON messages BEGIN
+            INSERT INTO messages_fts(messages_fts, rowid, content)
+            VALUES ('delete', old.rowid, old.content);
+            INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+          END;
+          CREATE TABLE turns (
+            session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+            request_id TEXT NOT NULL,
+            input_hash TEXT NOT NULL,
+            expected_revision INTEGER NOT NULL CHECK (expected_revision > 0),
+            kind TEXT NOT NULL CHECK (kind IN ('turn','opening','choices','item_use')),
+            status TEXT NOT NULL CHECK (status IN ('running','committed','failed','interrupted')),
+            result_json TEXT CHECK (result_json IS NULL OR json_valid(result_json)),
+            error_json TEXT CHECK (error_json IS NULL OR json_valid(error_json)),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (session_id, request_id)
+          ) STRICT;
+          CREATE UNIQUE INDEX one_running_turn_per_session ON turns(session_id) WHERE status = 'running';
+          CREATE TABLE ai_requests (
+            id TEXT PRIMARY KEY NOT NULL,
+            session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
+            request_id TEXT,
+            kind TEXT NOT NULL CHECK (kind IN ('turn','opening','choices','connection_test')),
+            attempt INTEGER NOT NULL CHECK (attempt > 0),
+            provider TEXT NOT NULL CHECK (provider IN ('gemini','openrouter')),
+            model TEXT NOT NULL,
+            input_tokens INTEGER CHECK (input_tokens IS NULL OR input_tokens >= 0),
+            output_tokens INTEGER CHECK (output_tokens IS NULL OR output_tokens >= 0),
+            total_tokens INTEGER CHECK (total_tokens IS NULL OR total_tokens >= 0),
+            cached_input_tokens INTEGER CHECK (cached_input_tokens IS NULL OR cached_input_tokens >= 0),
+            reasoning_tokens INTEGER CHECK (reasoning_tokens IS NULL OR reasoning_tokens >= 0),
+            status TEXT NOT NULL CHECK (status IN ('running','succeeded','failed','unknown')),
+            latency_ms INTEGER CHECK (latency_ms IS NULL OR latency_ms >= 0),
+            finish_reason TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          ) STRICT;
+          CREATE INDEX ai_usage_by_session ON ai_requests(session_id, created_at);
+          CREATE INDEX ai_usage_by_run ON ai_requests(session_id, request_id, attempt);
+          CREATE UNIQUE INDEX ai_attempt_once ON ai_requests(session_id, request_id, kind, attempt)
+            WHERE request_id IS NOT NULL;
+          CREATE TABLE migrations (
+            fingerprint TEXT PRIMARY KEY NOT NULL,
+            counts_json TEXT NOT NULL CHECK (json_valid(counts_json)),
+            ids_json TEXT NOT NULL CHECK (json_valid(ids_json)),
+            receipt_json TEXT NOT NULL CHECK (json_valid(receipt_json)),
+            created_at TEXT NOT NULL
+          ) STRICT;
+          PRAGMA user_version = 1;
+        `);
+      });
+      this.#migrate();
+      return;
+    }
+    if (version !== 1) {
+      throw new DatabaseError(
+        `Database schema ${version} tidak didukung.`,
+        "SCHEMA_VERSION",
+      );
+    }
     this.#transaction(() => {
       this.#db.exec(`
-        CREATE TABLE games (
-          id TEXT PRIMARY KEY NOT NULL,
-          definition_json TEXT NOT NULL CHECK (json_valid(definition_json)),
-          revision INTEGER NOT NULL CHECK (revision > 0),
-          updated_at TEXT NOT NULL
-        ) STRICT;
-        CREATE TABLE sessions (
-          id TEXT PRIMARY KEY NOT NULL,
-          game_id TEXT NOT NULL REFERENCES games(id) ON DELETE RESTRICT,
-          definition_snapshot_json TEXT NOT NULL CHECK (json_valid(definition_snapshot_json)),
-          state_json TEXT NOT NULL CHECK (json_valid(state_json)),
-          ai_json TEXT NOT NULL CHECK (json_valid(ai_json)),
-          next_sequence INTEGER NOT NULL CHECK (next_sequence >= 0),
-          revision INTEGER NOT NULL CHECK (revision > 0),
-          updated_at TEXT NOT NULL
-        ) STRICT;
-        CREATE INDEX sessions_by_game ON sessions(game_id, updated_at DESC);
-        CREATE TABLE messages (
-          id TEXT PRIMARY KEY NOT NULL,
-          session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-          turn_id TEXT NOT NULL,
-          sequence INTEGER NOT NULL CHECK (sequence >= 0),
-          role TEXT NOT NULL CHECK (role IN ('PLAYER','NPC','NARRATOR','SYSTEM_EVENT')),
-          speaker_id TEXT,
-          content TEXT NOT NULL,
-          check_json TEXT CHECK (check_json IS NULL OR json_valid(check_json)),
+        ALTER TABLE sessions ADD COLUMN world_map_json TEXT
+          CHECK (world_map_json IS NULL OR json_valid(world_map_json));
+        ALTER TABLE sessions ADD COLUMN lore_refs_json TEXT
+          CHECK (lore_refs_json IS NULL OR json_valid(lore_refs_json));
+        ALTER TABLE messages ADD COLUMN visibility TEXT
+          CHECK (visibility IS NULL OR visibility IN ('public','private'));
+        ALTER TABLE messages ADD COLUMN known_by_json TEXT
+          CHECK (known_by_json IS NULL OR json_valid(known_by_json));
+
+        CREATE TABLE lore_packs (
+          pack_id TEXT NOT NULL,
+          pack_version INTEGER NOT NULL CHECK (pack_version > 0),
+          name TEXT NOT NULL,
+          description TEXT,
+          entry_count INTEGER NOT NULL CHECK (entry_count >= 0),
+          link_count INTEGER NOT NULL CHECK (link_count >= 0),
+          digest TEXT NOT NULL,
           created_at TEXT NOT NULL,
-          UNIQUE (session_id, sequence)
+          PRIMARY KEY (pack_id, pack_version)
         ) STRICT;
-        CREATE INDEX messages_page ON messages(session_id, sequence);
-        CREATE VIRTUAL TABLE messages_fts USING fts5(
-          content, content='messages', content_rowid='rowid',
+        CREATE TABLE lore_entries (
+          pack_id TEXT NOT NULL,
+          pack_version INTEGER NOT NULL,
+          entry_id TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          name TEXT NOT NULL,
+          aliases_json TEXT NOT NULL CHECK (json_valid(aliases_json)),
+          parent_id TEXT,
+          summary TEXT NOT NULL,
+          body TEXT NOT NULL,
+          tags_json TEXT NOT NULL CHECK (json_valid(tags_json)),
+          visibility TEXT NOT NULL CHECK (visibility IN ('public','narrator','discovery')),
+          metadata_json TEXT NOT NULL CHECK (json_valid(metadata_json)),
+          provenance_json TEXT NOT NULL CHECK (json_valid(provenance_json)),
+          PRIMARY KEY (pack_id, pack_version, entry_id),
+          FOREIGN KEY (pack_id, pack_version) REFERENCES lore_packs(pack_id, pack_version)
+            ON DELETE CASCADE,
+          FOREIGN KEY (pack_id, pack_version, parent_id)
+            REFERENCES lore_entries(pack_id, pack_version, entry_id)
+            DEFERRABLE INITIALLY DEFERRED
+        ) STRICT;
+        CREATE INDEX lore_entries_by_parent
+          ON lore_entries(pack_id, pack_version, parent_id, entry_id);
+        CREATE INDEX lore_entries_by_kind
+          ON lore_entries(pack_id, pack_version, kind, visibility, entry_id);
+        CREATE TABLE lore_links (
+          pack_id TEXT NOT NULL,
+          pack_version INTEGER NOT NULL,
+          from_id TEXT NOT NULL,
+          to_id TEXT NOT NULL,
+          relation TEXT NOT NULL,
+          PRIMARY KEY (pack_id, pack_version, from_id, to_id, relation),
+          FOREIGN KEY (pack_id, pack_version) REFERENCES lore_packs(pack_id, pack_version)
+            ON DELETE CASCADE,
+          FOREIGN KEY (pack_id, pack_version, from_id)
+            REFERENCES lore_entries(pack_id, pack_version, entry_id)
+            ON DELETE CASCADE,
+          FOREIGN KEY (pack_id, pack_version, to_id)
+            REFERENCES lore_entries(pack_id, pack_version, entry_id)
+            ON DELETE CASCADE
+        ) STRICT;
+        CREATE INDEX lore_links_by_target
+          ON lore_links(pack_id, pack_version, to_id, relation, from_id);
+        CREATE VIRTUAL TABLE lore_entries_fts USING fts5(
+          pack_id UNINDEXED, pack_version UNINDEXED, entry_id UNINDEXED,
+          name, aliases, summary, body,
           tokenize='unicode61 remove_diacritics 2'
         );
-        CREATE TRIGGER messages_ai AFTER INSERT ON messages BEGIN
-          INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
-        END;
-        CREATE TRIGGER messages_ad AFTER DELETE ON messages BEGIN
-          INSERT INTO messages_fts(messages_fts, rowid, content)
-          VALUES ('delete', old.rowid, old.content);
-        END;
-        CREATE TRIGGER messages_au AFTER UPDATE OF content ON messages BEGIN
-          INSERT INTO messages_fts(messages_fts, rowid, content)
-          VALUES ('delete', old.rowid, old.content);
-          INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
-        END;
-        CREATE TABLE turns (
-          session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+
+        CREATE TABLE context_telemetry (
+          session_id TEXT NOT NULL,
           request_id TEXT NOT NULL,
-          input_hash TEXT NOT NULL,
-          expected_revision INTEGER NOT NULL CHECK (expected_revision > 0),
-          kind TEXT NOT NULL CHECK (kind IN ('turn','opening','choices','item_use')),
-          status TEXT NOT NULL CHECK (status IN ('running','committed','failed','interrupted')),
-          result_json TEXT CHECK (result_json IS NULL OR json_valid(result_json)),
-          error_json TEXT CHECK (error_json IS NULL OR json_valid(error_json)),
-          created_at TEXT NOT NULL,
+          context_chars INTEGER NOT NULL CHECK (context_chars >= 0),
+          approximate_tokens INTEGER NOT NULL CHECK (approximate_tokens >= 0),
+          token_estimate_method TEXT NOT NULL,
+          sections_json TEXT NOT NULL CHECK (json_valid(sections_json)),
+          selected_lore_ids_json TEXT NOT NULL CHECK (json_valid(selected_lore_ids_json)),
+          omissions_json TEXT NOT NULL CHECK (json_valid(omissions_json)),
+          tool_calls INTEGER NOT NULL CHECK (tool_calls >= 0),
+          repairs INTEGER NOT NULL CHECK (repairs >= 0),
           updated_at TEXT NOT NULL,
-          PRIMARY KEY (session_id, request_id)
+          PRIMARY KEY (session_id, request_id),
+          FOREIGN KEY (session_id, request_id) REFERENCES turns(session_id, request_id)
+            ON DELETE CASCADE
         ) STRICT;
-        CREATE UNIQUE INDEX one_running_turn_per_session ON turns(session_id) WHERE status = 'running';
-        CREATE TABLE ai_requests (
-          id TEXT PRIMARY KEY NOT NULL,
-          session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
-          request_id TEXT,
-          kind TEXT NOT NULL CHECK (kind IN ('turn','opening','choices','connection_test')),
-          attempt INTEGER NOT NULL CHECK (attempt > 0),
-          provider TEXT NOT NULL CHECK (provider IN ('gemini','openrouter')),
-          model TEXT NOT NULL,
-          input_tokens INTEGER CHECK (input_tokens IS NULL OR input_tokens >= 0),
-          output_tokens INTEGER CHECK (output_tokens IS NULL OR output_tokens >= 0),
-          total_tokens INTEGER CHECK (total_tokens IS NULL OR total_tokens >= 0),
-          cached_input_tokens INTEGER CHECK (cached_input_tokens IS NULL OR cached_input_tokens >= 0),
-          reasoning_tokens INTEGER CHECK (reasoning_tokens IS NULL OR reasoning_tokens >= 0),
-          status TEXT NOT NULL CHECK (status IN ('running','succeeded','failed','unknown')),
-          latency_ms INTEGER CHECK (latency_ms IS NULL OR latency_ms >= 0),
-          finish_reason TEXT,
+
+        CREATE TABLE story_summaries (
+          session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+          from_sequence INTEGER NOT NULL CHECK (from_sequence >= 0),
+          to_sequence INTEGER NOT NULL CHECK (to_sequence >= from_sequence),
+          summary TEXT NOT NULL,
+          source_digest TEXT NOT NULL,
+          visibility TEXT NOT NULL CHECK (visibility IN ('public','private')),
+          known_by_json TEXT NOT NULL CHECK (json_valid(known_by_json)),
           created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL
+          UNIQUE (session_id, from_sequence, to_sequence, visibility, known_by_json, source_digest)
         ) STRICT;
-        CREATE INDEX ai_usage_by_session ON ai_requests(session_id, created_at);
-        CREATE INDEX ai_usage_by_run ON ai_requests(session_id, request_id, attempt);
-        CREATE UNIQUE INDEX ai_attempt_once ON ai_requests(session_id, request_id, kind, attempt)
-          WHERE request_id IS NOT NULL;
-        CREATE TABLE migrations (
-          fingerprint TEXT PRIMARY KEY NOT NULL,
-          counts_json TEXT NOT NULL CHECK (json_valid(counts_json)),
-          ids_json TEXT NOT NULL CHECK (json_valid(ids_json)),
-          receipt_json TEXT NOT NULL CHECK (json_valid(receipt_json)),
-          created_at TEXT NOT NULL
+        CREATE INDEX story_summaries_by_session
+          ON story_summaries(session_id, to_sequence DESC);
+        CREATE INDEX story_summaries_by_scope
+          ON story_summaries(session_id, visibility, to_sequence DESC);
+        CREATE VIRTUAL TABLE story_summaries_fts USING fts5(
+          summary, content='story_summaries', content_rowid='rowid',
+          tokenize='unicode61 remove_diacritics 2'
+        );
+        CREATE TRIGGER story_summaries_ai AFTER INSERT ON story_summaries BEGIN
+          INSERT INTO story_summaries_fts(rowid, summary) VALUES (new.rowid, new.summary);
+        END;
+        CREATE TRIGGER story_summaries_ad AFTER DELETE ON story_summaries BEGIN
+          INSERT INTO story_summaries_fts(story_summaries_fts, rowid, summary)
+          VALUES ('delete', old.rowid, old.summary);
+        END;
+        CREATE TRIGGER story_summaries_au AFTER UPDATE OF summary ON story_summaries BEGIN
+          INSERT INTO story_summaries_fts(story_summaries_fts, rowid, summary)
+          VALUES ('delete', old.rowid, old.summary);
+          INSERT INTO story_summaries_fts(rowid, summary) VALUES (new.rowid, new.summary);
+        END;
+        CREATE TABLE story_summary_cursors (
+          session_id TEXT PRIMARY KEY NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+          next_sequence INTEGER NOT NULL CHECK (next_sequence >= 0)
         ) STRICT;
-        PRAGMA user_version = ${SCHEMA_VERSION};
+        PRAGMA user_version = 2;
       `);
     });
+  }
+  #scheduleSummaryMaintenance(delay = 0): void {
+    if (this.#closed) return;
+    if (delay > 0) {
+      if (this.#summaryRetryTimer) return;
+      this.#summaryRetryTimer = setTimeout(() => {
+        this.#summaryRetryTimer = undefined;
+        this.#scheduleSummaryMaintenance();
+      }, delay);
+      this.#summaryRetryTimer.unref();
+      return;
+    }
+    if (this.#summaryImmediate || this.#summaryMaintenanceRunning) return;
+    if (this.#summaryRetryTimer) {
+      clearTimeout(this.#summaryRetryTimer);
+      this.#summaryRetryTimer = undefined;
+    }
+    this.#summaryImmediate = setImmediate(() => {
+      this.#summaryImmediate = undefined;
+      this.#reconcileSummaryBatch();
+    });
+    this.#summaryImmediate.unref();
+  }
+
+  #reconcileSummaryBatch(): void {
+    if (this.#closed || this.#summaryMaintenanceRunning) return;
+    this.#summaryMaintenanceRunning = true;
+    let failed = false;
+    try {
+      const sessions = this.#db
+        .prepare(
+          `SELECT s.id FROM sessions s
+           LEFT JOIN story_summary_cursors c ON c.session_id = s.id
+           WHERE s.next_sequence > COALESCE(c.next_sequence, 0)
+           ORDER BY s.updated_at DESC, s.id LIMIT 8`,
+        )
+        .all() as SqlRow[];
+      for (const row of sessions) {
+        try {
+          this.compactStory(String(row.id));
+        } catch {
+          failed = true;
+        }
+      }
+    } catch {
+      failed = true;
+    } finally {
+      this.#summaryMaintenanceRunning = false;
+      if (failed || this.#closed) {
+        this.#scheduleSummaryMaintenance(SUMMARY_IDLE_RETRY_MS);
+        return;
+      }
+      let pending = false;
+      try {
+        pending = Boolean(
+          this.#db
+            .prepare(
+              `SELECT 1 AS found FROM sessions s
+               LEFT JOIN story_summary_cursors c ON c.session_id = s.id
+               WHERE s.next_sequence > COALESCE(c.next_sequence, 0) LIMIT 1`,
+            )
+            .get(),
+        );
+      } catch {
+        this.#scheduleSummaryMaintenance(SUMMARY_IDLE_RETRY_MS);
+        return;
+      }
+      this.#scheduleSummaryMaintenance(pending ? 0 : SUMMARY_IDLE_RETRY_MS);
+    }
   }
 
   #assertOpen(): void {
@@ -799,6 +1429,36 @@ export class GameDatabase {
       nextSequence: Number(row.next_sequence),
       updatedAt: String(row.updated_at),
     };
+    try {
+      if (row.world_map_json !== null) {
+        session.worldMap = parseWorldMap(
+          parseJson(row.world_map_json as string, "Session world map"),
+          definitionSnapshot.npcs.map((npc) => npc.id),
+        );
+      }
+      if (row.lore_refs_json !== null) {
+        session.lorebookRefs = parseLoreRefs(
+          parseJson(
+            row.lore_refs_json as string,
+            "Session lorebook references",
+          ),
+        );
+      }
+    } catch (error) {
+      throw new CorruptDatabaseError(
+        `Session world pins tidak valid: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    if (
+      !sameLoreRefs(
+        parseLoreRefs(definitionSnapshot.lorebookRefs ?? []),
+        parseLoreRefs(session.lorebookRefs ?? []),
+      )
+    ) {
+      throw new CorruptDatabaseError(
+        "Session lorebook references tidak cocok dengan snapshot.",
+      );
+    }
     assertId(session.id, "session.id");
     assertId(session.gameId, "session.gameId");
     if (definitionSnapshot.id !== session.gameId) {
@@ -839,6 +1499,18 @@ export class GameDatabase {
       createdAt: String(row.created_at),
     };
     if (row.speaker_id !== null) message.speakerId = String(row.speaker_id);
+    if (row.visibility !== null) {
+      if (row.visibility !== "public" && row.visibility !== "private") {
+        throw new CorruptDatabaseError("Message visibility rusak.");
+      }
+      message.visibility = row.visibility;
+    }
+    if (row.known_by_json !== null) {
+      message.knownBy = parseJson(
+        row.known_by_json as string,
+        "Message knowledge",
+      );
+    }
     if (row.check_json !== null) {
       message.check = parseJson(row.check_json as string, "Message check");
     }
@@ -864,7 +1536,6 @@ export class GameDatabase {
       .all(sessionId, after, limit) as SqlRow[];
     return rows.map((row) => this.#messageFromRow(row));
   }
-
   #checkExpected(actual: number, expected: number, label: string): void {
     assertRevision(expected);
     if (actual !== expected) {
@@ -900,8 +1571,8 @@ export class GameDatabase {
       .prepare(
         `INSERT INTO sessions(
            id, game_id, definition_snapshot_json, state_json, ai_json,
-           next_sequence, revision, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+           next_sequence, revision, updated_at, world_map_json, lore_refs_json
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         session.id,
@@ -912,6 +1583,10 @@ export class GameDatabase {
         session.nextSequence,
         revision,
         session.updatedAt,
+        session.worldMap === undefined ? null : jsonText(session.worldMap),
+        session.lorebookRefs === undefined
+          ? null
+          : jsonText(session.lorebookRefs),
       );
   }
 
@@ -919,8 +1594,9 @@ export class GameDatabase {
     this.#db
       .prepare(
         `INSERT INTO messages(
-           id, session_id, turn_id, sequence, role, speaker_id, content, check_json, created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           id, session_id, turn_id, sequence, role, speaker_id, content,
+           check_json, created_at, visibility, known_by_json
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         message.id,
@@ -932,11 +1608,1198 @@ export class GameDatabase {
         message.content,
         message.check === undefined ? null : jsonText(message.check),
         message.createdAt,
+        message.visibility ?? null,
+        message.knownBy === undefined ? null : jsonText(message.knownBy),
       );
+  }
+  #packRow(ref: LorebookRef): SqlRow | undefined {
+    return this.#db
+      .prepare(
+        "SELECT * FROM lore_packs WHERE pack_id = ? AND pack_version = ?",
+      )
+      .get(ref.packId, ref.version) as SqlRow | undefined;
+  }
+
+  #packHeaderFromRow(row: SqlRow): LorePackHeader {
+    return {
+      id: String(row.pack_id),
+      version: Number(row.pack_version),
+      name: String(row.name),
+      ...(row.description === null
+        ? {}
+        : { description: String(row.description) }),
+      entryCount: Number(row.entry_count),
+      linkCount: Number(row.link_count),
+      digest: String(row.digest),
+    };
+  }
+
+  #loreEntryFromRow(row: SqlRow): LoreEntry {
+    const rawEntry: Record<string, unknown> = {
+      id: String(row.entry_id),
+      kind: String(row.kind),
+      name: String(row.name),
+      aliases: parseJson(row.aliases_json as string, "Lore aliases"),
+      summary: String(row.summary),
+      body: String(row.body),
+      tags: parseJson(row.tags_json as string, "Lore tags"),
+      visibility: String(row.visibility),
+      metadata: parseJson(row.metadata_json as string, "Lore metadata"),
+      provenance: parseJson(row.provenance_json as string, "Lore provenance"),
+    };
+    if (row.parent_id !== null) {
+      assertId(row.parent_id, "Lore parent id");
+      rawEntry.parentId = String(row.parent_id);
+    }
+    const withoutParent = { ...rawEntry };
+    delete withoutParent.parentId;
+    try {
+      const checked = parseLorebookPack({
+        format: "fworld-lorebook",
+        version: 1,
+        pack: { id: "database-row", version: 1, name: "Database row" },
+        entries: [withoutParent],
+        links: [],
+      }).entries[0];
+      if (!checked) throw new CorruptDatabaseError("Lore entry rusak.");
+      if (typeof rawEntry.parentId === "string") {
+        checked.parentId = rawEntry.parentId;
+      }
+      return checked;
+    } catch (error) {
+      throw new CorruptDatabaseError(
+        `Lore entry rusak: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  #loreEntryRow(ref: LorebookRef, entryId: string): SqlRow | undefined {
+    return this.#db
+      .prepare(
+        `SELECT * FROM lore_entries
+         WHERE pack_id = ? AND pack_version = ? AND entry_id = ?`,
+      )
+      .get(ref.packId, ref.version, entryId) as SqlRow | undefined;
+  }
+  #addPinnedLocationIdentity(
+    refs: LorebookRef[],
+    locationId: string,
+    localLocationIds: Set<string>,
+    addIdentityTerms: (value: string) => void,
+  ): void {
+    const refsJson = jsonText(refs);
+    const refClause = refs.length
+      ? "s.lore_refs_json = ?"
+      : "(s.lore_refs_json IS NULL OR s.lore_refs_json = '[]')";
+    let ids = [locationId];
+    const visited = new Set<string>();
+    for (let depth = 0; depth < 16 && ids.length; depth += 1) {
+      ids = ids.filter((id) => {
+        if (visited.has(id)) return false;
+        visited.add(id);
+        return true;
+      });
+      if (ids.length === 0) break;
+      const rows = this.#db
+        .prepare(
+          `SELECT json_extract(location.value, '$.id') AS id,
+             json_extract(location.value, '$.name') AS name,
+             json_extract(location.value, '$.aliases') AS aliases_json,
+             json_extract(location.value, '$.parentId') AS parent_id
+           FROM sessions s, json_each(s.world_map_json, '$.locations') location
+           WHERE ${refClause}
+             AND json_extract(s.state_json, '$.world.locationId') = ?
+             AND json_extract(location.value, '$.id') IN (${ids.map(() => "?").join(",")})
+           LIMIT 256`,
+        )
+        .all(
+          ...(refs.length ? [refsJson] : []),
+          locationId,
+          ...ids,
+        ) as SqlRow[];
+      const parents = new Set<string>();
+      for (const row of rows) {
+        if (typeof row.id === "string") {
+          localLocationIds.add(row.id);
+          addIdentityTerms(row.id);
+        }
+        if (typeof row.name === "string") addIdentityTerms(row.name);
+        if (row.aliases_json !== null) {
+          const aliases = parseJson<unknown>(
+            String(row.aliases_json),
+            "Pinned location aliases",
+          );
+          if (Array.isArray(aliases)) {
+            for (const alias of aliases) {
+              if (typeof alias === "string") addIdentityTerms(alias);
+            }
+          }
+        }
+        if (typeof row.parent_id === "string") parents.add(row.parent_id);
+      }
+      ids = [...parents];
+    }
+  }
+
+  #requirePack(ref: LorebookRef): SqlRow {
+    const [checked] = parseLoreRefs([ref]);
+    const row = checked ? this.#packRow(checked) : undefined;
+    if (!row) {
+      throw new NotFoundError(
+        `Lorebook ${ref.packId}@${ref.version} tidak ditemukan.`,
+      );
+    }
+    return row;
+  }
+
+  importLorebook(
+    raw: unknown,
+    options: { dryRun?: boolean } = {},
+  ): {
+    pack: LorePackHeader;
+    entries: number;
+    links: number;
+    digest: string;
+    dryRun: boolean;
+    existing: boolean;
+  } {
+    if (
+      !isObject(options) ||
+      Object.keys(options).some((key) => key !== "dryRun")
+    ) {
+      throw new ValidationError("Opsi import lorebook tidak dikenal.");
+    }
+    if (options.dryRun !== undefined && typeof options.dryRun !== "boolean") {
+      throw new ValidationError("dryRun harus boolean.");
+    }
+    const pack = canonicalLorebook(parseLorebook(raw));
+    const digest = createHash("sha256")
+      .update(canonicalJson(pack))
+      .digest("hex");
+    const ref = { packId: pack.pack.id, version: pack.pack.version };
+    const existing = this.#packRow(ref);
+    if (existing && String(existing.digest) !== digest) {
+      throw new ConflictError(
+        `Lorebook ${ref.packId}@${ref.version} sudah diterbitkan dengan konten berbeda.`,
+        "LOREBOOK_VERSION_CONFLICT",
+      );
+    }
+    const dryRun = options.dryRun ?? false;
+    const header: LorePackHeader = {
+      id: ref.packId,
+      version: ref.version,
+      name: pack.pack.name,
+      ...(pack.pack.description === undefined
+        ? {}
+        : { description: pack.pack.description }),
+      entryCount: pack.entries.length,
+      linkCount: pack.links.length,
+      digest,
+    };
+    if (dryRun || existing) {
+      return {
+        pack: header,
+        entries: pack.entries.length,
+        links: pack.links.length,
+        digest,
+        dryRun,
+        existing: Boolean(existing),
+      };
+    }
+    this.#transaction(() => {
+      const raced = this.#packRow(ref);
+      if (raced) {
+        if (String(raced.digest) !== digest) {
+          throw new ConflictError(
+            `Lorebook ${ref.packId}@${ref.version} sudah diterbitkan dengan konten berbeda.`,
+            "LOREBOOK_VERSION_CONFLICT",
+          );
+        }
+        return;
+      }
+      this.#db
+        .prepare(
+          `INSERT INTO lore_packs(
+             pack_id, pack_version, name, description, entry_count, link_count,
+             digest, created_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          ref.packId,
+          ref.version,
+          pack.pack.name,
+          pack.pack.description ?? null,
+          pack.entries.length,
+          pack.links.length,
+          digest,
+          now(),
+        );
+      const insertEntry = this.#db.prepare(
+        `INSERT INTO lore_entries(
+           pack_id, pack_version, entry_id, kind, name, aliases_json, parent_id,
+           summary, body, tags_json, visibility, metadata_json, provenance_json
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      );
+      const insertFts = this.#db.prepare(
+        `INSERT INTO lore_entries_fts(
+           pack_id, pack_version, entry_id, name, aliases, summary, body
+         ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      );
+      for (
+        let offset = 0;
+        offset < pack.entries.length;
+        offset += LOREBOOK_BATCH_SIZE
+      ) {
+        for (const entry of pack.entries.slice(
+          offset,
+          offset + LOREBOOK_BATCH_SIZE,
+        )) {
+          insertEntry.run(
+            ref.packId,
+            ref.version,
+            entry.id,
+            entry.kind,
+            entry.name,
+            jsonText(entry.aliases),
+            entry.parentId ?? null,
+            entry.summary,
+            entry.body,
+            jsonText(entry.tags),
+            entry.visibility,
+            jsonText(entry.metadata),
+            jsonText(entry.provenance),
+          );
+          insertFts.run(
+            ref.packId,
+            ref.version,
+            entry.id,
+            entry.name,
+            entry.aliases.join(" "),
+            entry.summary,
+            entry.body,
+          );
+        }
+      }
+      const insertLink = this.#db.prepare(
+        `INSERT INTO lore_links(pack_id, pack_version, from_id, to_id, relation)
+         VALUES (?, ?, ?, ?, ?)`,
+      );
+      for (
+        let offset = 0;
+        offset < pack.links.length;
+        offset += LOREBOOK_BATCH_SIZE
+      ) {
+        for (const link of pack.links.slice(
+          offset,
+          offset + LOREBOOK_BATCH_SIZE,
+        )) {
+          insertLink.run(
+            ref.packId,
+            ref.version,
+            link.fromId,
+            link.toId,
+            link.relation,
+          );
+        }
+      }
+    });
+    return {
+      pack: header,
+      entries: pack.entries.length,
+      links: pack.links.length,
+      digest,
+      dryRun: false,
+      existing: false,
+    };
+  }
+
+  listLorebooks(options: { limit?: number; offset?: number } = {}): {
+    packs: LorePackHeader[];
+    total: number;
+  } {
+    this.#assertOpen();
+    const { limit, offset } = pageOptions(options);
+    const total = Number(
+      (
+        this.#db
+          .prepare("SELECT COUNT(*) AS total FROM lore_packs")
+          .get() as SqlRow
+      ).total,
+    );
+    const rows = this.#db
+      .prepare(
+        `SELECT * FROM lore_packs
+         ORDER BY created_at DESC, pack_id, pack_version DESC LIMIT ? OFFSET ?`,
+      )
+      .all(limit, offset) as SqlRow[];
+    return { packs: rows.map((row) => this.#packHeaderFromRow(row)), total };
+  }
+
+  validateLoreBindings(
+    rawRefs: LorebookRef[],
+    rawDefinition?: GameDefinition,
+  ): void {
+    this.#assertOpen();
+    const refs = parseLoreRefs(rawRefs);
+    const definition =
+      rawDefinition === undefined
+        ? undefined
+        : validateDefinitionDocument(rawDefinition);
+    const knownNpcIds = new Set(definition?.npcs.map((npc) => npc.id) ?? []);
+    const knownItemIds = new Set(
+      definition?.items.map((item) => item.id) ?? [],
+    );
+    const entryIds = new Set<string>();
+    for (const ref of refs) {
+      const pack = this.#packRow(ref);
+      if (!pack) {
+        throw new ConflictError(
+          `Lore dependency ${ref.packId}@${ref.version} belum dipasang.`,
+          "LORE_DEPENDENCY_MISSING",
+        );
+      }
+      const rows = this.#db
+        .prepare(
+          `SELECT entry_id, metadata_json FROM lore_entries
+           WHERE pack_id = ? AND pack_version = ? ORDER BY entry_id`,
+        )
+        .all(ref.packId, ref.version) as SqlRow[];
+      for (const row of rows) {
+        const entryId = String(row.entry_id);
+        if (entryIds.has(entryId)) {
+          throw new ConflictError(
+            `Lore entry ID ${entryId} muncul pada lebih dari satu pack.`,
+            "INVALID_LORE_BINDING",
+          );
+        }
+        entryIds.add(entryId);
+        const metadata = parseJson<unknown>(
+          row.metadata_json as string,
+          "Lore metadata",
+        );
+        if (!isObject(metadata)) {
+          throw new CorruptDatabaseError("Lore metadata bukan object.");
+        }
+        if (
+          definition &&
+          typeof metadata.actorId === "string" &&
+          !knownNpcIds.has(metadata.actorId)
+        ) {
+          throw new ConflictError(
+            `Lore entry ${entryId} merujuk NPC ${metadata.actorId} yang tidak dikonfigurasi.`,
+            "INVALID_LORE_BINDING",
+          );
+        }
+        if (
+          definition &&
+          typeof metadata.itemId === "string" &&
+          !knownItemIds.has(metadata.itemId)
+        ) {
+          throw new ConflictError(
+            `Lore entry ${entryId} merujuk item ${metadata.itemId} yang tidak dikonfigurasi.`,
+            "INVALID_LORE_BINDING",
+          );
+        }
+      }
+    }
+  }
+
+  getLoreEntry(refs: LorebookRef[], entryId: string): LoreEntry | undefined {
+    assertId(entryId, "lore.entryId");
+    const checkedRefs = parseLoreRefs(refs);
+    const matches: LoreEntry[] = [];
+    for (const ref of checkedRefs) {
+      this.#requirePack(ref);
+      const row = this.#loreEntryRow(ref, entryId);
+      if (row) matches.push(this.#loreEntryFromRow(row));
+    }
+    if (matches.length > 1) {
+      throw new ConflictError(
+        `Lore entry ID ${entryId} muncul pada lebih dari satu pack.`,
+        "INVALID_LORE_BINDING",
+      );
+    }
+    return matches[0];
+  }
+
+  listLoreEntries(
+    ref: LorebookRef,
+    options: {
+      query?: string;
+      kind?: LoreKind;
+      parentId?: string;
+      limit?: number;
+      offset?: number;
+      discoveredLoreIds?: string[];
+    } = {},
+  ): { entries: LoreEntry[]; total: number } {
+    this.#assertOpen();
+    this.#requirePack(ref);
+    const { limit, offset } = pageOptions(options);
+    if (options.kind !== undefined && !isLoreKind(options.kind)) {
+      throw new ValidationError("Lore kind tidak dikenal.");
+    }
+    if (options.parentId !== undefined) assertId(options.parentId, "parentId");
+    const discoveredLoreIds = options.discoveredLoreIds ?? [];
+    if (!Array.isArray(discoveredLoreIds) || discoveredLoreIds.length > 500) {
+      throw new ValidationError("discoveredLoreIds melampaui batas.");
+    }
+    for (const id of discoveredLoreIds) assertId(id, "discoveredLoreId");
+    const where = [
+      "e.pack_id = ?",
+      "e.pack_version = ?",
+      discoveredLoreIds.length === 0
+        ? "e.visibility = 'public'"
+        : `(e.visibility = 'public' OR (e.visibility = 'discovery' AND e.entry_id IN (${discoveredLoreIds.map(() => "?").join(",")})))`,
+    ];
+    const params: (string | number)[] = [
+      ref.packId,
+      ref.version,
+      ...discoveredLoreIds,
+    ];
+    if (options.kind !== undefined) {
+      where.push("e.kind = ?");
+      params.push(options.kind);
+    }
+    if (options.parentId !== undefined) {
+      where.push("e.parent_id = ?");
+      params.push(options.parentId);
+    }
+    const query = options.query;
+    if (query !== undefined && typeof query !== "string") {
+      throw new ValidationError("Query lore harus string.");
+    }
+    const trimmed = query?.trim();
+    const ftsQuery = trimmed ? makeFtsQuery(trimmed) : "";
+    if (trimmed && !ftsQuery) return { entries: [], total: 0 };
+    const join = ftsQuery
+      ? `JOIN lore_entries_fts
+           ON lore_entries_fts.pack_id = e.pack_id
+          AND lore_entries_fts.pack_version = e.pack_version
+          AND lore_entries_fts.entry_id = e.entry_id`
+      : "";
+    if (ftsQuery) {
+      where.push("lore_entries_fts MATCH ?");
+      params.push(ftsQuery);
+    }
+    const whereSql = where.join(" AND ");
+    const total = Number(
+      (
+        this.#db
+          .prepare(
+            `SELECT COUNT(*) AS total FROM lore_entries e ${join}
+             WHERE ${whereSql}`,
+          )
+          .get(...params) as SqlRow
+      ).total,
+    );
+    const exactMatch = trimmed ?? "";
+    const order = ftsQuery
+      ? `CASE WHEN lower(e.entry_id) = lower(?) OR lower(e.name) = lower(?)
+           OR EXISTS (SELECT 1 FROM json_each(e.aliases_json) a WHERE lower(a.value) = lower(?))
+         THEN 0 ELSE 1 END, bm25(lore_entries_fts), e.entry_id`
+      : "e.kind, e.name COLLATE NOCASE, e.entry_id";
+    const rows = this.#db
+      .prepare(
+        `SELECT e.* FROM lore_entries e ${join} WHERE ${whereSql}
+         ORDER BY ${order} LIMIT ? OFFSET ?`,
+      )
+      .all(
+        ...params,
+        ...(ftsQuery ? [exactMatch, exactMatch, exactMatch] : []),
+        limit,
+        offset,
+      ) as SqlRow[];
+    return { entries: rows.map((row) => this.#loreEntryFromRow(row)), total };
+  }
+
+  listLoreLinks(
+    ref: LorebookRef,
+    entryId: string,
+    options: { limit?: number; offset?: number } = {},
+  ): { links: LoreLink[]; total: number } {
+    this.#assertOpen();
+    this.#requirePack(ref);
+    assertId(entryId, "lore.entryId");
+    const { limit, offset } = pageOptions(options);
+    const visible = `l.pack_id = ? AND l.pack_version = ?
+      AND (l.from_id = ? OR l.to_id = ?)
+      AND source.visibility = 'public' AND target.visibility = 'public'`;
+    const params = [ref.packId, ref.version, entryId, entryId];
+    const total = Number(
+      (
+        this.#db
+          .prepare(
+            `SELECT COUNT(*) AS total FROM lore_links l
+             JOIN lore_entries source ON source.pack_id = l.pack_id
+              AND source.pack_version = l.pack_version AND source.entry_id = l.from_id
+             JOIN lore_entries target ON target.pack_id = l.pack_id
+              AND target.pack_version = l.pack_version AND target.entry_id = l.to_id
+             WHERE ${visible}`,
+          )
+          .get(...params) as SqlRow
+      ).total,
+    );
+    const rows = this.#db
+      .prepare(
+        `SELECT l.from_id, l.to_id, l.relation FROM lore_links l
+         JOIN lore_entries source ON source.pack_id = l.pack_id
+          AND source.pack_version = l.pack_version AND source.entry_id = l.from_id
+         JOIN lore_entries target ON target.pack_id = l.pack_id
+          AND target.pack_version = l.pack_version AND target.entry_id = l.to_id
+         WHERE ${visible}
+         ORDER BY l.from_id, l.relation, l.to_id LIMIT ? OFFSET ?`,
+      )
+      .all(...params, limit, offset) as SqlRow[];
+    return {
+      links: rows.map((row) => ({
+        fromId: String(row.from_id),
+        toId: String(row.to_id),
+        relation: loreLinkRelation(row.relation),
+      })),
+      total,
+    };
+  }
+
+  exportLorebook(ref: LorebookRef): LorebookPack {
+    this.#assertOpen();
+    const packRow = this.#requirePack(ref);
+    const entryRows = this.#db
+      .prepare(
+        `SELECT * FROM lore_entries
+         WHERE pack_id = ? AND pack_version = ? ORDER BY entry_id`,
+      )
+      .all(ref.packId, ref.version) as SqlRow[];
+    const linkRows = this.#db
+      .prepare(
+        `SELECT from_id, to_id, relation FROM lore_links
+         WHERE pack_id = ? AND pack_version = ?
+         ORDER BY from_id, to_id, relation`,
+      )
+      .all(ref.packId, ref.version) as SqlRow[];
+    const header = this.#packHeaderFromRow(packRow);
+    const pack: LorebookPack = {
+      format: "fworld-lorebook",
+      version: 1,
+      pack: {
+        id: header.id,
+        version: header.version,
+        name: header.name,
+        ...(header.description === undefined
+          ? {}
+          : { description: header.description }),
+      },
+      entries: entryRows.map((row) => this.#loreEntryFromRow(row)),
+      links: linkRows.map((row) => ({
+        fromId: String(row.from_id),
+        toId: String(row.to_id),
+        relation: loreLinkRelation(row.relation),
+      })),
+    };
+    return parseLorebook(pack);
+  }
+  #compileDefinitionWorldMap(definition: GameDefinition): WorldMap | undefined {
+    const refs =
+      definition.lorebookRefs === undefined
+        ? []
+        : parseLoreRefs(definition.lorebookRefs);
+    this.validateLoreBindings(refs, definition);
+    const knownNpcIds = definition.npcs.map((npc) => npc.id);
+    const base: WorldMap = definition.worldMap
+      ? parseWorldMap(definition.worldMap, knownNpcIds)
+      : { locations: [], connections: [], flags: {} };
+    const flags = { ...(base.flags ?? {}) };
+    const locations = new Map(
+      base.locations.map((location) => [
+        location.id,
+        structuredClone(location),
+      ]),
+    );
+    const entries = new Map<string, LoreEntry>();
+    const links: LoreLink[] = [];
+    for (const ref of refs) {
+      const rows = this.#db
+        .prepare(
+          `SELECT * FROM lore_entries
+           WHERE pack_id = ? AND pack_version = ? AND visibility = 'public'
+             AND kind IN ('location','place','npc')
+           ORDER BY entry_id`,
+        )
+        .all(ref.packId, ref.version) as SqlRow[];
+      for (const row of rows) {
+        const entry = this.#loreEntryFromRow(row);
+        entries.set(entry.id, entry);
+        if (entry.kind !== "location" && entry.kind !== "place") continue;
+        const current = locations.get(entry.id);
+        const location = current ?? {
+          id: entry.id,
+          name: entry.name,
+          aliases: [],
+          npcIds: [],
+        };
+        location.name = current?.name ?? entry.name;
+        location.aliases = [
+          ...new Set([...location.aliases, ...entry.aliases]),
+        ];
+        if (location.summary === undefined && entry.summary) {
+          location.summary = entry.summary;
+        }
+        if (
+          location.parentId === undefined &&
+          entry.parentId !== undefined &&
+          locations.has(entry.parentId)
+        ) {
+          location.parentId = entry.parentId;
+        }
+        if (
+          location.requiredFlag === undefined &&
+          entry.metadata.requiredFlag !== undefined
+        ) {
+          location.requiredFlag = entry.metadata.requiredFlag;
+          flags[entry.metadata.requiredFlag] ??= false;
+        }
+        locations.set(entry.id, location);
+      }
+      const linkRows = this.#db
+        .prepare(
+          `SELECT from_id, to_id, relation FROM lore_links
+           WHERE pack_id = ? AND pack_version = ?
+             AND relation IN ('PARENT_OF','CONNECTED_TO','LOCATED_IN','PRESENT_AT')
+           ORDER BY from_id, to_id, relation`,
+        )
+        .all(ref.packId, ref.version) as SqlRow[];
+      for (const row of linkRows) {
+        links.push({
+          fromId: String(row.from_id),
+          toId: String(row.to_id),
+          relation: loreLinkRelation(row.relation),
+        });
+      }
+    }
+    const ensureFlag = (flag: string | undefined): void => {
+      if (flag !== undefined && !Object.hasOwn(flags, flag))
+        flags[flag] = false;
+    };
+    const addNpc = (locationId: string, npcId: string): void => {
+      const visited = new Set<string>();
+      let currentId: string | undefined = locationId;
+      while (currentId !== undefined && !visited.has(currentId)) {
+        visited.add(currentId);
+        const location = locations.get(currentId);
+        if (!location) break;
+        if (!location.npcIds.includes(npcId)) location.npcIds.push(npcId);
+        currentId = location.parentId;
+      }
+    };
+    const actorIdByEntry = new Map<string, string>();
+    for (const entry of entries.values()) {
+      if (entry.kind === "npc" && entry.metadata.actorId) {
+        actorIdByEntry.set(entry.id, entry.metadata.actorId);
+        if (entry.parentId && locations.has(entry.parentId)) {
+          addNpc(entry.parentId, entry.metadata.actorId);
+        }
+      }
+      if (
+        entry.parentId &&
+        locations.has(entry.id) &&
+        locations.has(entry.parentId)
+      ) {
+        const location = locations.get(entry.id);
+        if (location && location.parentId === undefined) {
+          location.parentId = entry.parentId;
+        }
+      }
+    }
+    const connectionKeys = new Set(
+      base.connections.map((edge) =>
+        [edge.fromId, edge.toId].sort().join("\u0000"),
+      ),
+    );
+    for (const link of links) {
+      if (link.relation === "PARENT_OF") {
+        const parent = locations.get(link.fromId);
+        const child = locations.get(link.toId);
+        if (parent && child && child.parentId === undefined) {
+          child.parentId = parent.id;
+        }
+      } else if (link.relation === "LOCATED_IN") {
+        const child = locations.get(link.fromId);
+        const parent = locations.get(link.toId);
+        if (parent && child && child.parentId === undefined) {
+          child.parentId = parent.id;
+        }
+      } else if (link.relation === "CONNECTED_TO") {
+        const from = locations.get(link.fromId);
+        const to = locations.get(link.toId);
+        if (!from || !to || from.id === to.id) continue;
+        const key = [from.id, to.id].sort().join("\u0000");
+        if (connectionKeys.has(key)) continue;
+        const blockedByFlag =
+          entries.get(from.id)?.metadata.blockedByFlag ??
+          entries.get(to.id)?.metadata.blockedByFlag;
+        ensureFlag(blockedByFlag);
+        connectionKeys.add(key);
+        base.connections.push({
+          fromId: from.id,
+          toId: to.id,
+          ...(blockedByFlag === undefined ? {} : { blockedByFlag }),
+        });
+      } else if (link.relation === "PRESENT_AT") {
+        const fromActor = actorIdByEntry.get(link.fromId);
+        const toActor = actorIdByEntry.get(link.toId);
+        if (fromActor && locations.has(link.toId)) {
+          addNpc(link.toId, fromActor);
+        } else if (toActor && locations.has(link.fromId)) {
+          addNpc(link.fromId, toActor);
+        }
+      }
+    }
+    if (locations.size === 0 && definition.worldMap === undefined) {
+      return undefined;
+    }
+    const worldMap: WorldMap = {
+      locations: [...locations.values()]
+        .map((location) => ({
+          ...location,
+          aliases: [...new Set(location.aliases)].sort(),
+          npcIds: [...new Set(location.npcIds)].sort(),
+        }))
+        .sort((a, b) => a.id.localeCompare(b.id)),
+      connections: base.connections.sort(
+        (a, b) =>
+          a.fromId.localeCompare(b.fromId) || a.toId.localeCompare(b.toId),
+      ),
+      flags,
+    };
+    try {
+      return parseWorldMap(worldMap, knownNpcIds);
+    } catch (error) {
+      throw new ConflictError(
+        `World map lore tidak dapat dipin: ${error instanceof Error ? error.message : String(error)}`,
+        "INVALID_LORE_BINDING",
+      );
+    }
+  }
+
+  getWorldMap(
+    sessionOrDefinition: GameSession | GameDefinition,
+  ): WorldMap | undefined {
+    this.#assertOpen();
+    if ("definitionSnapshot" in sessionOrDefinition) {
+      if (!sessionOrDefinition.worldMap) return undefined;
+      return parseWorldMap(
+        sessionOrDefinition.worldMap,
+        sessionOrDefinition.definitionSnapshot.npcs.map((npc) => npc.id),
+      );
+    }
+    const definition = validateDefinitionDocument(sessionOrDefinition);
+    return this.#compileDefinitionWorldMap(definition);
+  }
+  #retrieveLoreEntries(
+    refs: LorebookRef[],
+    options: {
+      locationId?: string;
+      identityLocations?: WorldLocation[];
+      query?: string;
+      discoveredLoreIds?: string[];
+      limit?: number;
+      narrator?: boolean;
+      includeUndiscoveredDiscovery?: boolean;
+    },
+  ): { entries: LoreEntry[]; omitted: boolean } {
+    const checkedRefs = parseLoreRefs(refs);
+    for (const ref of checkedRefs) this.#requirePack(ref);
+    const limit = options.limit ?? 12;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50) {
+      throw new ValidationError("limit harus integer 1 sampai 50.");
+    }
+    if (options.query !== undefined && typeof options.query !== "string") {
+      throw new ValidationError("Query lore harus string.");
+    }
+    if (
+      options.discoveredLoreIds !== undefined &&
+      !Array.isArray(options.discoveredLoreIds)
+    ) {
+      throw new ValidationError("discoveredLoreIds harus array.");
+    }
+    const discoveredIds = options.discoveredLoreIds ?? [];
+    if (discoveredIds.length > 500) {
+      throw new ValidationError("discoveredLoreIds melampaui batas.");
+    }
+    for (const id of discoveredIds) assertId(id, "discoveredLoreId");
+    if (
+      options.narrator !== undefined &&
+      typeof options.narrator !== "boolean"
+    ) {
+      throw new ValidationError("narrator harus boolean.");
+    }
+    if (
+      options.query !== undefined &&
+      Buffer.byteLength(options.query, "utf8") > 512
+    ) {
+      throw new ValidationError("Query terlalu panjang.");
+    }
+    const discovered = new Set(discoveredIds);
+    const visibility = (alias: string): string => {
+      const clauses = [`${alias}.visibility = 'public'`];
+      if (options.narrator) clauses.push(`${alias}.visibility = 'narrator'`);
+      if (discovered.size) {
+        clauses.push(
+          `(${alias}.visibility = 'discovery' AND ${alias}.entry_id IN (${[...discovered].map(() => "?").join(",")}))`,
+        );
+      }
+      if (options.includeUndiscoveredDiscovery && options.locationId) {
+        clauses.push(
+          `(${alias}.visibility = 'discovery' AND EXISTS (SELECT 1 FROM json_each(${alias}.metadata_json, '$.discoverAt') d WHERE d.value = ?))`,
+        );
+      }
+      return `(${clauses.join(" OR ")})`;
+    };
+    const visibilityParams = [
+      ...discovered,
+      ...(options.includeUndiscoveredDiscovery && options.locationId
+        ? [options.locationId]
+        : []),
+    ];
+    const localLocationIds = new Set<string>();
+    const localAncestorEntries: LoreEntry[] = [];
+    const omittedTerms = new Set<string>();
+    const addIdentityTerms = (value: string): void => {
+      for (const token of value
+        .normalize("NFKC")
+        .toLocaleLowerCase()
+        .match(/[\p{L}\p{N}_-]+/gu) ?? []) {
+        omittedTerms.add(token);
+      }
+    };
+    const mayViewEntry = (entry: LoreEntry): boolean =>
+      entry.visibility === "public" ||
+      (options.narrator === true && entry.visibility === "narrator") ||
+      (entry.visibility === "discovery" &&
+        (discovered.has(entry.id) ||
+          (options.includeUndiscoveredDiscovery === true &&
+            options.locationId !== undefined &&
+            entry.metadata.discoverAt?.includes(options.locationId) === true)));
+    if (options.locationId !== undefined) {
+      assertId(options.locationId, "locationId");
+      localLocationIds.add(options.locationId);
+      const mapLocations = new Map(
+        (options.identityLocations ?? []).map((location) => [
+          location.id,
+          location,
+        ]),
+      );
+      let mapParent: string | undefined = options.locationId;
+      const mapVisited = new Set<string>();
+      for (let depth = 0; mapParent !== undefined && depth < 16; depth += 1) {
+        if (mapVisited.has(mapParent)) break;
+        mapVisited.add(mapParent);
+        const location = mapLocations.get(mapParent);
+        if (!location) break;
+        localLocationIds.add(location.id);
+        addIdentityTerms(location.id);
+        addIdentityTerms(location.name);
+        for (const alias of location.aliases) addIdentityTerms(alias);
+        mapParent = location.parentId;
+      }
+      for (const ref of checkedRefs) {
+        let parentId: string | undefined = options.locationId;
+        let inLocationHierarchy = true;
+        const visited = new Set<string>();
+        for (let depth = 0; parentId !== undefined && depth < 16; depth += 1) {
+          if (visited.has(parentId)) break;
+          visited.add(parentId);
+          const row = this.#loreEntryRow(ref, parentId);
+          if (!row) break;
+          const entry = this.#loreEntryFromRow(row);
+          if (entry.kind === "location" || entry.kind === "place") {
+            if (!inLocationHierarchy) break;
+            localLocationIds.add(entry.id);
+            addIdentityTerms(entry.id);
+            addIdentityTerms(entry.name);
+            for (const alias of entry.aliases) addIdentityTerms(alias);
+          } else if (entry.kind === "region" || entry.kind === "world") {
+            inLocationHierarchy = false;
+            localLocationIds.delete(entry.id);
+            if (mayViewEntry(entry)) {
+              localAncestorEntries.push(entry);
+              addIdentityTerms(entry.id);
+              addIdentityTerms(entry.name);
+              for (const alias of entry.aliases) addIdentityTerms(alias);
+            }
+          } else {
+            break;
+          }
+          parentId = entry.parentId;
+        }
+      }
+      this.#addPinnedLocationIdentity(
+        checkedRefs,
+        options.locationId,
+        localLocationIds,
+        addIdentityTerms,
+      );
+    }
+    const localEntries: LoreEntry[] = [];
+    let omitted = false;
+    const locations = [...localLocationIds];
+    if (locations.length) {
+      for (const ref of checkedRefs) {
+        const marks = locations.map(() => "?").join(",");
+        const neighborSql = `
+          SELECT CASE WHEN l.from_id IN (${marks}) THEN l.to_id ELSE l.from_id END
+          FROM lore_links l
+          WHERE l.pack_id = ? AND l.pack_version = ?
+            AND l.relation IN ('PRESENT_AT','LOCATED_IN','PARENT_OF')
+            AND (l.from_id IN (${marks}) OR l.to_id IN (${marks}))
+        `;
+        const candidateLimit = Math.min(limit * 4, 200);
+        const rows = this.#db
+          .prepare(
+            `SELECT e.* FROM lore_entries e
+             WHERE e.pack_id = ? AND e.pack_version = ?
+               AND e.kind IN ('location','place','npc','activity')
+               AND ${visibility("e")}
+               AND (
+                 e.entry_id IN (${marks}) OR e.parent_id IN (${marks})
+                 OR e.entry_id IN (${neighborSql})
+               )
+             ORDER BY CASE WHEN e.entry_id = ? THEN 0
+               WHEN e.kind = 'location' THEN 1
+               WHEN e.kind = 'place' THEN 2
+               WHEN e.kind = 'npc' THEN 3 ELSE 4 END, e.entry_id
+             LIMIT ?`,
+          )
+          .all(
+            ref.packId,
+            ref.version,
+            ...visibilityParams,
+            ...locations,
+            ...locations,
+            ...locations,
+            ref.packId,
+            ref.version,
+            ...locations,
+            ...locations,
+            options.locationId ?? "",
+            candidateLimit + 1,
+          ) as SqlRow[];
+        if (rows.length > candidateLimit) {
+          rows.pop();
+          omitted = true;
+        }
+        localEntries.push(...rows.map((row) => this.#loreEntryFromRow(row)));
+      }
+    }
+    const query = options.query?.trim();
+    const queryTokens =
+      query
+        ?.normalize("NFKC")
+        .toLocaleLowerCase()
+        .match(/[\p{L}\p{N}_-]+/gu) ?? [];
+    const hasNonLocalTopic = queryTokens.some(
+      (token) =>
+        token.length > 1 &&
+        !Object.hasOwn(TOPIC_STOP_WORDS, token) &&
+        !omittedTerms.has(token),
+    );
+    const exactEntries: LoreEntry[] = [];
+    const topicEntries: LoreEntry[] = [];
+    if (query) {
+      for (const ref of checkedRefs) {
+        const rows = this.#db
+          .prepare(
+            `SELECT e.* FROM lore_entries e
+             WHERE e.pack_id = ? AND e.pack_version = ? AND ${visibility("e")}
+               AND (lower(e.entry_id) = lower(?) OR lower(e.name) = lower(?)
+                 OR EXISTS (
+                   SELECT 1 FROM json_each(e.aliases_json) a
+                   WHERE lower(a.value) = lower(?)
+                 ))
+               AND (? = 1 OR e.kind <> 'history' OR lower(e.entry_id) = lower(?))
+             ORDER BY e.entry_id LIMIT ?`,
+          )
+          .all(
+            ref.packId,
+            ref.version,
+            ...visibilityParams,
+            query,
+            query,
+            query,
+            options.locationId === undefined || hasNonLocalTopic ? 1 : 0,
+            query,
+            limit + 1,
+          ) as SqlRow[];
+        if (rows.length > limit) {
+          rows.pop();
+          omitted = true;
+        }
+        exactEntries.push(...rows.map((row) => this.#loreEntryFromRow(row)));
+      }
+      const topicQuery = makeTopicFtsQuery(query, "OR", omittedTerms);
+      if (topicQuery) {
+        const scope = checkedRefs
+          .map(() => "(e.pack_id = ? AND e.pack_version = ?)")
+          .join(" OR ");
+        const scopeParams = checkedRefs.flatMap((ref) => [
+          ref.packId,
+          ref.version,
+        ]);
+        if (scope) {
+          const rows = this.#db
+            .prepare(
+              `SELECT e.* FROM lore_entries_fts
+               JOIN lore_entries e ON e.pack_id = lore_entries_fts.pack_id
+                AND e.pack_version = lore_entries_fts.pack_version
+                AND e.entry_id = lore_entries_fts.entry_id
+               WHERE lore_entries_fts MATCH ? AND (${scope})
+                 AND ${visibility("e")}
+               ORDER BY CASE WHEN lower(e.entry_id) = lower(?)
+                   OR lower(e.name) = lower(?)
+                   OR EXISTS (
+                     SELECT 1 FROM json_each(e.aliases_json) a
+                     WHERE lower(a.value) = lower(?)
+                   )
+                 THEN 0 ELSE 1 END, bm25(lore_entries_fts), e.entry_id
+               LIMIT ?`,
+            )
+            .all(
+              topicQuery,
+              ...scopeParams,
+              ...visibilityParams,
+              query,
+              query,
+              query,
+              limit * 2 + 1,
+            ) as SqlRow[];
+          if (rows.length > limit * 2) {
+            rows.pop();
+            omitted = true;
+          }
+          topicEntries.push(...rows.map((row) => this.#loreEntryFromRow(row)));
+        }
+      }
+    }
+    const selected = new Map<string, { entry: LoreEntry; rank: number }>();
+    for (const entry of exactEntries) {
+      selected.set(entry.id, { entry, rank: 0 });
+    }
+    for (const entry of localAncestorEntries) {
+      if (!selected.has(entry.id)) selected.set(entry.id, { entry, rank: 1 });
+    }
+    const topicRank = hasNonLocalTopic ? 2 : 3;
+    const localRank = hasNonLocalTopic ? 3 : 2;
+    for (const entry of topicEntries) {
+      if (!selected.has(entry.id))
+        selected.set(entry.id, { entry, rank: topicRank });
+    }
+    for (const entry of localEntries) {
+      if (!selected.has(entry.id))
+        selected.set(entry.id, { entry, rank: localRank });
+    }
+    const all = [...selected.values()].sort((a, b) => a.rank - b.rank);
+    if (all.length > limit) {
+      all.length = limit;
+      omitted = true;
+    }
+    const localIds = new Set([
+      ...localAncestorEntries.map((entry) => entry.id),
+      ...localEntries.map((entry) => entry.id),
+    ]);
+    return {
+      entries: all.map(({ entry }) => ({
+        ...entry,
+        body: localIds.has(entry.id) ? "" : truncateUtf8(entry.body, 1_200),
+      })),
+      omitted,
+    };
+  }
+
+  retrieveLore(
+    refs: LorebookRef[],
+    options: {
+      locationId?: string;
+      query?: string;
+      discoveredLoreIds?: string[];
+      limit?: number;
+      narrator?: boolean;
+    } = {},
+  ): LoreEntry[] {
+    this.#assertOpen();
+    return this.#retrieveLoreEntries(refs, options).entries;
+  }
+  retrieveLoreForTurn(
+    refs: LorebookRef[],
+    options: {
+      locationId?: string;
+      query?: string;
+      discoveredLoreIds?: string[];
+      limit?: number;
+    } = {},
+  ): LoreEntry[] {
+    this.#assertOpen();
+    return this.#retrieveLoreEntries(refs, {
+      ...options,
+      narrator: true,
+      includeUndiscoveredDiscovery: true,
+    }).entries;
+  }
+
+  previewLore(
+    rawDefinition: unknown,
+    options: { locationId?: string; query?: string } = {},
+  ): {
+    entries: LoreEntry[];
+    locationId?: string;
+    activeNpcIds: string[];
+    omitted: string[];
+  } {
+    const definition = validateDefinitionDocument(rawDefinition);
+    const map = this.getWorldMap(definition);
+    let locationId: string | undefined;
+    if (options.locationId !== undefined) {
+      if (
+        typeof options.locationId !== "string" ||
+        !options.locationId.trim()
+      ) {
+        throw new ValidationError("locationId tidak valid.");
+      }
+      if (map) {
+        const resolved = resolveLocation(map, options.locationId);
+        if (resolved.kind === "ambiguous") {
+          throw new ValidationError(
+            `Lokasi ambigu: ${resolved.ids.join(", ")}.`,
+          );
+        }
+        if (resolved.kind === "unknown") {
+          throw new ValidationError("Lokasi tidak ditemukan pada world map.");
+        }
+        locationId = resolved.location.id;
+      } else {
+        locationId = options.locationId;
+      }
+    }
+    const refs = definition.lorebookRefs ?? [];
+    const result = this.#retrieveLoreEntries(refs, {
+      ...(locationId === undefined ? {} : { locationId }),
+      ...(map === undefined ? {} : { identityLocations: map.locations }),
+      ...(options.query === undefined ? {} : { query: options.query }),
+      limit: 20,
+    });
+    const location = map?.locations.find((entry) => entry.id === locationId);
+    return {
+      entries: result.entries,
+      ...(locationId === undefined ? {} : { locationId }),
+      activeNpcIds: location ? [...location.npcIds] : [],
+      omitted: result.omitted
+        ? ["Additional matching entries were omitted by the preview limit."]
+        : [],
+    };
   }
 
   createGame(raw: unknown): StoredGame {
     const definition = validateDefinitionDocument(raw, now());
+    this.validateLoreBindings(definition.lorebookRefs ?? [], definition);
     this.#transaction(() => this.#insertGame(definition));
     return { ...definition, revision: 1 };
   }
@@ -963,6 +2826,7 @@ export class GameDatabase {
     const definition = validateDefinitionDocument(raw, now());
     if (definition.id !== id)
       throw new ValidationError("Game id tidak boleh berubah.");
+    this.validateLoreBindings(definition.lorebookRefs ?? [], definition);
     this.#transaction(() => {
       const row = this.#getGameRow(id);
       if (!row) throw new NotFoundError("Game tidak ditemukan.");
@@ -1009,9 +2873,28 @@ export class GameDatabase {
       throw new ConflictError("Game revision berubah.");
     for (const sessionRow of sessionRows) {
       const current = this.#sessionFromRow(sessionRow);
+      const snapshot = structuredClone(definition);
+      if (current.definitionSnapshot.worldMap === undefined) {
+        delete snapshot.worldMap;
+      } else {
+        snapshot.worldMap = structuredClone(
+          current.definitionSnapshot.worldMap,
+        );
+      }
+      if (current.definitionSnapshot.startingLocationId === undefined) {
+        delete snapshot.startingLocationId;
+      } else {
+        snapshot.startingLocationId =
+          current.definitionSnapshot.startingLocationId;
+      }
+      if (current.lorebookRefs === undefined) {
+        delete snapshot.lorebookRefs;
+      } else {
+        snapshot.lorebookRefs = structuredClone(current.lorebookRefs);
+      }
       const updated: GameSession = {
         ...sessionValue(current),
-        definitionSnapshot: structuredClone(definition),
+        definitionSnapshot: snapshot,
         updatedAt: definition.updatedAt,
       };
       validateSessionDocument(updated, this.#messages(updated.id));
@@ -1062,6 +2945,12 @@ export class GameDatabase {
     const playability = validatePlayability(definition);
     if (playability.length) throw new ValidationError(playability.join(" "));
     const ai = normalizeAi(input.ai);
+    const lorebookRefs =
+      definition.lorebookRefs === undefined
+        ? undefined
+        : parseLoreRefs(definition.lorebookRefs);
+    this.validateLoreBindings(lorebookRefs ?? [], definition);
+    const worldMap = this.getWorldMap(definition);
     const sessionId = input.sessionId ?? randomUUID();
     assertId(sessionId, "session.id");
     if (input.expectedGameRevision !== undefined) {
@@ -1093,10 +2982,12 @@ export class GameDatabase {
         id: sessionId,
         gameId: definition.id,
         definitionSnapshot: structuredClone(definition),
-        state: buildInitialState(definition),
+        state: buildInitialState(definition, worldMap),
         ai,
         nextSequence: 0,
         updatedAt: now(),
+        ...(worldMap === undefined ? {} : { worldMap }),
+        ...(lorebookRefs === undefined ? {} : { lorebookRefs }),
       };
       this.#insertSession(session);
     });
@@ -1152,10 +3043,29 @@ export class GameDatabase {
       const stored = this.#sessionFromRow(row);
       this.#checkExpected(stored.revision, expectedRevision, "Session");
       this.#assertNoRunningRun(id);
-      const definitionSnapshot =
+      const definitionSnapshot = structuredClone(
         patch.definitionSnapshot === undefined
           ? stored.definitionSnapshot
-          : validateDefinitionDocument(patch.definitionSnapshot);
+          : validateDefinitionDocument(patch.definitionSnapshot),
+      );
+      if (stored.definitionSnapshot.worldMap === undefined) {
+        delete definitionSnapshot.worldMap;
+      } else {
+        definitionSnapshot.worldMap = structuredClone(
+          stored.definitionSnapshot.worldMap,
+        );
+      }
+      if (stored.definitionSnapshot.startingLocationId === undefined) {
+        delete definitionSnapshot.startingLocationId;
+      } else {
+        definitionSnapshot.startingLocationId =
+          stored.definitionSnapshot.startingLocationId;
+      }
+      if (stored.lorebookRefs === undefined) {
+        delete definitionSnapshot.lorebookRefs;
+      } else {
+        definitionSnapshot.lorebookRefs = structuredClone(stored.lorebookRefs);
+      }
       if (definitionSnapshot.id !== stored.gameId) {
         throw new ValidationError(
           "Snapshot tidak boleh mengganti game session.",
@@ -1181,6 +3091,12 @@ export class GameDatabase {
         ai,
         nextSequence: stored.nextSequence,
         updatedAt: now(),
+        ...(stored.worldMap === undefined
+          ? {}
+          : { worldMap: structuredClone(stored.worldMap) }),
+        ...(stored.lorebookRefs === undefined
+          ? {}
+          : { lorebookRefs: structuredClone(stored.lorebookRefs) }),
       };
       this.#validateSessionState(updated);
       this.#db
@@ -1275,10 +3191,18 @@ export class GameDatabase {
     const session = this.#sessionFromRow(row);
     const rows = this.#db
       .prepare(
-        `SELECT * FROM messages WHERE session_id = ? AND sequence < ?
-         ORDER BY sequence DESC LIMIT ?`,
+        `SELECT m.* FROM messages m
+         WHERE m.session_id = ? AND m.sequence < ?
+         AND ${MESSAGE_AUDIENCE_SCOPE}
+         ORDER BY m.sequence DESC LIMIT ?`,
       )
-      .all(sessionId, beforeSequence, limit + 1) as SqlRow[];
+      .all(
+        sessionId,
+        beforeSequence,
+        "player",
+        "player",
+        limit + 1,
+      ) as SqlRow[];
     const hasMore = rows.length > limit;
     if (hasMore) rows.pop();
     const page = rows.map((item) => this.#messageFromRow(item)).reverse();
@@ -1297,6 +3221,38 @@ export class GameDatabase {
     if (!row) throw new NotFoundError("Session tidak ditemukan.");
     const session = this.#sessionFromRow(row);
     const messages = this.#messages(sessionId);
+    return messages.length ? validateMessages(session, messages) : messages;
+  }
+  getRecentHistory(sessionId: string, limit = 24, npcId?: string): Message[] {
+    assertId(sessionId, "session.id");
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+      throw new ValidationError("limit harus integer 1 sampai 100.");
+    }
+    const row = this.#getSessionRow(sessionId);
+    if (!row) throw new NotFoundError("Session tidak ditemukan.");
+    const session = this.#sessionFromRow(row);
+    if (
+      npcId !== undefined &&
+      !session.definitionSnapshot.npcs.some((npc) => npc.id === npcId)
+    ) {
+      throw new NotFoundError("NPC tidak ditemukan pada session.");
+    }
+    const audienceId = npcId ?? "player";
+    const rows = this.#db
+      .prepare(
+        `SELECT m.* FROM messages m
+         WHERE m.session_id = ? AND m.sequence < ?
+         AND ${MESSAGE_AUDIENCE_SCOPE}
+         ORDER BY m.sequence DESC LIMIT ?`,
+      )
+      .all(
+        sessionId,
+        session.nextSequence,
+        audienceId,
+        audienceId,
+        limit,
+      ) as SqlRow[];
+    const messages = rows.map((item) => this.#messageFromRow(item)).reverse();
     return messages.length ? validateMessages(session, messages) : messages;
   }
 
@@ -1505,6 +3461,12 @@ export class GameDatabase {
         ai: current.ai,
         nextSequence: next,
         updatedAt: now(),
+        ...(current.worldMap === undefined
+          ? {}
+          : { worldMap: current.worldMap }),
+        ...(current.lorebookRefs === undefined
+          ? {}
+          : { lorebookRefs: current.lorebookRefs }),
       };
       const allMessages = [...this.#messages(sessionId), ...messages];
       validateSessionDocument(updated, allMessages);
@@ -1530,6 +3492,7 @@ export class GameDatabase {
       session = { ...updated, revision: current.revision + 1 };
       run = this.getRun(sessionId, requestId)!;
     });
+    this.#scheduleSummaryMaintenance();
     return { session, run };
   }
 
@@ -1689,6 +3652,163 @@ export class GameDatabase {
       latencyMs: total(row.latency, row.latency_known),
     };
   }
+  saveContextTelemetry(
+    sessionId: string,
+    requestId: string,
+    rawTelemetry: ContextTelemetry,
+  ): void {
+    assertId(sessionId, "session.id");
+    assertId(requestId, "requestId");
+    const telemetry = validateContextTelemetry(rawTelemetry);
+    jsonText(telemetry, 64 * 1024);
+    const session = this.getSession(sessionId);
+    if (!session) throw new NotFoundError("Session tidak ditemukan.");
+    const loreRefs = parseLoreRefs(
+      session.lorebookRefs ?? session.definitionSnapshot.lorebookRefs ?? [],
+    );
+    for (const loreId of telemetry.selectedLoreIds) {
+      if (!loreRefs.some((ref) => this.#loreEntryRow(ref, loreId))) {
+        throw new ValidationError(
+          `selectedLoreId ${loreId} tidak ada pada lore yang dipin.`,
+        );
+      }
+    }
+    this.#transaction(() => {
+      const run = this.#db
+        .prepare(
+          "SELECT 1 AS found FROM turns WHERE session_id = ? AND request_id = ?",
+        )
+        .get(sessionId, requestId);
+      if (!run) throw new NotFoundError("Run ledger tidak ditemukan.");
+      const old = this.#db
+        .prepare(
+          "SELECT * FROM context_telemetry WHERE session_id = ? AND request_id = ?",
+        )
+        .get(sessionId, requestId) as SqlRow | undefined;
+      if (old) {
+        const previous = validateContextTelemetry({
+          contextChars: old.context_chars,
+          approximateTokens: old.approximate_tokens,
+          tokenEstimateMethod: old.token_estimate_method,
+          sections: parseJson(old.sections_json as string, "Context sections"),
+          selectedLoreIds: parseJson(
+            old.selected_lore_ids_json as string,
+            "Selected lore IDs",
+          ),
+          omissions: parseJson(
+            old.omissions_json as string,
+            "Context omissions",
+          ),
+          toolCalls: old.tool_calls,
+          repairs: old.repairs,
+        });
+        if (canonicalJson(previous) !== canonicalJson(telemetry)) {
+          throw new ConflictError(
+            "Context telemetry sudah disimpan dengan nilai berbeda.",
+          );
+        }
+        return;
+      }
+      this.#db
+        .prepare(
+          `INSERT INTO context_telemetry(
+             session_id, request_id, context_chars, approximate_tokens,
+             token_estimate_method, sections_json, selected_lore_ids_json,
+             omissions_json, tool_calls, repairs, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          sessionId,
+          requestId,
+          telemetry.contextChars,
+          telemetry.approximateTokens,
+          telemetry.tokenEstimateMethod,
+          jsonText(telemetry.sections),
+          jsonText(telemetry.selectedLoreIds),
+          jsonText(telemetry.omissions),
+          telemetry.toolCalls,
+          telemetry.repairs,
+          now(),
+        );
+    });
+  }
+
+  getContextTelemetry(
+    sessionId: string,
+    requestId: string,
+  ): ContextTelemetry | undefined {
+    assertId(sessionId, "session.id");
+    assertId(requestId, "requestId");
+    this.#assertOpen();
+    const row = this.#db
+      .prepare(
+        `SELECT * FROM context_telemetry
+         WHERE session_id = ? AND request_id = ?`,
+      )
+      .get(sessionId, requestId) as SqlRow | undefined;
+    if (!row) return undefined;
+    try {
+      return validateContextTelemetry({
+        contextChars: row.context_chars,
+        approximateTokens: row.approximate_tokens,
+        tokenEstimateMethod: row.token_estimate_method,
+        sections: parseJson(row.sections_json as string, "Context sections"),
+        selectedLoreIds: parseJson(
+          row.selected_lore_ids_json as string,
+          "Selected lore IDs",
+        ),
+        omissions: parseJson(row.omissions_json as string, "Context omissions"),
+        toolCalls: row.tool_calls,
+        repairs: row.repairs,
+      });
+    } catch (error) {
+      throw new CorruptDatabaseError(
+        `Context telemetry rusak: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  estimateTokens(
+    chars: number,
+    provider: AiConfig["provider"],
+    model: string,
+  ): { approximateTokens: number; method: string } {
+    assertTokenCount(chars, "chars");
+    if (
+      (provider !== "gemini" && provider !== "openrouter") ||
+      typeof model !== "string" ||
+      !model.trim() ||
+      model.length > 256
+    ) {
+      throw new ValidationError("Provider atau model tidak valid.");
+    }
+    this.#assertOpen();
+    const observed = this.#db
+      .prepare(
+        `SELECT SUM(usage.input_tokens) AS tokens,
+           SUM(t.context_chars) AS chars
+         FROM context_telemetry t
+         JOIN (
+           SELECT session_id, request_id, MAX(input_tokens) AS input_tokens
+           FROM ai_requests
+           WHERE provider = ? AND model = ? AND status = 'succeeded'
+             AND request_id IS NOT NULL AND input_tokens > 0
+           GROUP BY session_id, request_id
+         ) usage ON usage.session_id = t.session_id
+           AND usage.request_id = t.request_id
+         WHERE t.context_chars > 0`,
+      )
+      .get(provider, model) as SqlRow;
+    const observedChars = Number(observed.chars ?? 0);
+    const observedTokens = Number(observed.tokens ?? 0);
+    if (observedChars > 0 && observedTokens > 0) {
+      return {
+        approximateTokens: Math.ceil((chars * observedTokens) / observedChars),
+        method: "observed-ratio",
+      };
+    }
+    return { approximateTokens: Math.ceil(chars / 4), method: "chars-per-4" };
+  }
 
   searchMemory(
     sessionId: string,
@@ -1708,12 +3828,9 @@ export class GameDatabase {
     ) {
       throw new NotFoundError("NPC tidak ditemukan pada session.");
     }
+    const audienceId = npcId ?? "player";
     const facts = session.state.facts.filter((fact) => {
-      if (
-        npcId &&
-        fact.visibility === "private" &&
-        !fact.knownBy.includes(npcId)
-      ) {
+      if (fact.visibility === "private" && !fact.knownBy.includes(audienceId)) {
         return false;
       }
       const text = fact.text.normalize("NFKC").toLocaleLowerCase();
@@ -1722,14 +3839,22 @@ export class GameDatabase {
           .normalize("NFKC")
           .toLocaleLowerCase()
           .match(/[\p{L}\p{N}_-]+/gu) ?? [];
-      return tokens.some((token) => text.includes(token));
+      let matches = false;
+      for (const token of tokens) {
+        if (text.includes(token)) {
+          matches = true;
+          break;
+        }
+      }
+      return matches;
     });
     const rows = this.#db
       .prepare(
         `SELECT m.* FROM messages_fts JOIN messages m ON m.rowid = messages_fts.rowid
-         WHERE messages_fts MATCH ? AND m.session_id = ? ORDER BY bm25(messages_fts), m.sequence DESC LIMIT 20`,
+         WHERE messages_fts MATCH ? AND m.session_id = ? AND ${MESSAGE_AUDIENCE_SCOPE}
+         ORDER BY bm25(messages_fts), m.sequence DESC LIMIT 20`,
       )
-      .all(ftsQuery, sessionId) as SqlRow[];
+      .all(ftsQuery, sessionId, audienceId, audienceId) as SqlRow[];
     const messages = rows.map((row) => this.#messageFromRow(row));
     if (messages.length) validateMessages(session, messages);
     const results: MemoryResult[] = [];
@@ -1767,6 +3892,218 @@ export class GameDatabase {
       });
     }
     return results;
+  }
+  compactStory(sessionId: string, rangeSize = 20): number {
+    assertId(sessionId, "session.id");
+    if (!Number.isSafeInteger(rangeSize) || rangeSize < 1 || rangeSize > 100) {
+      throw new ValidationError("rangeSize harus integer 1 sampai 100.");
+    }
+    this.#assertOpen();
+    return this.#transaction(() => {
+      const row = this.#getSessionRow(sessionId);
+      if (!row) throw new NotFoundError("Session tidak ditemukan.");
+      const session = this.#sessionFromRow(row);
+      const cursorRow = this.#db
+        .prepare(
+          "SELECT next_sequence FROM story_summary_cursors WHERE session_id = ?",
+        )
+        .get(sessionId) as SqlRow | undefined;
+      let cursor = cursorRow ? Number(cursorRow.next_sequence) : 0;
+      if (!Number.isSafeInteger(cursor) || cursor < 0) {
+        throw new CorruptDatabaseError("Story summary cursor rusak.");
+      }
+      let inserted = 0;
+      for (
+        let range = 0;
+        range < MAX_SUMMARY_RANGES_PER_CALL && cursor < session.nextSequence;
+        range += 1
+      ) {
+        const end = Math.min(cursor + rangeSize, session.nextSequence);
+        const rows = this.#db
+          .prepare(
+            `SELECT * FROM messages
+             WHERE session_id = ? AND sequence >= ? AND sequence < ?
+               AND sequence < ?
+             ORDER BY sequence LIMIT ?`,
+          )
+          .all(
+            sessionId,
+            cursor,
+            end,
+            session.nextSequence,
+            rangeSize,
+          ) as SqlRow[];
+        const messages = rows.map((item) => this.#messageFromRow(item));
+        if (messages.length) validateMessages(session, messages);
+        const groups = new Map<
+          string,
+          {
+            visibility: "public" | "private";
+            knownBy: string[];
+            messages: Message[];
+          }
+        >();
+        for (const message of messages) {
+          const visibility = message.visibility ?? "private";
+          const knownBy = [
+            ...new Set(
+              message.visibility === undefined
+                ? ["player"]
+                : (message.knownBy ?? []),
+            ),
+          ].sort();
+          const key = canonicalJson([visibility, knownBy]);
+          let group = groups.get(key);
+          if (!group) {
+            group = { visibility, knownBy, messages: [] };
+            groups.set(key, group);
+          }
+          group.messages.push(message);
+        }
+        for (const [, group] of [...groups].sort(([a], [b]) =>
+          a.localeCompare(b),
+        )) {
+          const lines: string[] = [];
+          let summaryBytes = 0;
+          for (const message of group.messages) {
+            const prefix = `${message.sequence} ${message.role}${
+              message.speakerId ? `(${message.speakerId})` : ""
+            }: `;
+            const prefixBytes = Buffer.byteLength(prefix, "utf8");
+            const separatorBytes = lines.length ? 1 : 0;
+            const remaining = Math.max(
+              0,
+              Math.min(
+                SUMMARY_EXCERPT_BYTES - prefixBytes,
+                SUMMARY_MAX_BYTES - summaryBytes - separatorBytes - prefixBytes,
+              ),
+            );
+            if (remaining === 0) continue;
+            const excerpt = truncateUtf8(message.content, remaining);
+            const line = `${prefix}${excerpt}`;
+            const bytes = Buffer.byteLength(line, "utf8");
+            if (summaryBytes + separatorBytes + bytes > SUMMARY_MAX_BYTES)
+              break;
+            lines.push(line);
+            summaryBytes += separatorBytes + bytes;
+          }
+          const summary = lines.join("\n");
+          if (!summary) continue;
+          const sourceDigest = createHash("sha256")
+            .update(canonicalJson(group.messages))
+            .digest("hex");
+          const result = this.#db
+            .prepare(
+              `INSERT OR IGNORE INTO story_summaries(
+                 session_id, from_sequence, to_sequence, summary, source_digest,
+                 visibility, known_by_json, created_at
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            )
+            .run(
+              sessionId,
+              cursor,
+              end - 1,
+              summary,
+              sourceDigest,
+              group.visibility,
+              jsonText(group.knownBy),
+              now(),
+            );
+          inserted += Number(result.changes);
+        }
+        cursor = end;
+        this.#db
+          .prepare(
+            `INSERT INTO story_summary_cursors(session_id, next_sequence)
+             VALUES (?, ?)
+             ON CONFLICT(session_id) DO UPDATE SET next_sequence = excluded.next_sequence`,
+          )
+          .run(sessionId, cursor);
+      }
+      return inserted;
+    });
+  }
+
+  getStorySummaries(
+    sessionId: string,
+    options: { query?: string; npcId?: string; limit?: number } = {},
+  ): StorySummary[] {
+    assertId(sessionId, "session.id");
+    if (
+      !isObject(options) ||
+      Object.keys(options).some(
+        (key) => !["query", "npcId", "limit"].includes(key),
+      )
+    ) {
+      throw new ValidationError("Opsi story summaries tidak dikenal.");
+    }
+    this.#assertOpen();
+    const session = this.getSession(sessionId);
+    if (!session) throw new NotFoundError("Session tidak ditemukan.");
+    const limit = options.limit ?? 8;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50) {
+      throw new ValidationError("limit harus integer 1 sampai 50.");
+    }
+    if (options.query !== undefined && typeof options.query !== "string") {
+      throw new ValidationError("Query summary harus string.");
+    }
+    if (
+      options.npcId !== undefined &&
+      !session.definitionSnapshot.npcs.some((npc) => npc.id === options.npcId)
+    ) {
+      throw new NotFoundError("NPC tidak ditemukan pada session.");
+    }
+    const npcId = options.npcId ?? "player";
+    const query = options.query?.trim();
+    const ftsQuery = query ? makeTopicFtsQuery(query, "OR") : "";
+    if (query && !ftsQuery) return [];
+    const join = ftsQuery
+      ? "JOIN story_summaries_fts ON story_summaries_fts.rowid = s.rowid"
+      : "";
+    const params: (string | number)[] = [sessionId];
+    const search = ftsQuery ? "AND story_summaries_fts MATCH ?" : "";
+    if (ftsQuery) params.push(ftsQuery);
+    params.push(npcId, limit);
+    const rows = this.#db
+      .prepare(
+        `SELECT s.* FROM story_summaries s ${join}
+         WHERE s.session_id = ? ${search}
+           AND (s.visibility = 'public' OR (
+             s.visibility = 'private' AND EXISTS (
+               SELECT 1 FROM json_each(s.known_by_json) known
+               WHERE known.value = ?
+             )
+           ))
+         ORDER BY ${
+           ftsQuery
+             ? "bm25(story_summaries_fts), s.to_sequence DESC, s.from_sequence DESC"
+             : "s.to_sequence DESC, s.from_sequence DESC"
+         }
+         LIMIT ?`,
+      )
+      .all(...params) as SqlRow[];
+    return rows.map((item) => {
+      const knownBy = parseJson<unknown>(
+        item.known_by_json as string,
+        "Story summary knowledge",
+      );
+      if (
+        !Array.isArray(knownBy) ||
+        knownBy.some((value) => typeof value !== "string")
+      ) {
+        throw new CorruptDatabaseError("Story summary knowledge rusak.");
+      }
+      return {
+        sessionId: String(item.session_id),
+        fromSequence: Number(item.from_sequence),
+        toSequence: Number(item.to_sequence),
+        summary: String(item.summary),
+        sourceDigest: String(item.source_digest),
+        visibility: String(item.visibility) as StorySummary["visibility"],
+        knownBy,
+        createdAt: String(item.created_at),
+      };
+    });
   }
 
   getNpcDetails(
@@ -1814,7 +4151,21 @@ export class GameDatabase {
     const session = this.getSession(sessionId);
     if (!session) throw new NotFoundError("Session tidak ditemukan.");
     const messages = this.getHistory(sessionId);
-    const bundle = createExportBundle(session, messages, now());
+    const refs = parseLoreRefs(
+      session.lorebookRefs ?? session.definitionSnapshot.lorebookRefs ?? [],
+    );
+    this.validateLoreBindings(refs, session.definitionSnapshot);
+    const dependencies: LoreDependency[] = refs.map((ref) => {
+      const row = this.#packRow(ref);
+      if (!row) {
+        throw new ConflictError(
+          `Lore dependency ${ref.packId}@${ref.version} belum dipasang.`,
+          "LORE_DEPENDENCY_MISSING",
+        );
+      }
+      return { ...ref, digest: String(row.digest) };
+    });
+    const bundle = createExportBundle(session, messages, now(), dependencies);
     jsonText(bundle, TRANSFER_LIMIT);
     return bundle;
   }
@@ -1830,19 +4181,71 @@ export class GameDatabase {
     const prepared = validateExportBundle(raw);
     assertId(prepared.game.id, "game.id");
     assertId(prepared.session.id, "session.id");
+    const refs = parseLoreRefs(prepared.game.lorebookRefs ?? []);
+    if (prepared.loreDependencies !== undefined) {
+      const keys = (values: LorebookRef[]) =>
+        values.map((ref) => `${ref.packId}\u0000${ref.version}`).sort();
+      const equalRefs = (candidate: LorebookRef[]): boolean =>
+        canonicalJson(keys(refs)) === canonicalJson(keys(candidate));
+      const sessionRefs =
+        prepared.session.lorebookRefs === undefined
+          ? undefined
+          : parseLoreRefs(prepared.session.lorebookRefs);
+      const snapshotRefs =
+        prepared.session.definitionSnapshot.lorebookRefs === undefined
+          ? undefined
+          : parseLoreRefs(prepared.session.definitionSnapshot.lorebookRefs);
+      if (
+        (sessionRefs !== undefined && !equalRefs(sessionRefs)) ||
+        (snapshotRefs !== undefined && !equalRefs(snapshotRefs))
+      ) {
+        throw new ConflictError(
+          "Session pins berbeda dari manifest save.",
+          "INVALID_LORE_BINDING",
+        );
+      }
+      this.validateLoreBindings(refs, prepared.game);
+      for (const dependency of prepared.loreDependencies) {
+        const row = this.#packRow(dependency);
+        if (!row) {
+          throw new ConflictError(
+            `Lore dependency ${dependency.packId}@${dependency.version} belum dipasang.`,
+            "LORE_DEPENDENCY_MISSING",
+          );
+        }
+        if (String(row.digest) !== dependency.digest) {
+          throw new ConflictError(
+            `Lore dependency ${dependency.packId}@${dependency.version} memiliki digest berbeda.`,
+            "LORE_DEPENDENCY_MISMATCH",
+          );
+        }
+      }
+    } else if (refs.length) {
+      throw new ConflictError(
+        "Save lore-bound wajib menyertakan manifest v2.",
+        "INVALID_LORE_BINDING",
+      );
+    }
     const gameId = randomUUID();
     const sessionId = randomUUID();
     const game: GameDefinition = { ...prepared.game, id: gameId };
+    const definitionSnapshot: GameDefinition = {
+      ...prepared.session.definitionSnapshot,
+      id: gameId,
+      ...(prepared.loreDependencies === undefined
+        ? {}
+        : { lorebookRefs: structuredClone(refs) }),
+    };
     const session: GameSession = {
       ...prepared.session,
       id: sessionId,
       gameId,
-      definitionSnapshot: {
-        ...prepared.session.definitionSnapshot,
-        id: gameId,
-      },
+      definitionSnapshot,
       ai: normalizeAi(prepared.session.ai),
       updatedAt: now(),
+      ...(prepared.loreDependencies === undefined
+        ? {}
+        : { lorebookRefs: structuredClone(refs) }),
     };
     const messages = prepared.messages.map((message) => ({
       ...message,
@@ -2128,12 +4531,15 @@ export class GameDatabase {
     if (sourcePath.toLocaleLowerCase() === targetPath.toLocaleLowerCase()) {
       throw new ValidationError("Restore memerlukan path tujuan berbeda.");
     }
+    await mkdir(dirname(targetPath), { recursive: true });
+    const stagePath = `${targetPath}.restore-${randomUUID()}`;
+    const previousPath = `${targetPath}.previous-${randomUUID()}`;
     const source = new DatabaseSync(sourcePath, { readOnly: true });
     try {
       const version = Number(
         (source.prepare("PRAGMA user_version").get() as SqlRow).user_version,
       );
-      if (version !== SCHEMA_VERSION) {
+      if (version !== 1 && version !== SCHEMA_VERSION) {
         throw new DatabaseError(
           "File backup bukan database Fworld yang didukung.",
           "SCHEMA_VERSION",
@@ -2143,17 +4549,110 @@ export class GameDatabase {
       if (integrity.quick_check !== "ok") {
         throw new CorruptDatabaseError("Backup SQLite gagal quick_check.");
       }
-      await backup(source, targetPath);
+      await backup(source, stagePath);
     } finally {
       source.close();
     }
-    return new GameDatabase(targetPath);
+    try {
+      const staged = new GameDatabase(stagePath);
+      try {
+        const integrity = staged.#db
+          .prepare("PRAGMA quick_check")
+          .get() as SqlRow;
+        if (integrity.quick_check !== "ok") {
+          throw new CorruptDatabaseError(
+            "Backup SQLite gagal quick_check setelah migrasi.",
+          );
+        }
+        if (staged.#db.prepare("PRAGMA foreign_key_check").all().length) {
+          throw new CorruptDatabaseError("Backup melanggar foreign key.");
+        }
+        for (const game of staged.listGames()) {
+          const refs = parseLoreRefs(game.lorebookRefs ?? []);
+          if (refs.length) staged.validateLoreBindings(refs, game);
+          for (const session of staged.listSessions(game.id)) {
+            staged.getHistory(session.id);
+            staged.getWorldMap(session);
+            const sessionRefs = parseLoreRefs(session.lorebookRefs ?? []);
+            if (sessionRefs.length) {
+              staged.validateLoreBindings(
+                sessionRefs,
+                session.definitionSnapshot,
+              );
+            }
+          }
+        }
+      } finally {
+        staged.close();
+      }
+      await rm(`${stagePath}-wal`, { force: true });
+      await rm(`${stagePath}-shm`, { force: true });
+      const oldFiles: Array<[string, string]> = [
+        [targetPath, previousPath],
+        [`${targetPath}-wal`, `${previousPath}-wal`],
+        [`${targetPath}-shm`, `${previousPath}-shm`],
+      ];
+      const moved: Array<[string, string]> = [];
+      const moveIfPresent = async (
+        from: string,
+        to: string,
+      ): Promise<boolean> => {
+        try {
+          await rename(from, to);
+          return true;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+          throw error;
+        }
+      };
+      let installed = false;
+      try {
+        for (const [from, to] of oldFiles) {
+          if (await moveIfPresent(from, to)) moved.push([from, to]);
+        }
+        await rename(stagePath, targetPath);
+        installed = true;
+        const restored = new GameDatabase(targetPath);
+        for (const [, oldPath] of moved) {
+          try {
+            await rm(oldPath, { force: true });
+          } catch {}
+        }
+        return restored;
+      } catch (error) {
+        if (installed) {
+          await rm(targetPath, { force: true });
+          await rm(`${targetPath}-wal`, { force: true });
+          await rm(`${targetPath}-shm`, { force: true });
+        }
+        for (const [oldPath, from] of moved.reverse()) {
+          await rename(from, oldPath);
+        }
+        throw error;
+      }
+    } finally {
+      await rm(stagePath, { force: true });
+      await rm(`${stagePath}-wal`, { force: true });
+      await rm(`${stagePath}-shm`, { force: true });
+    }
   }
 
   close(): void {
     if (this.#closed) return;
-    this.#db.close();
     this.#closed = true;
+    if (this.#summaryImmediate) {
+      clearImmediate(this.#summaryImmediate);
+      this.#summaryImmediate = undefined;
+    }
+    if (this.#summaryRetryTimer) {
+      clearTimeout(this.#summaryRetryTimer);
+      this.#summaryRetryTimer = undefined;
+    }
+    try {
+      this.#db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    } catch {
+    }
+    this.#db.close();
   }
 }
 

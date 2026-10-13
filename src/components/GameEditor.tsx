@@ -2,10 +2,21 @@ import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import {
   ApiError,
   createGame,
+  exportLorebook,
   getGame,
+  importLorebook,
+  listLorebooks,
+  listLoreEntries,
+  listLoreLinks,
   listSessions,
+  previewLore,
   startSession,
   updateGame,
+  type LorebookImportResult,
+  type LorebookList,
+  type LoreEntryPage,
+  type LoreLinkPage,
+  type LorePreview,
 } from "../api";
 import {
   ImportError,
@@ -19,12 +30,20 @@ import {
   parseTemplate,
   type TemplateDraft,
 } from "../template";
+import {
+  LorebookValidationError,
+  MAX_LOREBOOK_BYTES,
+  parseLorebookPack,
+} from "../../shared/lore.js";
+import { parseWorldMap } from "../../shared/world.js";
 import type {
   AiConfig,
   EffectOperation,
   GameDefinition,
   ItemDefinition,
   ItemEffect,
+  LoreKind,
+  LorebookRef,
   NpcDefinition,
 } from "../types";
 import exampleTemplate from "../../examples/game-template.json";
@@ -38,7 +57,7 @@ interface GameEditorProps {
   onStarted: (sessionId: string) => void;
 }
 
-const EFFECT_TYPES: ItemEffect["type"][] = [
+const EFFECT_TYPES = [
   "ATTRIBUTE_CHANGE",
   "RESOURCE_CHANGE",
   "RELATIONSHIP_CHANGE",
@@ -46,12 +65,31 @@ const EFFECT_TYPES: ItemEffect["type"][] = [
   "REMOVE_ITEM",
   "ADD_FACT",
   "REMOVE_FACT",
-];
+] as const satisfies readonly ItemEffect["type"][];
+type EditableItemEffectType = (typeof EFFECT_TYPES)[number];
 
 const OPERATIONS: EffectOperation[] = ["ADD", "SUBTRACT", "SET"];
+const LORE_KINDS: LoreKind[] = [
+  "world",
+  "region",
+  "location",
+  "place",
+  "npc",
+  "faction",
+  "history",
+  "monster",
+  "item",
+  "activity",
+  "other",
+];
+
+function describeError(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) return `${error.code}: ${error.message}`;
+  return error instanceof Error ? error.message : fallback;
+}
 
 function defaultEffect(
-  type: ItemEffect["type"],
+  type: EditableItemEffectType,
   game: GameDefinition,
 ): ItemEffect {
   switch (type) {
@@ -121,6 +159,37 @@ export default function GameEditor({
     ai?: AiConfig;
   } | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [lorebookOffset, setLorebookOffset] = useState(0);
+  const [lorebookPage, setLorebookPage] = useState<LorebookList | null>(null);
+  const [lorebookLoading, setLorebookLoading] = useState(false);
+  const [loreEntriesOffset, setLoreEntriesOffset] = useState(0);
+  const [loreEntriesPage, setLoreEntriesPage] = useState<LoreEntryPage | null>(
+    null,
+  );
+  const [loreEntriesLoading, setLoreEntriesLoading] = useState(false);
+  const [loreRef, setLoreRef] = useState<LorebookRef | null>(null);
+  const [loreQuery, setLoreQuery] = useState("");
+  const [loreKind, setLoreKind] = useState<LoreKind | "">("");
+  const [loreError, setLoreError] = useState<string | null>(null);
+  const [loreReload, setLoreReload] = useState(0);
+  const [loreImportError, setLoreImportError] = useState<string | null>(null);
+  const [loreImportStage, setLoreImportStage] = useState<{
+    status: "dry-run" | "published";
+    fileName: string;
+    result: LorebookImportResult;
+  } | null>(null);
+  const [lorePreview, setLorePreview] = useState<LorePreview | null>(null);
+  const [lorePreviewLocationId, setLorePreviewLocationId] = useState<
+    string | null
+  >(null);
+  const [lorePreviewQuery, setLorePreviewQuery] = useState("");
+  const [lorePreviewError, setLorePreviewError] = useState<string | null>(null);
+  const [loreWorking, setLoreWorking] = useState(false);
+  const [loreLinksFor, setLoreLinksFor] = useState<string | null>(null);
+  const [loreLinkPage, setLoreLinkPage] = useState<LoreLinkPage | null>(null);
+  const [loreLinkOffset, setLoreLinkOffset] = useState(0);
+  const [worldMapError, setWorldMapError] = useState<string | null>(null);
+  const stagedLoreFile = useRef<File | null>(null);
   const discardDialogRef = useRef<HTMLDialogElement>(null);
   const backButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -154,6 +223,87 @@ export default function GameEditor({
       active = false;
     };
   }, [gameId, initialDraft]);
+
+  useEffect(() => {
+    let active = true;
+    setLorebookLoading(true);
+    void listLorebooks({ limit: 20, offset: lorebookOffset })
+      .then((page) => {
+        if (!active) return;
+        setLorebookPage(page);
+        setLoreError(null);
+      })
+      .catch((error: unknown) => {
+        if (active)
+          setLoreError(describeError(error, "Lorebook gagal dimuat."));
+      })
+      .finally(() => {
+        if (active) setLorebookLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [lorebookOffset, loreReload]);
+
+  useEffect(() => {
+    if (!loreRef) {
+      setLoreEntriesPage(null);
+      return;
+    }
+    let active = true;
+    setLoreEntriesLoading(true);
+    setLoreEntriesPage(null);
+    setLoreLinkPage(null);
+    setLoreLinksFor(null);
+    const query = loreQuery.trim();
+    void listLoreEntries(loreRef, {
+      limit: 20,
+      offset: loreEntriesOffset,
+      ...(query ? { query } : {}),
+      ...(loreKind ? { kind: loreKind } : {}),
+    })
+      .then((page) => {
+        if (!active) return;
+        setLoreEntriesPage(page);
+        setLoreError(null);
+      })
+      .catch((error: unknown) => {
+        if (active)
+          setLoreError(describeError(error, "Entri lore gagal dimuat."));
+      })
+      .finally(() => {
+        if (active) setLoreEntriesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [loreRef, loreQuery, loreKind, loreEntriesOffset, loreReload]);
+
+  useEffect(() => {
+    if (!loreRef || !loreLinksFor) {
+      setLoreLinkPage(null);
+      return;
+    }
+    let active = true;
+    setLoreLinkPage(null);
+    void listLoreLinks(loreRef, loreLinksFor, {
+      limit: 20,
+      offset: loreLinkOffset,
+    })
+      .then((page) => {
+        if (active) {
+          setLoreLinkPage(page);
+          setLoreError(null);
+        }
+      })
+      .catch((error: unknown) => {
+        if (active)
+          setLoreError(describeError(error, "Tautan lore gagal dimuat."));
+      });
+    return () => {
+      active = false;
+    };
+  }, [loreRef, loreLinksFor, loreLinkOffset, loreReload]);
 
   const current = draft;
   if (missing) {
@@ -192,6 +342,144 @@ export default function GameEditor({
   const patchFn = (updater: (d: GameDefinition) => Partial<GameDefinition>) => {
     setDraft((d) => (d ? { ...d, ...updater(d) } : d));
     setTouched(true);
+  };
+
+  const handleWorldMapText = (text: string) => {
+    setRaws((prev) => ({ ...prev, worldMap: text }));
+    setTouched(true);
+    if (!text.trim()) {
+      setWorldMapError(null);
+      setDraft((d) => {
+        if (!d) return d;
+        const next = { ...d };
+        delete next.worldMap;
+        delete next.startingLocationId;
+        return next;
+      });
+      return;
+    }
+    try {
+      const parsed: unknown = JSON.parse(text);
+      const worldMap = parseWorldMap(
+        parsed,
+        current.npcs.map((npc) => npc.id),
+      );
+      setWorldMapError(null);
+      setDraft((d) => (d ? { ...d, worldMap } : d));
+    } catch (error) {
+      setWorldMapError(describeError(error, "World map JSON tidak valid."));
+    }
+  };
+
+  const handleLorebookFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    stagedLoreFile.current = null;
+    setLoreImportStage(null);
+    setLoreImportError(null);
+    if (file.size > MAX_LOREBOOK_BYTES) {
+      setLoreImportError("File lorebook melebihi batas 8 MiB.");
+      return;
+    }
+    setLoreWorking(true);
+    try {
+      const parsed: unknown = JSON.parse(await file.text());
+      const pack = parseLorebookPack(parsed);
+      const result = await importLorebook(pack, true);
+      stagedLoreFile.current = file;
+      setLoreImportStage({
+        status: "dry-run",
+        fileName: file.name,
+        result,
+      });
+    } catch (error) {
+      setLoreImportError(
+        error instanceof LorebookValidationError
+          ? error.problems.join(" ")
+          : describeError(error, "Lorebook gagal divalidasi."),
+      );
+    } finally {
+      setLoreWorking(false);
+    }
+  };
+
+  const handlePublishLorebook = async () => {
+    const file = stagedLoreFile.current;
+    if (!file || loreImportStage?.status !== "dry-run") return;
+    setLoreWorking(true);
+    setLoreImportError(null);
+    try {
+      const parsed: unknown = JSON.parse(await file.text());
+      const result = await importLorebook(parseLorebookPack(parsed), false);
+      setLoreImportStage({
+        status: "published",
+        fileName: file.name,
+        result,
+      });
+      stagedLoreFile.current = null;
+      setLoreRef({ packId: result.pack.id, version: result.pack.version });
+      setLoreEntriesOffset(0);
+      setLorebookOffset(0);
+      setLoreReload((value) => value + 1);
+    } catch (error) {
+      setLoreImportError(
+        error instanceof LorebookValidationError
+          ? error.problems.join(" ")
+          : describeError(error, "Lorebook gagal diterbitkan."),
+      );
+    } finally {
+      setLoreWorking(false);
+    }
+  };
+
+  const handlePreviewLore = async () => {
+    setLorePreviewError(null);
+    if (worldMapError) {
+      setLorePreviewError(
+        `Perbaiki world map sebelum preview: ${worldMapError}`,
+      );
+      return;
+    }
+    setLoreWorking(true);
+    const locationId = (
+      lorePreviewLocationId ?? current.startingLocationId
+    )?.trim();
+    try {
+      setLorePreview(
+        await previewLore(current, {
+          ...(locationId ? { locationId } : {}),
+          ...(lorePreviewQuery.trim()
+            ? { query: lorePreviewQuery.trim() }
+            : {}),
+        }),
+      );
+    } catch (error) {
+      setLorePreview(null);
+      setLorePreviewError(describeError(error, "Preview lore gagal."));
+    } finally {
+      setLoreWorking(false);
+    }
+  };
+
+  const handleExportLorebook = async () => {
+    if (!loreRef) return;
+    setLoreError(null);
+    try {
+      const pack = await exportLorebook(loreRef);
+      const url = URL.createObjectURL(
+        new Blob([JSON.stringify(pack, null, 2)], {
+          type: "application/json",
+        }),
+      );
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `lorebook-${loreRef.packId}-v${loreRef.version}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setLoreError(describeError(error, "Ekspor lorebook gagal."));
+    }
   };
 
   const patchAttribute = (
@@ -296,7 +584,10 @@ export default function GameEditor({
     try {
       const next = { ...current, updatedAt: new Date().toISOString() };
       const sessions = revision === null ? [] : await listSessions(gameId);
-      const allErrors = [...validateDefinition(next)];
+      const allErrors = [
+        ...(worldMapError ? [`World map: ${worldMapError}`] : []),
+        ...validateDefinition(next),
+      ];
       if (sessions.length > 0) {
         allErrors.push(...validateDefinitionUpdate(original, next));
       }
@@ -326,13 +617,11 @@ export default function GameEditor({
             "Versi server dimuat ulang. Draft lokal tetap tersimpan di editor; tinjau sebelum menyimpan lagi.",
           );
         } catch {
-          setSaveNote(error.message);
+          setSaveNote(describeError(error, "Gagal menyimpan definisi."));
         }
         return false;
       }
-      setSaveNote(
-        error instanceof Error ? error.message : "Gagal menyimpan definisi.",
-      );
+      setSaveNote(describeError(error, "Gagal menyimpan definisi."));
       return false;
     } finally {
       setWorking(false);
@@ -344,6 +633,7 @@ export default function GameEditor({
     setSaveNote(null);
     try {
       const definitionErrors = [
+        ...(worldMapError ? [`World map: ${worldMapError}`] : []),
         ...validateDefinition(current),
         ...validatePlayability(current),
       ];
@@ -372,18 +662,17 @@ export default function GameEditor({
             "Versi server dimuat ulang. Draft lokal tetap tersimpan; tinjau sebelum mencoba lagi.",
           );
         } catch {
-          setSaveNote(error.message);
+          setSaveNote(describeError(error, "Gagal menyimpan definisi."));
         }
       }
-      setErrors([
-        error instanceof Error ? error.message : "Gagal memulai permainan.",
-      ]);
+      setErrors([describeError(error, "Gagal memulai permainan.")]);
     } finally {
       setWorking(false);
     }
   };
 
   const playable =
+    worldMapError === null &&
     validateDefinition(current).length === 0 &&
     validatePlayability(current).length === 0;
 
@@ -465,6 +754,13 @@ export default function GameEditor({
       ...draftNow,
       ...structuredClone(templateReview.draft),
     });
+    setRaws((previous) => {
+      const next = { ...previous };
+      delete next.worldMap;
+      delete next.startingLocationId;
+      return next;
+    });
+    setWorldMapError(null);
     setTouched(true);
     setTemplateReview(null);
     setSaveNote("Template diterapkan ke draft; belum disimpan.");
@@ -638,6 +934,442 @@ export default function GameEditor({
             }
           />
         </label>
+      </details>
+
+      <details className="card">
+        <summary>Katalog dunia</summary>
+        <p className="hint">
+          Masukkan katalog kecil yang tervalidasi. ID lokasi awal harus cocok
+          persis dengan ID pada peta atau lorebook yang dipin.
+        </p>
+        <label>
+          World map JSON
+          <textarea
+            rows={10}
+            value={
+              raws.worldMap ??
+              (current.worldMap
+                ? JSON.stringify(current.worldMap, null, 2)
+                : "")
+            }
+            onChange={(event) => handleWorldMapText(event.target.value)}
+            spellCheck={false}
+          />
+        </label>
+        {worldMapError && (
+          <p className="error" role="alert">
+            {worldMapError}
+          </p>
+        )}
+        <label>
+          Lokasi awal (ID persis)
+          <input
+            list="world-location-ids"
+            value={raws.startingLocationId ?? current.startingLocationId ?? ""}
+            onChange={(event) => {
+              const value = event.target.value;
+              setRaws((prev) => ({ ...prev, startingLocationId: value }));
+              setDraft((d) => {
+                if (!d) return d;
+                const next = { ...d };
+                if (value === "") delete next.startingLocationId;
+                else next.startingLocationId = value;
+                return next;
+              });
+              setTouched(true);
+            }}
+          />
+        </label>
+        <datalist id="world-location-ids">
+          {current.worldMap?.locations.map((location) => (
+            <option key={location.id} value={location.id}>
+              {location.name}
+            </option>
+          ))}
+          {loreEntriesPage?.entries
+            .filter(
+              (entry) => entry.kind === "location" || entry.kind === "place",
+            )
+            .map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {entry.name}
+              </option>
+            ))}
+        </datalist>
+      </details>
+
+      <details className="card">
+        <summary>Lorebook</summary>
+        <p className="hint">
+          Pack dicoba dahulu tanpa menulis. Pencarian menampilkan halaman entri
+          publik; ekspor pack adalah akses pembuat yang terpisah.
+        </p>
+        <label className="button">
+          Impor JSON lorebook (maks. 8 MiB)
+          <input
+            type="file"
+            accept="application/json,.json"
+            className="visually-hidden"
+            disabled={loreWorking}
+            onChange={(event) => void handleLorebookFile(event)}
+          />
+        </label>
+        {loreImportError && (
+          <p className="error" role="alert">
+            {loreImportError}
+          </p>
+        )}
+        {loreImportStage && (
+          <section className="entity" aria-label="Hasil impor lorebook">
+            <h3>{loreImportStage.result.pack.name}</h3>
+            <p className="hint">
+              {loreImportStage.result.pack.id} v
+              {loreImportStage.result.pack.version} ·{" "}
+              {loreImportStage.result.entries} entri ·{" "}
+              {loreImportStage.result.links} tautan · digest{" "}
+              {loreImportStage.result.digest}
+            </p>
+            <p role="status">
+              {loreImportStage.status === "dry-run"
+                ? `Validasi tanpa penulisan berhasil untuk ${loreImportStage.fileName}.`
+                : `Pack ${loreImportStage.result.pack.id} v${loreImportStage.result.pack.version} telah diterbitkan.`}
+            </p>
+            {loreImportStage.status === "dry-run" && (
+              <button
+                type="button"
+                className="primary"
+                disabled={loreWorking}
+                onClick={() => void handlePublishLorebook()}
+              >
+                Terbitkan pack tervalidasi
+              </button>
+            )}
+          </section>
+        )}
+
+        <h3>Versi pack tersimpan</h3>
+        {loreError && (
+          <p className="error" role="alert">
+            {loreError}
+          </p>
+        )}
+        {lorebookLoading && <p role="status">Memuat daftar pack…</p>}
+        {lorebookPage?.packs.length === 0 && (
+          <p className="hint">Belum ada lorebook yang diterbitkan.</p>
+        )}
+        {lorebookPage?.packs.map((pack) => (
+          <article key={`${pack.id}@${pack.version}`} className="entity">
+            <h4>{pack.name}</h4>
+            <p className="hint">
+              {pack.id} v{pack.version} · {pack.entryCount} entri ·{" "}
+              {pack.linkCount} tautan
+            </p>
+            {pack.description && <p>{pack.description}</p>}
+            <button
+              type="button"
+              onClick={() => {
+                setLoreRef({ packId: pack.id, version: pack.version });
+                setLoreEntriesOffset(0);
+                setLoreQuery("");
+                setLoreKind("");
+                setLoreError(null);
+              }}
+            >
+              Telusuri versi ini
+            </button>
+          </article>
+        ))}
+        <div className="row">
+          <button
+            type="button"
+            disabled={lorebookLoading || lorebookOffset === 0}
+            onClick={() =>
+              setLorebookOffset((value) => Math.max(0, value - 20))
+            }
+          >
+            Pack sebelumnya
+          </button>
+          <span className="hint">
+            {lorebookPage
+              ? `${Math.min(lorebookOffset + 1, lorebookPage.total)}–${Math.min(lorebookOffset + lorebookPage.packs.length, lorebookPage.total)} dari ${lorebookPage.total}`
+              : "Daftar pack belum dimuat"}
+          </span>
+          <button
+            type="button"
+            disabled={
+              lorebookLoading ||
+              !lorebookPage ||
+              lorebookOffset + lorebookPage.packs.length >= lorebookPage.total
+            }
+            onClick={() => setLorebookOffset((value) => value + 20)}
+          >
+            Pack berikutnya
+          </button>
+        </div>
+
+        <h3>Pin persis pada draft</h3>
+        {(current.lorebookRefs ?? []).length === 0 ? (
+          <p className="hint">Belum ada versi lorebook yang dipin.</p>
+        ) : (
+          <ul>
+            {current.lorebookRefs?.map((ref) => (
+              <li key={`${ref.packId}@${ref.version}`}>
+                {ref.packId} v{ref.version}{" "}
+                <button
+                  type="button"
+                  onClick={() =>
+                    patchFn((d) => ({
+                      lorebookRefs: (d.lorebookRefs ?? []).filter(
+                        (entry) =>
+                          entry.packId !== ref.packId ||
+                          entry.version !== ref.version,
+                      ),
+                    }))
+                  }
+                >
+                  Lepas pin
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {loreRef && (
+          <div className="card">
+            <h3>
+              Jelajahi {loreRef.packId} v{loreRef.version}
+            </h3>
+            <div className="row">
+              <button
+                type="button"
+                disabled={(current.lorebookRefs ?? []).some(
+                  (ref) =>
+                    ref.packId === loreRef.packId &&
+                    ref.version === loreRef.version,
+                )}
+                onClick={() =>
+                  patchFn((d) => ({
+                    lorebookRefs: [
+                      ...(d.lorebookRefs ?? []),
+                      { packId: loreRef.packId, version: loreRef.version },
+                    ],
+                  }))
+                }
+              >
+                Pin versi persis ini
+              </button>
+              <button type="button" onClick={() => void handleExportLorebook()}>
+                Ekspor pack pembuat
+              </button>
+            </div>
+            <label>
+              Cari entri
+              <input
+                type="search"
+                maxLength={512}
+                value={loreQuery}
+                onChange={(event) => {
+                  setLoreQuery(event.target.value);
+                  setLoreEntriesOffset(0);
+                }}
+              />
+            </label>
+            <label>
+              Jenis entri
+              <select
+                value={loreKind}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setLoreKind(LORE_KINDS.find((kind) => kind === value) ?? "");
+                  setLoreEntriesOffset(0);
+                }}
+              >
+                <option value="">Semua jenis</option>
+                {LORE_KINDS.map((kind) => (
+                  <option key={kind} value={kind}>
+                    {kind}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {loreEntriesLoading && <p role="status">Memuat entri lore…</p>}
+            {loreEntriesPage?.entries.length === 0 && (
+              <p className="hint">Tidak ada entri publik yang cocok.</p>
+            )}
+            {loreEntriesPage?.entries.map((entry) => (
+              <article key={entry.id} className="entity">
+                <h4>{entry.name}</h4>
+                <p className="hint">
+                  {entry.id} · {entry.kind} · {entry.visibility}
+                </p>
+                {entry.summary && <p>{entry.summary}</p>}
+                <p className="hint">
+                  Sumber: {entry.provenance.sourceId}
+                  {entry.provenance.license
+                    ? ` · lisensi ${entry.provenance.license}`
+                    : ""}
+                  {entry.provenance.canon
+                    ? ` · canon ${entry.provenance.canon}`
+                    : ""}
+                  {entry.provenance.sourceUrl
+                    ? ` · ${entry.provenance.sourceUrl}`
+                    : ""}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoreLinksFor(entry.id);
+                    setLoreLinkOffset(0);
+                  }}
+                >
+                  Lihat tautan terkait
+                </button>
+                {loreLinksFor === entry.id && loreLinkPage && (
+                  <div>
+                    {loreLinkPage.links.length === 0 && (
+                      <p className="hint">Tidak ada tautan publik.</p>
+                    )}
+                    <ul>
+                      {loreLinkPage.links.map((link, index) => (
+                        <li
+                          key={`${link.fromId}:${link.toId}:${link.relation}:${index}`}
+                        >
+                          {link.fromId} — {link.relation} — {link.toId}
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="row">
+                      <button
+                        type="button"
+                        disabled={loreLinkOffset === 0}
+                        onClick={() =>
+                          setLoreLinkOffset((value) => Math.max(0, value - 20))
+                        }
+                      >
+                        Tautan sebelumnya
+                      </button>
+                      <span className="hint">
+                        {loreLinkPage.total} tautan publik
+                      </span>
+                      <button
+                        type="button"
+                        disabled={
+                          loreLinkOffset + loreLinkPage.links.length >=
+                          loreLinkPage.total
+                        }
+                        onClick={() => setLoreLinkOffset((value) => value + 20)}
+                      >
+                        Tautan berikutnya
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </article>
+            ))}
+            <div className="row">
+              <button
+                type="button"
+                disabled={loreEntriesLoading || loreEntriesOffset === 0}
+                onClick={() =>
+                  setLoreEntriesOffset((value) => Math.max(0, value - 20))
+                }
+              >
+                Entri sebelumnya
+              </button>
+              <span className="hint">
+                {loreEntriesPage
+                  ? `${Math.min(loreEntriesOffset + 1, loreEntriesPage.total)}–${Math.min(loreEntriesOffset + loreEntriesPage.entries.length, loreEntriesPage.total)} dari ${loreEntriesPage.total}`
+                  : "Entri belum dimuat"}
+              </span>
+              <button
+                type="button"
+                disabled={
+                  loreEntriesLoading ||
+                  !loreEntriesPage ||
+                  loreEntriesOffset + loreEntriesPage.entries.length >=
+                    loreEntriesPage.total
+                }
+                onClick={() => setLoreEntriesOffset((value) => value + 20)}
+              >
+                Entri berikutnya
+              </button>
+            </div>
+          </div>
+        )}
+
+        <h3>Preview draft</h3>
+        <label>
+          Lokasi preview (ID persis, kosong = semua lokasi)
+          <input
+            list="world-location-ids"
+            value={lorePreviewLocationId ?? current.startingLocationId ?? ""}
+            onChange={(event) => setLorePreviewLocationId(event.target.value)}
+          />
+        </label>
+        <label>
+          Kata kunci tambahan (opsional)
+          <input
+            maxLength={512}
+            value={lorePreviewQuery}
+            onChange={(event) => setLorePreviewQuery(event.target.value)}
+          />
+        </label>
+        <button
+          type="button"
+          disabled={loreWorking}
+          onClick={() => void handlePreviewLore()}
+        >
+          Preview lore di lokasi terpilih
+        </button>
+        {lorePreviewError && (
+          <p className="error" role="alert">
+            {lorePreviewError}
+          </p>
+        )}
+        {lorePreview && (
+          <section className="entity" aria-label="Hasil preview lore">
+            <p role="status">
+              {lorePreview.entries.length} entri ditampilkan ·{" "}
+              {lorePreview.activeNpcIds.length} NPC aktif di lokasi
+              {lorePreview.locationId
+                ? ` ${lorePreview.locationId}`
+                : " (lokasi belum ditentukan)"}
+              {lorePreview.omitted.length
+                ? ` · ${lorePreview.omitted.length} pemberitahuan batas`
+                : ""}
+            </p>
+            {lorePreview.activeNpcIds.length > 0 && (
+              <p className="hint">
+                NPC aktif: {lorePreview.activeNpcIds.join(", ")}
+              </p>
+            )}
+            {lorePreview.omitted.map((omission) => (
+              <p key={omission} className="hint">
+                {omission}
+              </p>
+            ))}
+            {lorePreview.entries.map((entry) => (
+              <article key={entry.id} className="entity">
+                <h4>{entry.name}</h4>
+                <p className="hint">
+                  {entry.id} · {entry.kind}
+                </p>
+                {entry.summary && <p>{entry.summary}</p>}
+                <p className="hint">
+                  Sumber: {entry.provenance.sourceId}
+                  {entry.provenance.license
+                    ? ` · lisensi ${entry.provenance.license}`
+                    : ""}
+                  {entry.provenance.canon
+                    ? ` · canon ${entry.provenance.canon}`
+                    : ""}
+                  {entry.provenance.sourceUrl
+                    ? ` · ${entry.provenance.sourceUrl}`
+                    : ""}
+                </p>
+              </article>
+            ))}
+          </section>
+        )}
       </details>
 
       <details className="card">
@@ -1163,7 +1895,7 @@ export default function GameEditor({
                             item.effects,
                             effectIndex,
                             defaultEffect(
-                              event.target.value as ItemEffect["type"],
+                              event.target.value as EditableItemEffectType,
                               current,
                             ),
                           ),

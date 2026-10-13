@@ -693,7 +693,7 @@ export async function requestChoices(
     const budget: RepairBudget = { used: 0 };
 
     const prompt =
-      `${context}\n\nBerikan 3 sampai 5 pilihan tindakan untuk pemain saat ini. ` +
+      `${context}\n\nBerikan 0 sampai 3 pilihan tindakan yang berguna untuk pemain saat ini. ` +
       `Isi field choices dengan object {"id": "...", "label": "..."}. ` +
       `Jangan ubah state: effects harus array kosong. Jangan meminta check.\n\n${CONTRACT_HINT}`;
     const step = await requestStep(settings, prompt, llmOptions, budget);
@@ -708,9 +708,6 @@ export async function requestChoices(
         ok: false,
         error: "Choices request tidak boleh mengubah state.",
       };
-    }
-    if (step.response.choices.length === 0) {
-      return { ok: false, error: "Model tidak memberikan pilihan." };
     }
     return {
       ok: true,

@@ -1,15 +1,18 @@
 import {
   EXPORT_FORMAT,
   EXPORT_VERSION,
+  EXPORT_VERSION_WITH_LORE,
   PLAYER_ID,
   type CheckRecord,
   type ExportBundle,
   type GameDefinition,
   type GameSession,
   type ItemEffect,
+  type LoreDependency,
   type Message,
   type SessionState,
 } from "./types.js";
+import { sceneParticipants, validateWorldMap } from "./world.js";
 function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -39,6 +42,10 @@ const EFFECT_TYPES: Record<string, true> = {
   REMOVE_ITEM: true,
   ADD_FACT: true,
   REMOVE_FACT: true,
+  DISCOVER_LORE: true,
+  REVEAL_FACT: true,
+  SET_FLAG: true,
+  NPC_PRESENCE: true,
 };
 
 const EFFECT_OPERATIONS: Record<string, true> = {
@@ -46,9 +53,86 @@ const EFFECT_OPERATIONS: Record<string, true> = {
   SUBTRACT: true,
   SET: true,
 };
+const MAX_LOREBOOK_REFS = 8;
+const SAFE_REFERENCE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const SAFE_LORE_ID =
+  /^[A-Za-z0-9][A-Za-z0-9_-]{0,31}:[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+
+function validateLorebookRefs(raw: unknown, label: string): string[] {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw)) return [`${label} must be an array.`];
+  const errors: string[] = [];
+  if (raw.length > MAX_LOREBOOK_REFS) {
+    errors.push(`${label} exceeds ${MAX_LOREBOOK_REFS} references.`);
+  }
+  const seen = new Set<string>();
+  raw.forEach((value, index) => {
+    if (!isObject(value)) {
+      errors.push(`${label}[${index}] must be an object.`);
+      return;
+    }
+    if (
+      typeof value.packId !== "string" ||
+      !SAFE_REFERENCE_ID.test(value.packId) ||
+      DANGEROUS_KEYS.has(value.packId.toLowerCase())
+    ) {
+      errors.push(`${label}[${index}].packId is unsafe or invalid.`);
+    }
+    if (
+      typeof value.version !== "number" ||
+      !Number.isSafeInteger(value.version) ||
+      value.version < 1
+    ) {
+      errors.push(
+        `${label}[${index}].version must be a positive safe integer.`,
+      );
+    }
+    if (typeof value.packId === "string" && typeof value.version === "number") {
+      const key = `${value.packId}\\u0000${value.version}`;
+      if (seen.has(key))
+        errors.push(`${label} contains a duplicate reference.`);
+      seen.add(key);
+    }
+    if (
+      Object.keys(value).some((key) => key !== "packId" && key !== "version")
+    ) {
+      errors.push(`${label}[${index}] contains unsupported fields.`);
+    }
+  });
+  return errors;
+}
+function isSafeReferenceId(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    SAFE_REFERENCE_ID.test(value) &&
+    !DANGEROUS_KEYS.has(value.toLowerCase())
+  );
+}
+
+function sameLorebookRefs(left: unknown, right: unknown): boolean {
+  const normalize = (value: unknown): string[] | undefined => {
+    if (value === undefined) return [];
+    if (!Array.isArray(value) || value.some((entry) => !isObject(entry))) {
+      return undefined;
+    }
+    return value
+      .map((entry) => `${String(entry.packId)}\\u0000${String(entry.version)}`)
+      .sort();
+  };
+  const leftKeys = normalize(left);
+  const rightKeys = normalize(right);
+  return (
+    leftKeys !== undefined &&
+    rightKeys !== undefined &&
+    JSON.stringify(leftKeys) === JSON.stringify(rightKeys)
+  );
+}
 
 export function validateDefinition(game: GameDefinition): string[] {
   const errors: string[] = [];
+  if (hasDangerousKeysDeep(game)) {
+    errors.push("Game mengandung key berbahaya.");
+  }
   if (typeof game.id !== "string" || !game.id.trim()) {
     errors.push("Game harus memiliki id string tidak kosong.");
   }
@@ -119,6 +203,38 @@ export function validateDefinition(game: GameDefinition): string[] {
     game.npcs.map((n) => n.id),
     "npcs",
   );
+  errors.push(...validateLorebookRefs(game.lorebookRefs, "lorebookRefs"));
+  const hasLoreRefs =
+    Array.isArray(game.lorebookRefs) && game.lorebookRefs.length > 0;
+  if (game.worldMap !== undefined) {
+    errors.push(...validateWorldMap(game.worldMap, [...npcIds]));
+  }
+  if (game.startingLocationId !== undefined) {
+    if (!isSafeReferenceId(game.startingLocationId)) {
+      errors.push("startingLocationId is unsafe or invalid.");
+    } else if (game.worldMap === undefined && !hasLoreRefs) {
+      errors.push(
+        "startingLocationId requires a worldMap or bound lorebookRefs.",
+      );
+    } else if (
+      isObject(game.worldMap) &&
+      Array.isArray(game.worldMap.locations) &&
+      !game.worldMap.locations.some(
+        (location) =>
+          isObject(location) && location.id === game.startingLocationId,
+      ) &&
+      !hasLoreRefs
+    ) {
+      errors.push("startingLocationId is not present in worldMap.");
+    }
+  } else if (
+    isObject(game.worldMap) &&
+    Array.isArray(game.worldMap.locations) &&
+    game.worldMap.locations.length > 0 &&
+    !hasLoreRefs
+  ) {
+    errors.push("A standalone worldMap requires startingLocationId.");
+  }
 
   for (const attribute of game.attributes) {
     if (typeof attribute.name !== "string")
@@ -196,62 +312,83 @@ export function validateDefinition(game: GameDefinition): string[] {
     }
   }
   for (const item of game.items) {
-    if (typeof item.name !== "string")
+    if (typeof item.name !== "string") {
       errors.push(`items "${item.id}": name harus string.`);
-    if (typeof item.stackable !== "boolean")
+    }
+    if (typeof item.stackable !== "boolean") {
       errors.push(`items "${item.id}": stackable harus boolean.`);
-    if (typeof item.consumable !== "boolean")
+    }
+    if (typeof item.consumable !== "boolean") {
       errors.push(`items "${item.id}": consumable harus boolean.`);
-    if (!Array.isArray(item.effects))
+    }
+    if (!Array.isArray(item.effects)) {
       errors.push(`items "${item.id}": effects harus array.`);
-    if (!Array.isArray(item.tags))
+    }
+    if (!Array.isArray(item.tags)) {
       errors.push(`items "${item.id}": tags harus array.`);
+    }
     if (
       item.maxStack !== undefined &&
       (!Number.isInteger(item.maxStack) || item.maxStack < 1)
     ) {
       errors.push(`items "${item.id}": maxStack harus integer >= 1.`);
     }
+    if (!Array.isArray(item.effects)) continue;
     item.effects.forEach((effect, effectIndex) => {
       const spot = `items "${item.id}" effects[${effectIndex}]`;
-      if (!isObject(effect) || !(String(effect.type) in EFFECT_TYPES)) {
+      if (
+        !isObject(effect) ||
+        typeof effect.type !== "string" ||
+        !Object.hasOwn(EFFECT_TYPES, effect.type)
+      ) {
         errors.push(`${spot}: type effect tidak dikenal.`);
         return;
       }
+      const type = effect.type;
+      const allowedEffectFields = EFFECT_FIELDS_BY_TYPE[type];
       if (
-        "operation" in effect &&
-        (typeof effect.operation !== "string" ||
-          !(effect.operation in EFFECT_OPERATIONS))
+        Object.keys(effect).some(
+          (field) => !allowedEffectFields.includes(field),
+        )
       ) {
-        errors.push(`${spot}: operation harus ADD, SUBTRACT, atau SET.`);
+        errors.push(`${spot}: effect contains unsupported fields.`);
       }
-      if ("value" in effect && !Number.isFinite(effect.value)) {
-        errors.push(`${spot}: value harus angka finite.`);
-      }
-      if (effect.type === "RELATIONSHIP_CHANGE") {
-        if (typeof effect.npcId !== "string" || !npcIds.has(effect.npcId)) {
-          errors.push(
-            `${spot}: RELATIONSHIP_CHANGE membutuhkan npcId NPC yang dikenal.`,
-          );
+      if (
+        type === "ATTRIBUTE_CHANGE" ||
+        type === "RESOURCE_CHANGE" ||
+        type === "RELATIONSHIP_CHANGE"
+      ) {
+        if (
+          typeof effect.operation !== "string" ||
+          !Object.hasOwn(EFFECT_OPERATIONS, effect.operation)
+        ) {
+          errors.push(`${spot}: operation harus ADD, SUBTRACT, atau SET.`);
+        }
+        if (
+          typeof effect.value !== "number" ||
+          !Number.isFinite(effect.value)
+        ) {
+          errors.push(`${spot}: value harus angka finite.`);
         }
       }
-      if (effect.type === "ADD_FACT") {
-        if (typeof effect.text !== "string" || !effect.text.trim()) {
-          errors.push(`${spot}: teks fakta tidak boleh kosong.`);
-        }
+      if (type === "RELATIONSHIP_CHANGE" && !npcIds.has(String(effect.npcId))) {
+        errors.push(
+          `${spot}: RELATIONSHIP_CHANGE membutuhkan npcId NPC yang dikenal.`,
+        );
       }
-      if (effect.type === "REMOVE_FACT") {
-        if (typeof effect.target !== "string" || !effect.target.trim()) {
-          errors.push(`${spot}: target fakta tidak boleh kosong.`);
-        }
-      }
-      if ("target" in effect && effect.type !== "REMOVE_FACT") {
+      if (
+        type === "ATTRIBUTE_CHANGE" ||
+        type === "RESOURCE_CHANGE" ||
+        type === "RELATIONSHIP_CHANGE" ||
+        type === "ADD_ITEM" ||
+        type === "REMOVE_ITEM"
+      ) {
         const pool =
-          effect.type === "ATTRIBUTE_CHANGE"
+          type === "ATTRIBUTE_CHANGE"
             ? attributeIds
-            : effect.type === "RESOURCE_CHANGE"
+            : type === "RESOURCE_CHANGE"
               ? resourceIds
-              : effect.type === "RELATIONSHIP_CHANGE"
+              : type === "RELATIONSHIP_CHANGE"
                 ? relationshipIds
                 : itemIds;
         if (typeof effect.target !== "string" || !pool.has(effect.target)) {
@@ -260,11 +397,87 @@ export function validateDefinition(game: GameDefinition): string[] {
           );
         }
       }
+      if (type === "ADD_ITEM" || type === "REMOVE_ITEM") {
+        if (!Number.isInteger(effect.quantity) || Number(effect.quantity) < 1) {
+          errors.push(`${spot}: quantity harus integer >= 1.`);
+        }
+      }
+      if (type === "ADD_FACT") {
+        if (typeof effect.text !== "string" || !effect.text.trim()) {
+          errors.push(`${spot}: teks fakta tidak boleh kosong.`);
+        }
+        if (
+          effect.visibility !== undefined &&
+          effect.visibility !== "public" &&
+          effect.visibility !== "private"
+        ) {
+          errors.push(`${spot}: visibility harus public atau private.`);
+        }
+        for (const field of ["knownBy", "revealableTo"] as const) {
+          const recipients = effect[field];
+          if (
+            recipients !== undefined &&
+            (!Array.isArray(recipients) ||
+              recipients.some(
+                (id) =>
+                  typeof id !== "string" ||
+                  (id !== PLAYER_ID && !npcIds.has(id)),
+              ))
+          ) {
+            errors.push(`${spot}: ${field} merujuk penerima tidak dikenal.`);
+          }
+        }
+      }
       if (
-        "quantity" in effect &&
-        (!Number.isInteger(effect.quantity) || effect.quantity < 1)
+        type === "REMOVE_FACT" &&
+        (typeof effect.target !== "string" || !effect.target.trim())
       ) {
-        errors.push(`${spot}: quantity harus integer >= 1.`);
+        errors.push(`${spot}: target fakta tidak boleh kosong.`);
+      }
+      if (type === "DISCOVER_LORE") {
+        if (
+          typeof effect.loreId !== "string" ||
+          !SAFE_LORE_ID.test(effect.loreId)
+        ) {
+          errors.push(`${spot}: loreId harus berupa ID namespaced yang aman.`);
+        }
+        if (!hasLoreRefs)
+          errors.push(`${spot}: DISCOVER_LORE membutuhkan lorebookRefs.`);
+      }
+      if (type === "REVEAL_FACT") {
+        if (typeof effect.factId !== "string" || !effect.factId.trim()) {
+          errors.push(`${spot}: factId tidak boleh kosong.`);
+        }
+        if (
+          typeof effect.npcId !== "string" ||
+          (effect.npcId !== PLAYER_ID && !npcIds.has(effect.npcId))
+        ) {
+          errors.push(
+            `${spot}: REVEAL_FACT membutuhkan penerima yang dikenal.`,
+          );
+        }
+      }
+      if (type === "SET_FLAG") {
+        if (typeof effect.target !== "string" || !effect.target.trim()) {
+          errors.push(`${spot}: target flag tidak boleh kosong.`);
+        } else if (
+          !isObject(game.worldMap?.flags) ||
+          !Object.hasOwn(game.worldMap.flags, effect.target)
+        ) {
+          errors.push(`${spot}: flag "${effect.target}" tidak dideklarasikan.`);
+        }
+        if (typeof effect.value !== "boolean") {
+          errors.push(`${spot}: SET_FLAG value harus boolean.`);
+        }
+      }
+      if (
+        type === "NPC_PRESENCE" &&
+        (typeof effect.npcId !== "string" || !npcIds.has(effect.npcId))
+      ) {
+        errors.push(`${spot}: NPC_PRESENCE membutuhkan NPC yang dikenal.`);
+      }
+      if (type === "NPC_PRESENCE" && typeof effect.present !== "boolean") {
+        errors.push(`${spot}: NPC_PRESENCE present harus boolean.`);
       }
     });
   }
@@ -440,6 +653,9 @@ const GAME_FIELDS = [
   "player",
   "npcs",
   "startingInventory",
+  "worldMap",
+  "startingLocationId",
+  "lorebookRefs",
   "updatedAt",
 ] as const;
 
@@ -516,8 +732,12 @@ const EFFECT_FIELDS_BY_TYPE: Record<string, readonly string[]> = {
   RELATIONSHIP_CHANGE: ["type", "target", "npcId", "operation", "value"],
   ADD_ITEM: ["type", "target", "quantity"],
   REMOVE_ITEM: ["type", "target", "quantity"],
-  ADD_FACT: ["type", "text"],
+  ADD_FACT: ["type", "text", "visibility", "knownBy", "revealableTo"],
   REMOVE_FACT: ["type", "target"],
+  DISCOVER_LORE: ["type", "loreId"],
+  REVEAL_FACT: ["type", "factId", "npcId"],
+  SET_FLAG: ["type", "target", "value"],
+  NPC_PRESENCE: ["type", "npcId", "present"],
 };
 
 function pickFields(
@@ -529,6 +749,41 @@ function pickFields(
     if (key in source) result[key] = source[key];
   }
   return result;
+}
+function pickWorldMap(raw: unknown): unknown {
+  if (!isObject(raw)) return raw;
+  const map = pickFields(raw, ["locations", "connections", "flags"]);
+  if (Array.isArray(raw.locations)) {
+    map.locations = raw.locations.map((location) =>
+      isObject(location)
+        ? pickFields(location, [
+            "id",
+            "name",
+            "aliases",
+            "summary",
+            "parentId",
+            "npcIds",
+            "requiredFlag",
+          ])
+        : location,
+    );
+  }
+  if (Array.isArray(raw.connections)) {
+    map.connections = raw.connections.map((connection) =>
+      isObject(connection)
+        ? pickFields(connection, ["fromId", "toId", "blockedByFlag"])
+        : connection,
+    );
+  }
+  if (isObject(raw.flags)) map.flags = raw.flags;
+  return map;
+}
+
+function pickLorebookRefs(raw: unknown): unknown {
+  if (!Array.isArray(raw)) return raw;
+  return raw.map((ref) =>
+    isObject(ref) ? pickFields(ref, ["packId", "version"]) : ref,
+  );
 }
 
 function pickNumberRecord(raw: unknown): Record<string, number> {
@@ -564,6 +819,10 @@ function pickEffects(raw: unknown): ItemEffect[] {
 export function pickGameDefinition(raw: unknown): GameDefinition {
   if (!isObject(raw)) throw new Error("Game bukan object.");
   const game = pickFields(raw, GAME_FIELDS);
+  if ("worldMap" in raw) game.worldMap = pickWorldMap(raw.worldMap);
+  if ("lorebookRefs" in raw) {
+    game.lorebookRefs = pickLorebookRefs(raw.lorebookRefs);
+  }
   if (isObject(raw.scenario)) {
     game.scenario = pickFields(raw.scenario, SCENARIO_FIELDS);
   }
@@ -627,6 +886,24 @@ export function pickGameDefinition(raw: unknown): GameDefinition {
 
 function pickSessionState(raw: unknown): SessionState {
   const state = raw as SessionState; // collectSessionProblems memvalidasi shape.
+  const world: SessionState["world"] = {
+    location: state.world.location,
+    time: state.world.time,
+    scene: state.world.scene,
+    activeCharacters: [...state.world.activeCharacters],
+  };
+  if (state.world.locationId !== undefined) {
+    world.locationId = state.world.locationId;
+  }
+  if (state.world.flags !== undefined) {
+    world.flags = structuredClone(state.world.flags);
+  }
+  if (state.world.discoveredLoreIds !== undefined) {
+    world.discoveredLoreIds = [...state.world.discoveredLoreIds];
+  }
+  if (state.world.npcPresence !== undefined) {
+    world.npcPresence = { ...state.world.npcPresence };
+  }
   return {
     attributes: pickNumberRecord(state.attributes),
     resources: pickNumberRecord(state.resources),
@@ -638,20 +915,21 @@ function pickSessionState(raw: unknown): SessionState {
       npcId: rel.npcId,
       values: pickNumberRecord(rel.values),
     })),
-    facts: state.facts.map((fact) => ({
-      id: fact.id,
-      text: fact.text,
-      visibility: fact.visibility,
-      knownBy: [...fact.knownBy],
-      createdAt: fact.createdAt,
-      source: fact.source,
-    })),
-    world: {
-      location: state.world.location,
-      time: state.world.time,
-      scene: state.world.scene,
-      activeCharacters: [...state.world.activeCharacters],
-    },
+    facts: state.facts.map((fact) => {
+      const next = {
+        id: fact.id,
+        text: fact.text,
+        visibility: fact.visibility,
+        knownBy: [...fact.knownBy],
+        createdAt: fact.createdAt,
+        source: fact.source,
+      };
+      if (fact.revealableTo !== undefined) {
+        return { ...next, revealableTo: [...fact.revealableTo] };
+      }
+      return next;
+    }),
+    world,
   };
 }
 
@@ -695,6 +973,26 @@ function collectSessionProblems(
   const relationshipById = new Map(game.relationships.map((r) => [r.id, r]));
   const itemById = new Map(game.items.map((i) => [i.id, i]));
   const knownIds = new Set([PLAYER_ID, ...game.npcs.map((npc) => npc.id)]);
+  problems.push(
+    ...validateLorebookRefs(session.lorebookRefs, "session.lorebookRefs"),
+  );
+  if (!sameLorebookRefs(session.lorebookRefs, game.lorebookRefs)) {
+    problems.push(
+      "Session lorebookRefs do not match its immutable definition snapshot.",
+    );
+  }
+  if (game.worldMap !== undefined && session.worldMap === undefined) {
+    problems.push("Session is missing its pinned worldMap projection.");
+  }
+  if (session.worldMap !== undefined) {
+    problems.push(
+      ...validateWorldMap(
+        session.worldMap,
+        game.npcs.map((npc) => npc.id),
+      ),
+    );
+  }
+  const worldMap = session.worldMap ?? game.worldMap;
 
   const state = session.state;
   if (!isObject(state.attributes)) {
@@ -787,6 +1085,10 @@ function collectSessionProblems(
     problems.push("state.facts harus array.");
   } else {
     state.facts.forEach((fact, index) => {
+      if (!isObject(fact)) {
+        problems.push(`state.facts[${index}] harus object.`);
+        return;
+      }
       if (!isString(fact.id) || typeof fact.text !== "string") {
         problems.push(`state.facts[${index}] butuh id dan text string.`);
       }
@@ -795,12 +1097,18 @@ function collectSessionProblems(
           `state.facts[${index}] visibility harus public atau private.`,
         );
       }
-      if (!Array.isArray(fact.knownBy)) {
-        problems.push(`state.facts[${index}] knownBy harus array.`);
-      } else if (fact.knownBy.some((id) => !knownIds.has(id))) {
-        problems.push(
-          `state.facts[${index}] knownBy merujuk id tidak dikenal.`,
-        );
+      for (const field of ["knownBy", "revealableTo"] as const) {
+        const recipients = fact[field];
+        if (field === "revealableTo" && recipients === undefined) continue;
+        if (!Array.isArray(recipients)) {
+          problems.push(`state.facts[${index}] ${field} harus array.`);
+        } else if (
+          recipients.some((id) => typeof id !== "string" || !knownIds.has(id))
+        ) {
+          problems.push(
+            `state.facts[${index}] ${field} merujuk id tidak dikenal.`,
+          );
+        }
       }
       if (fact.source !== "config" && fact.source !== "story") {
         problems.push(`state.facts[${index}] source harus config atau story.`);
@@ -817,8 +1125,123 @@ function collectSessionProblems(
     }
     if (!Array.isArray(state.world.activeCharacters)) {
       problems.push("state.world.activeCharacters harus array.");
-    } else if (state.world.activeCharacters.some((id) => !knownIds.has(id))) {
-      problems.push("state.world.activeCharacters merujuk id tidak dikenal.");
+    } else {
+      if (state.world.activeCharacters.some((id) => !knownIds.has(id))) {
+        problems.push("state.world.activeCharacters merujuk id tidak dikenal.");
+      }
+      if (
+        new Set(state.world.activeCharacters).size !==
+        state.world.activeCharacters.length
+      ) {
+        problems.push(
+          "state.world.activeCharacters must not contain duplicates.",
+        );
+      }
+      if (worldMap) {
+        const locationId = state.world.locationId;
+        if (
+          typeof locationId !== "string" ||
+          !worldMap.locations.some((location) => location.id === locationId)
+        ) {
+          problems.push(
+            "state.world.locationId must identify a pinned map location.",
+          );
+        } else {
+          const location = worldMap.locations.find(
+            (entry) => entry.id === locationId,
+          );
+          if (
+            typeof state.world.location === "string" &&
+            location &&
+            state.world.location !== location.name
+          ) {
+            problems.push(
+              "state.world.location must match the pinned location name.",
+            );
+          }
+          const presence = isObject(state.world.npcPresence)
+            ? (state.world
+                .npcPresence as GameSession["state"]["world"]["npcPresence"])
+            : undefined;
+          const expectedParticipants = sceneParticipants(
+            worldMap,
+            locationId,
+            presence,
+            game.npcs.map((npc) => npc.id),
+          );
+          if (
+            state.world.activeCharacters.length > 7 ||
+            new Set(state.world.activeCharacters).size !==
+              state.world.activeCharacters.length ||
+            expectedParticipants.some(
+              (id) => !state.world.activeCharacters.includes(id),
+            ) ||
+            state.world.activeCharacters.some(
+              (id) => !expectedParticipants.includes(id),
+            )
+          ) {
+            problems.push(
+              "state.world.activeCharacters must match the player and current location presence (maximum six NPCs).",
+            );
+          }
+        }
+      } else if (state.world.locationId !== undefined) {
+        problems.push("state.world.locationId requires a pinned worldMap.");
+      }
+    }
+    if (state.world.flags !== undefined) {
+      if (!isObject(state.world.flags)) {
+        problems.push("state.world.flags must be an object.");
+      } else {
+        const declaredFlags = new Set(Object.keys(worldMap?.flags ?? {}));
+        for (const [id, value] of Object.entries(state.world.flags)) {
+          if (!declaredFlags.has(id)) {
+            problems.push(
+              `state.world.flags contains undeclared flag "${id}".`,
+            );
+          }
+          if (typeof value !== "boolean") {
+            problems.push(`state.world.flags[${id}] must be boolean.`);
+          }
+        }
+      }
+    }
+    if (state.world.discoveredLoreIds !== undefined) {
+      if (!Array.isArray(state.world.discoveredLoreIds)) {
+        problems.push("state.world.discoveredLoreIds must be an array.");
+      } else {
+        const discovered = new Set<string>();
+        for (const id of state.world.discoveredLoreIds) {
+          if (typeof id !== "string" || !SAFE_LORE_ID.test(id)) {
+            problems.push(
+              "state.world.discoveredLoreIds contains an invalid lore ID.",
+            );
+          } else if (discovered.has(id)) {
+            problems.push(`state.world.discoveredLoreIds duplicates "${id}".`);
+          }
+          if (typeof id === "string") discovered.add(id);
+        }
+      }
+    }
+    if (state.world.npcPresence !== undefined) {
+      if (!isObject(state.world.npcPresence)) {
+        problems.push("state.world.npcPresence must be an object.");
+      } else {
+        for (const [npcId, presence] of Object.entries(
+          state.world.npcPresence,
+        )) {
+          if (!knownIds.has(npcId) || npcId === PLAYER_ID) {
+            problems.push(
+              `state.world.npcPresence references unknown NPC "${npcId}".`,
+            );
+          }
+          if (presence !== "present" && presence !== "absent") {
+            problems.push(
+              `state.world.npcPresence[${npcId}] must be present or absent.`,
+            );
+          }
+        }
+      }
     }
   }
 
@@ -834,6 +1257,26 @@ function collectSessionProblems(
         problems.push(`messages[${index}] sequence duplikat.`);
       } else {
         sequences.add(message.sequence);
+      }
+    }
+    if (
+      message.visibility !== undefined &&
+      message.visibility !== "public" &&
+      message.visibility !== "private"
+    ) {
+      problems.push(`messages[${index}] visibility must be public or private.`);
+    }
+    if (message.knownBy !== undefined) {
+      if (!Array.isArray(message.knownBy)) {
+        problems.push(`messages[${index}] knownBy must be an array.`);
+      } else if (
+        message.knownBy.some(
+          (id) => typeof id !== "string" || !knownIds.has(id),
+        )
+      ) {
+        problems.push(
+          `messages[${index}] knownBy references an unknown actor.`,
+        );
       }
     }
     if (message.check !== undefined) {
@@ -885,12 +1328,98 @@ function collectBundleProblems(raw: unknown): string[] {
   }
   if (raw.format !== EXPORT_FORMAT)
     problems.push("Field format tidak dikenal.");
-  if (raw.version !== EXPORT_VERSION) {
+  if (
+    raw.version !== EXPORT_VERSION &&
+    raw.version !== EXPORT_VERSION_WITH_LORE
+  ) {
     problems.push(
       `Versi format tidak didukung (ditemukan ${String(raw.version)}).`,
     );
   }
   const { game, session, messages } = raw;
+  const version = raw.version;
+  const gameRefs =
+    isObject(game) && Array.isArray(game.lorebookRefs) ? game.lorebookRefs : [];
+  if (version === EXPORT_VERSION && "loreDependencies" in raw) {
+    problems.push("v1 bundles must not contain loreDependencies.");
+  }
+  if (version === EXPORT_VERSION_WITH_LORE) {
+    if (!Array.isArray(raw.loreDependencies)) {
+      problems.push("v2 bundles require an explicit loreDependencies array.");
+    } else {
+      if (raw.loreDependencies.length > MAX_LOREBOOK_REFS) {
+        problems.push("v2 loreDependencies exceeds the reference limit.");
+      }
+      const dependencyKeys = new Set<string>();
+      for (const [index, dependency] of raw.loreDependencies.entries()) {
+        if (!isObject(dependency)) {
+          problems.push(`loreDependencies[${index}] must be an object.`);
+          continue;
+        }
+        if (
+          Object.keys(dependency).some(
+            (key) => !["packId", "version", "digest"].includes(key),
+          )
+        ) {
+          problems.push(
+            `loreDependencies[${index}] contains unsupported fields.`,
+          );
+        }
+        const { packId, version: packVersion, digest } = dependency;
+        if (
+          typeof packId !== "string" ||
+          !SAFE_REFERENCE_ID.test(packId) ||
+          typeof packVersion !== "number" ||
+          !Number.isSafeInteger(packVersion) ||
+          packVersion < 1 ||
+          typeof digest !== "string" ||
+          !/^[a-f0-9]{64}$/.test(digest)
+        ) {
+          problems.push(`loreDependencies[${index}] is invalid.`);
+          continue;
+        }
+        const key = `${packId}\\u0000${packVersion}`;
+        if (dependencyKeys.has(key)) {
+          problems.push(
+            `loreDependencies duplicates ${packId}@${packVersion}.`,
+          );
+        }
+        dependencyKeys.add(key);
+      }
+      const refs = new Set(
+        gameRefs.flatMap((ref) =>
+          isObject(ref) &&
+          typeof ref.packId === "string" &&
+          typeof ref.version === "number"
+            ? [`${ref.packId}\\u0000${ref.version}`]
+            : [],
+        ),
+      );
+      if (
+        refs.size !== dependencyKeys.size ||
+        [...refs].some((key) => !dependencyKeys.has(key))
+      ) {
+        problems.push(
+          "v2 loreDependencies must exactly match game.lorebookRefs.",
+        );
+      }
+      if (refs.size === 0) {
+        problems.push("No-lore bundles must use save format v1.");
+      }
+    }
+  }
+  if (
+    version === EXPORT_VERSION &&
+    (gameRefs.length > 0 ||
+      (isObject(session) &&
+        ((Array.isArray(session.lorebookRefs) &&
+          session.lorebookRefs.length > 0) ||
+          (isObject(session.definitionSnapshot) &&
+            Array.isArray(session.definitionSnapshot.lorebookRefs) &&
+            session.definitionSnapshot.lorebookRefs.length > 0))))
+  ) {
+    problems.push("v1 bundles cannot contain lore-bound session dependencies.");
+  }
   if (!isObject(game)) problems.push("Bagian game hilang atau bukan object.");
   if (!isObject(session)) {
     problems.push("Bagian session hilang atau bukan object.");
@@ -1022,20 +1551,31 @@ export function createExportBundle(
   session: GameSession,
   messages: Message[],
   exportedAt: string,
+  loreDependencies?: LoreDependency[],
 ): ExportBundle {
-  return {
+  const game = pickGameDefinition(session.definitionSnapshot);
+  const refs = game.lorebookRefs ?? [];
+  const base: Pick<
+    ExportBundle,
+    "format" | "exportedAt" | "game" | "session" | "messages"
+  > = {
     format: EXPORT_FORMAT,
-    version: EXPORT_VERSION,
     exportedAt,
-    game: pickGameDefinition(session.definitionSnapshot),
+    game,
     session: {
       id: session.id,
       gameId: session.gameId,
       definitionSnapshot: pickGameDefinition(session.definitionSnapshot),
-      state: structuredClone(session.state),
+      state: pickSessionState(session.state),
       ai: { provider: session.ai.provider, model: session.ai.model },
       nextSequence: session.nextSequence,
       updatedAt: session.updatedAt,
+      ...(session.worldMap === undefined
+        ? {}
+        : { worldMap: structuredClone(session.worldMap) }),
+      ...(session.lorebookRefs === undefined
+        ? {}
+        : { lorebookRefs: structuredClone(session.lorebookRefs) }),
     },
     messages: messages.map((message) => {
       const next: Message = {
@@ -1048,16 +1588,34 @@ export function createExportBundle(
         createdAt: message.createdAt,
       };
       if (message.speakerId !== undefined) next.speakerId = message.speakerId;
+      if (message.visibility !== undefined)
+        next.visibility = message.visibility;
+      if (message.knownBy !== undefined) next.knownBy = [...message.knownBy];
       if (message.check !== undefined) next.check = pickCheck(message.check);
       return next;
     }),
   };
+  if (refs.length > 0) {
+    const bundle: ExportBundle = {
+      ...base,
+      version: EXPORT_VERSION_WITH_LORE,
+      loreDependencies: structuredClone(loreDependencies ?? []),
+    };
+    const problems = collectBundleProblems(bundle);
+    if (problems.length > 0) throw new ImportError(problems);
+    return bundle;
+  }
+  if (loreDependencies?.length) {
+    throw new ImportError(["No-lore exports must use save format v1."]);
+  }
+  return { ...base, version: EXPORT_VERSION };
 }
 
 export function validateExportBundle(raw: unknown): {
   game: GameDefinition;
   session: GameSession;
   messages: Message[];
+  loreDependencies?: LoreDependency[];
 } {
   const problems = collectBundleProblems(raw);
   if (problems.length > 0) throw new ImportError(problems);
@@ -1087,6 +1645,8 @@ export function validateExportBundle(raw: unknown): {
     if (typeof message.speakerId === "string") {
       next.speakerId = message.speakerId;
     }
+    if (message.visibility !== undefined) next.visibility = message.visibility;
+    if (message.knownBy !== undefined) next.knownBy = [...message.knownBy];
     const check = pickCheck(message.check);
     if (check) next.check = check;
     return next;
@@ -1105,7 +1665,16 @@ export function validateExportBundle(raw: unknown): {
       },
       nextSequence: bundle.session.nextSequence,
       updatedAt: bundle.session.updatedAt,
+      ...(bundle.session.worldMap === undefined
+        ? {}
+        : { worldMap: structuredClone(bundle.session.worldMap) }),
+      ...(bundle.session.lorebookRefs === undefined
+        ? {}
+        : { lorebookRefs: structuredClone(bundle.session.lorebookRefs) }),
     },
     messages,
+    ...(bundle.version === EXPORT_VERSION_WITH_LORE
+      ? { loreDependencies: structuredClone(bundle.loreDependencies) }
+      : {}),
   };
 }

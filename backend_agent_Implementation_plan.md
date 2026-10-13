@@ -2,7 +2,7 @@
 
 **Tanggal:** 1 Oktober 2026 (Asia/Jakarta).
 
-**Status:** Implementasi lokal backend, agent, API, dan migrasi selesai. Gemini connection dan turn pada revisi sebelumnya berhasil. Retest turn dengan kode terbaru gagal sebelum commit. Browser end-to-end belum dijalankan karena port canonical 5173 sedang dipakai server development proyek lain. OpenRouter, viewport, dan benchmark masih pending.
+**Status:** Core code and offline acceptance pass. On the canonical origin with an isolated database, the browser imported and pinned the sample lorebook, created and started a game, opened it with OpenRouter, and traveled to Morroc. IndexedDB transfer/read-back passed for 1 game, 1 session, and 1 message. The 2026-10-12 offline verifier completed 143 HTTP requests with no external fetches. `npm.cmd run doctor` passed with 128/128 tests, client/server typecheck, format, and builds. The latest Gemini opening failed with `RUN_FAILED` and unknown usage. One verbose OpenRouter travel suggestion and its retry hit output truncation; a concise freeform action succeeded. A/B/C, viewport, disk-failure, and broad recovery acceptance remain open.
 
 **Tujuan:** Memindahkan persistence dan orkestrasi AI ke backend, memakai Vercel AI SDK untuk tool calling, mempertahankan gameplay serta save lama, dan mengukur konsumsi token secara lengkap.
 
@@ -39,7 +39,7 @@ Acuan: [README](README.md), [PRD](prd.md), [rencana UI](implementation_plan.md),
 
 Bukti pada 1 Oktober 2026: `npm.cmd run doctor` lulus, **71/71 tes** dan build frontend berhasil. Runtime terpasang **Node.js 24.13.0**; percobaan database in-memory membuktikan `node:sqlite` dan FTS5 tersedia, SQLite **3.50.4**. `node:sqlite` mengeluarkan experimental warning pada runtime ini; pin runtime dan verifikasi ulang sebelum implementasi storage.
 
-Bukti browser historis Gemini tidak menjadi bukti server SDK baru. Acceptance nyata Gemini dan OpenRouter harus diulang pada jalur backend; OpenRouter berautentikasi masih merupakan gate terbuka berdasarkan README.
+Bukti browser Gemini historis tidak menjadi bukti server SDK baru. Live smoke pada kode saat ini: OpenRouter `google/gemini-3.8-flash` berhasil membuka scene dan mencapai Morroc; latest Gemini opening gagal `RUN_FAILED` dengan usage tidak diketahui. Satu saran travel OpenRouter yang verbose dan retry-nya terpotong pada batas output; aksi bebas yang ringkas berhasil.
 
 ## 3. Stack dan pembagian kode
 
@@ -149,7 +149,7 @@ Final output mengikuti domain existing: narrative, effects, optional world dan c
 
 Check result dihitung engine, dilampirkan pada narasi/messages, dan narasi wajib mengikuti outcome. Repair mempertahankan hasil check, provider/model, dan snapshot; jangan melempar randomness kedua. Engine menjaga numeric state; konsistensi makna narasi tetap memerlukan prompt dan acceptance cerita, tidak dijamin schema JSON.
 
-Opening menghasilkan narasi dan tiga pilihan tanpa effects/check serta menolak opening kedua. Setiap turn juga mengembalikan tiga pilihan; jika respons tidak menyediakannya, choice generation read-only mengisi pilihan untuk revision aktif. Pilihan lama ditolak setelah revision berubah. Penggunaan item dari UI tetap menjalankan engine tanpa request LLM, lalu pilihan untuk revision baru dibuat.
+Kontrak upgrade mengganti pilihan wajib dengan nol sampai tiga saran opsional. Opening menghasilkan narasi tanpa perubahan world/effects/check dan menolak opening kedua. Turn boleh mengembalikan daftar kosong; request choices read-only hanya berjalan saat user menekan "Sarankan aksi", bukan saat mount atau setelah item use. Pilihan lama ditolak setelah revision berubah. Penggunaan item tetap menjalankan engine tanpa request LLM.
 
 ## 6. Budget AI dan token accounting
 
@@ -197,16 +197,16 @@ Target awal C: median input turun minimal 25% dibanding A pada successful matche
 
 Kelompok endpoint minimum; detail body ditetapkan bersama types domain saat implementasi:
 
-| Kelompok    | Operasi                                                                    |
-| ----------- | -------------------------------------------------------------------------- |
-| Health      | `GET /api/health`, versi server/schema, tanpa secrets                      |
-| Games       | List/get/create/update/delete definition; revision dan rules edit existing |
-| Sessions    | Start/list/get session, paginated messages, AI config update               |
-| Gameplay    | Opening, start turn, status/result by requestId, choices dan item use      |
-| Backup      | Export session `fworld-save` v1, import save atomik sebagai salinan        |
-| Migration   | Validasi/transfer legacy stores dan receipt idempotent                     |
-| AI settings | Provider configured flags, model selection, server-side connection test    |
-| Usage       | Ringkasan ledger per session/run, termasuk failed requests                 |
+| Kelompok    | Operasi                                                                                     |
+| ----------- | ------------------------------------------------------------------------------------------- |
+| Health      | `GET /api/health`, versi server/schema, tanpa secrets                                       |
+| Games       | List/get/create/update/delete definition; revision dan rules edit existing                  |
+| Sessions    | Start/list/get session, paginated messages, AI config update                                |
+| Gameplay    | Opening, start turn, status/result by requestId, choices dan item use                       |
+| Backup      | Export save v1 tanpa lore atau v2 dengan manifest dependency; import atomik sebagai salinan |
+| Migration   | Validasi/transfer legacy stores dan receipt idempotent                                      |
+| AI settings | Provider configured flags, model selection, server-side connection test                     |
+| Usage       | Ringkasan ledger per session/run, termasuk failed requests                                  |
 
 Gunakan status `400/413` untuk input invalid/terlalu besar, `404` untuk ID tidak ada, `409` untuk revision/busy/idempotency conflict, dan error provider yang dinormalisasi. Payload error berisi code/message/retryable/requestId, tanpa credential/raw provider body. Browser tidak boleh mengirim proposed authoritative state sebagai pengganti aksi.
 
@@ -239,7 +239,7 @@ Tetap kompatibel dengan `fworld-save` v1 dan `fworld-template` v1. Import save b
 
 ## 9. Fase implementasi dan gate
 
-Checklist mencatat code/local-test status per 1 Oktober 2026. Acceptance live provider, browser, viewport, dan benchmark tetap terbuka. Storage tests memakai database sementara.
+Checklist mencatat implementasi sampai 12 Oktober 2026. Tes memakai database sementara. Browser memverifikasi alur lorebook hingga travel, serta transfer IndexedDB 1 game, 1 sesi, dan 1 pesan. Gemini terbaru, A/B/C, viewport, disk failure injection, dan recovery menyeluruh masih terbuka.
 
 ### Fase 1 — Domain bersama dan pengukuran baseline
 
@@ -258,7 +258,7 @@ Checklist mencatat code/local-test status per 1 Oktober 2026. Acceptance live pr
 - [x] Uji recovery interrupted run, revision/sequence conflicts, migration idempotency, dan rollback transaction memakai database sementara.
 - [ ] Uji disk/write failure injection dan startup production terhadap profile data user.
 
-**Bukti lokal:** CRUD/revision dan endpoint API, backup/restore SQLite, save/template, migration rollback/read-back, dan transaksi run tercakup unit/integration tests. Browser acceptance dan failure injection disk masih pending.
+Bukti lokal: CRUD/revision dan endpoint API, backup/restore SQLite, save/template, migration rollback/read-back, dan transaksi run tercakup unit/integration tests. Browser menguji alur editor sampai travel; UI migration membaca kembali satu game, satu sesi, dan satu pesan. Disk failure injection masih pending.
 
 ### Fase 3 — Agent dan tools terbatas
 
@@ -267,7 +267,7 @@ Checklist mencatat code/local-test status per 1 Oktober 2026. Acceptance live pr
 - [x] Integrasikan check memoized, final output validation dan budget global maksimum 3 requests.
 - [x] Nonaktifkan/akun seluruh automatic retries; ledger per request menangkap malformed/error/refusal.
 
-**Bukti lokal:** mocked agent tests mencakup call budget, repair, check memoization, scope retrieval, model/provider pilihan, failure dan required-context limit. Live provider behavior belum diverifikasi.
+Bukti lokal: mocked agent tests mencakup call budget, repair, check memoization, scope retrieval, model/provider pilihan, failure, dan required-context limit. OpenRouter opening dan travel diuji live. Latest Gemini opening berakhir `RUN_FAILED` dengan usage tidak diketahui.
 
 ### Fase 4 — Turn atomik, concurrency dan UI
 
@@ -276,7 +276,7 @@ Checklist mencatat code/local-test status per 1 Oktober 2026. Acceptance live pr
 - [x] Sambungkan opening, Free Chat, Choices dan item use; choices terikat revision dan read-only.
 - [x] Cegah edit/provider switch/item use yang bersaing dengan turn; backend offline/error/retry tetap terlihat.
 
-**Bukti lokal:** run idempotency, stale revision, atomic/read-only commit, interrupted-run recovery, routes, dan backup/restore tercakup tests. Browser dua tab dan pemulihan UI setelah close/reopen belum acceptance-tested.
+Bukti lokal: run idempotency, stale revision, atomic/read-only commit, interrupted-run recovery, routes, dan backup/restore tercakup tests. Browser memverifikasi create, lorebook import/pin, start, opening, dan satu travel berhasil; browser dua tab dan pemulihan UI setelah close/reopen belum diuji.
 
 ### Fase 5 — Migrasi dan cutover
 
@@ -285,14 +285,14 @@ Checklist mencatat code/local-test status per 1 Oktober 2026. Acceptance live pr
 - [x] Pertahankan IndexedDB serta backup pre-cutover; uji rollback dan export perubahan server.
 - [x] Selesaikan restore save/template lama dan pemisahan UI Create Game versus Restore Save.
 
-**Bukti lokal:** migration transfer tests mencakup preserve IDs, receipt/read-back, retry idempotent dan rollback conflict; backup dan format v1 tercakup tests. UI migration pada IndexedDB browser nyata masih pending.
+Bukti lokal: migration transfer tests mencakup preserve IDs, receipt/read-back, retry idempotent, dan rollback conflict; backup dan format v1 tercakup tests. Browser transfer/read-back lulus pada fixture 1 game, 1 sesi, dan 1 pesan; IndexedDB lama tetap utuh.
 
 ### Fase 6 — Acceptance nyata dan benchmark
 
 - [ ] Jalankan A/B/C dengan same-model fixtures; laporkan seluruh usage, latency dan kualitas, bukan hanya successful request terakhir.
 - [x] Uji Gemini langsung melalui backend: connection test dan satu turn pada revisi sebelumnya memakai database sementara berhasil.
-- [ ] Verifikasi ulang turn Gemini pada kode terbaru. Retest terisolasi mencatat 2 request berhasil (1.591 input, 390 output token), tetapi run berakhir `RUN_FAILED` tanpa pesan tersimpan; penyebab spesifik belum tercatat.
-- [ ] Uji OpenRouter langsung dengan credential server-side; belum tersedia di environment.
+- [ ] Verifikasi ulang turn Gemini pada kode terbaru. Latest opening gagal `RUN_FAILED` setelah satu provider attempt; usage tidak diketahui dan penyebab provider belum tercatat.
+- [x] Uji OpenRouter langsung dengan credential server-side. Smoke backend dan browser menguji opening serta travel ke Morroc. Satu aksi saran verbose beserta retry terkena batas output; aksi bebas ringkas berhasil.
 - [ ] Uji cerita >100 pesan, recall janji lama, private facts NPC, inventory/resource bounds dan provider switching antar-turn.
 - [ ] Ulangi browser acceptance pada 360 px/mobile, tablet/desktop dan zoom; tidak menganggap build sebagai bukti live provider.
 - [x] Update README, PRD, manifest dan evidence log sesuai hasil aktual; tandai pending credentials/acceptance secara jujur.

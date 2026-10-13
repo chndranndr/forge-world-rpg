@@ -1,0 +1,334 @@
+{
+  "definition": {
+    "id": "upgrade-legacy-baseline",
+    "title": "The Five Roads",
+    "description": "An original, small-town roleplaying setting for narrator context measurements.",
+    "genre": "Fantasy",
+    "tone": "Warm and grounded",
+    "language": "English",
+    "scenario": {
+      "setting": "The valley's five places are Hearthvale, Reedbridge, Lantern Market, Glass Hill Observatory, and Saltwind Orchard. Their residents trade weather notes, repair tools, and small favors along the old footpaths.",
+      "startingSituation": "At midday in Hearthvale, a rain-marked parcel waits beside the public notice board. A fresh trail leads toward Reedbridge, while a folded route sketch names Lantern Market, Glass Hill Observatory, and Saltwind Orchard.",
+      "worldRules": "Keep the story personal and low stakes; the player decides where to travel and whom to trust."
+    },
+    "attributes": [
+      {
+        "id": "resolve",
+        "name": "Resolve",
+        "min": 0,
+        "max": 10,
+        "defaultValue": 5
+      },
+      { "id": "craft", "name": "Craft", "min": 0, "max": 10, "defaultValue": 5 }
+    ],
+    "resources": [
+      { "id": "coin", "name": "Coin", "min": 0, "max": 200, "initialValue": 30 }
+    ],
+    "relationships": [
+      {
+        "id": "trust",
+        "name": "Trust",
+        "min": -10,
+        "max": 10,
+        "defaultValue": 0
+      }
+    ],
+    "items": [
+      {
+        "id": "item:route-sketch",
+        "name": "Route sketch",
+        "description": "A hand-drawn valley path.",
+        "stackable": false,
+        "consumable": false,
+        "effects": [],
+        "tags": ["paper", "travel"]
+      },
+      {
+        "id": "item:canvas-pouch",
+        "name": "Canvas pouch",
+        "description": "A small pouch with a repaired seam.",
+        "stackable": false,
+        "consumable": false,
+        "effects": [],
+        "tags": ["container"]
+      },
+      {
+        "id": "item:blue-thread",
+        "name": "Blue thread",
+        "description": "Strong thread wound around a wooden card.",
+        "stackable": true,
+        "maxStack": 20,
+        "consumable": false,
+        "effects": [],
+        "tags": ["craft"]
+      },
+      {
+        "id": "item:dry-biscuit",
+        "name": "Dry biscuit",
+        "description": "A plain travel biscuit wrapped in cloth.",
+        "stackable": true,
+        "maxStack": 10,
+        "consumable": true,
+        "effects": [],
+        "tags": ["food"]
+      },
+      {
+        "id": "item:tin-cup",
+        "name": "Tin cup",
+        "description": "A dented cup that still holds water.",
+        "stackable": false,
+        "consumable": false,
+        "effects": [],
+        "tags": ["tool"]
+      },
+      {
+        "id": "item:folded-cloth",
+        "name": "Folded cloth",
+        "description": "A clean square of soft cloth.",
+        "stackable": true,
+        "maxStack": 10,
+        "consumable": false,
+        "effects": [],
+        "tags": ["fabric"]
+      },
+      {
+        "id": "item:chalk-stub",
+        "name": "Chalk stub",
+        "description": "White chalk for marking a route.",
+        "stackable": true,
+        "maxStack": 8,
+        "consumable": true,
+        "effects": [],
+        "tags": ["writing"]
+      },
+      {
+        "id": "item:brass-button",
+        "name": "Brass button",
+        "description": "A polished button with no matching coat.",
+        "stackable": true,
+        "maxStack": 12,
+        "consumable": false,
+        "effects": [],
+        "tags": ["keepsake"]
+      },
+      {
+        "id": "item:small-lantern",
+        "name": "Small lantern",
+        "description": "A hooded lantern with a sturdy handle.",
+        "stackable": false,
+        "consumable": false,
+        "effects": [],
+        "tags": ["light"]
+      },
+      {
+        "id": "item:oil-flask",
+        "name": "Oil flask",
+        "description": "A sealed flask of lamp oil.",
+        "stackable": true,
+        "maxStack": 5,
+        "consumable": true,
+        "effects": [],
+        "tags": ["light"]
+      },
+      {
+        "id": "item:wooden-spoon",
+        "name": "Wooden spoon",
+        "description": "A smooth spoon carved from pale wood.",
+        "stackable": false,
+        "consumable": false,
+        "effects": [],
+        "tags": ["tool"]
+      },
+      {
+        "id": "item:field-notes",
+        "name": "Field notes",
+        "description": "Blank pages bound with twine.",
+        "stackable": false,
+        "consumable": false,
+        "effects": [],
+        "tags": ["paper"]
+      },
+      {
+        "id": "item:apple",
+        "name": "Orchard apple",
+        "description": "A crisp red apple from the valley.",
+        "stackable": true,
+        "maxStack": 12,
+        "consumable": true,
+        "effects": [],
+        "tags": ["food"]
+      },
+      {
+        "id": "item:spare-buckle",
+        "name": "Spare buckle",
+        "description": "A simple metal buckle for a travel strap.",
+        "stackable": true,
+        "maxStack": 6,
+        "consumable": false,
+        "effects": [],
+        "tags": ["repair"]
+      },
+      {
+        "id": "item:river-stone",
+        "name": "River stone",
+        "description": "A flat gray stone from the Reedbridge bank.",
+        "stackable": true,
+        "maxStack": 10,
+        "consumable": false,
+        "effects": [],
+        "tags": ["keepsake"]
+      },
+      {
+        "id": "item:paper-tag",
+        "name": "Paper tag",
+        "description": "A blank tag with a narrow string loop.",
+        "stackable": true,
+        "maxStack": 10,
+        "consumable": false,
+        "effects": [],
+        "tags": ["paper"]
+      },
+      {
+        "id": "item:reed-whistle",
+        "name": "Reed whistle",
+        "description": "A quiet whistle made from a hollow reed.",
+        "stackable": false,
+        "consumable": false,
+        "effects": [],
+        "tags": ["signal"]
+      },
+      {
+        "id": "item:green-ribbon",
+        "name": "Green ribbon",
+        "description": "A narrow ribbon tied in a loose knot.",
+        "stackable": true,
+        "maxStack": 8,
+        "consumable": false,
+        "effects": [],
+        "tags": ["fabric"]
+      },
+      {
+        "id": "item:glass-shard",
+        "name": "Smooth glass shard",
+        "description": "A rounded piece of green bottle glass.",
+        "stackable": true,
+        "maxStack": 8,
+        "consumable": false,
+        "effects": [],
+        "tags": ["keepsake"]
+      },
+      {
+        "id": "item:weather-card",
+        "name": "Weather card",
+        "description": "A card with room for a daily sky note.",
+        "stackable": true,
+        "maxStack": 10,
+        "consumable": false,
+        "effects": [],
+        "tags": ["paper"]
+      }
+    ],
+    "player": {
+      "name": "Mara",
+      "description": "A practical traveler who notices small details.",
+      "attributes": { "resolve": 5, "craft": 5 },
+      "resources": { "coin": 30 }
+    },
+    "npcs": [
+      {
+        "id": "npc:hearthvale_keeper",
+        "name": "Oren",
+        "description": "Keeps the Hearthvale notice board orderly.",
+        "personality": ["patient", "observant"],
+        "goals": ["return misplaced parcels"],
+        "privateKnowledge": ["Oren keeps a list of old footpath repairs."],
+        "initialRelationships": { "trust": 0 }
+      },
+      {
+        "id": "npc:reedbridge_ferrier",
+        "name": "Tavi",
+        "description": "Repairs the small bridge after heavy rain.",
+        "personality": ["direct", "good-humored"],
+        "goals": ["keep the crossing safe"],
+        "privateKnowledge": ["Tavi once found a sealed letter by the river."],
+        "initialRelationships": { "trust": 0 }
+      },
+      {
+        "id": "npc:market_stallholder",
+        "name": "Nessa",
+        "description": "Runs a tidy stall in Lantern Market.",
+        "personality": ["brisk", "fair"],
+        "goals": ["match useful goods with travelers"],
+        "privateKnowledge": ["Nessa has been saving a blue parcel tag."],
+        "initialRelationships": { "trust": 0 }
+      },
+      {
+        "id": "npc:hill_observer",
+        "name": "Pell",
+        "description": "Records cloud changes at Glass Hill Observatory.",
+        "personality": ["quiet", "curious"],
+        "goals": ["complete a season of weather notes"],
+        "privateKnowledge": ["Pell noticed a lantern moving below the ridge."],
+        "initialRelationships": { "trust": 0 }
+      },
+      {
+        "id": "npc:orchard_grower",
+        "name": "Iva",
+        "description": "Tends the rows at Saltwind Orchard.",
+        "personality": ["warm", "resourceful"],
+        "goals": ["keep the late fruit from spoiling"],
+        "privateKnowledge": ["Iva has a spare key to the old tool shed."],
+        "initialRelationships": { "trust": 0 }
+      },
+      {
+        "id": "npc:road_cook",
+        "name": "Senn",
+        "description": "Makes simple meals for people on the path.",
+        "personality": ["generous", "talkative"],
+        "goals": ["learn which roads need repairs"],
+        "privateKnowledge": [
+          "Senn heard that someone is returning a borrowed cup."
+        ],
+        "initialRelationships": { "trust": 0 }
+      },
+      {
+        "id": "npc:map_mender",
+        "name": "Lio",
+        "description": "Mends travel maps with scraps of colored paper.",
+        "personality": ["careful", "playful"],
+        "goals": ["finish a clear valley map"],
+        "privateKnowledge": [
+          "Lio can identify the ink used on the parcel tag."
+        ],
+        "initialRelationships": { "trust": 0 }
+      }
+    ],
+    "startingInventory": [
+      { "itemId": "item:route-sketch", "quantity": 1 },
+      { "itemId": "item:dry-biscuit", "quantity": 2 }
+    ],
+    "updatedAt": "2026-10-12T00:00:00.000Z"
+  },
+  "actions": [
+    "Check the rain-marked parcel beside the Hearthvale notice board.",
+    "Ask Oren who last used the route sketch.",
+    "Compare the parcel tag with the blue thread in my pouch.",
+    "Walk toward Reedbridge and watch the river level.",
+    "Ask Tavi whether the crossing is safe today.",
+    "Trade a dry biscuit for a clean piece of cloth.",
+    "Follow the footpath toward Lantern Market.",
+    "Ask Nessa if anyone brought in a paper tag.",
+    "Look for a stall selling lamp oil.",
+    "Write the market's weather on a card.",
+    "Take the uphill path toward Glass Hill Observatory.",
+    "Ask Pell what the clouds looked like before noon.",
+    "Use the lantern to inspect the ridge trail.",
+    "Leave a note about the safe crossing in my field notes.",
+    "Travel to Saltwind Orchard and greet Iva.",
+    "Ask whether the late apples are ready to pick.",
+    "Offer Senn a hand carrying the cooking pot.",
+    "Show Lio the folded route sketch and ask for a repair.",
+    "Return to Hearthvale with the parcel tag.",
+    "Tell Oren what I learned along the five roads."
+  ]
+}

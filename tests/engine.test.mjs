@@ -550,7 +550,11 @@ test("parseTurnResponse parses a narrative proposal with effects", () => {
         value: 1,
       },
     ],
-    world: { location: "Kafe", time: "19:50" },
+    world: {
+      location: "Kafe",
+      locationId: "loc:cafe",
+      time: "19:50",
+    },
   });
   assert.equal(result.type, "narrative");
   assert.equal(result.narrative, "Aiko mengangkat alis.");
@@ -558,8 +562,8 @@ test("parseTurnResponse parses a narrative proposal with effects", () => {
   assert.equal(result.effects[1].npcId, "npc-1");
   assert.deepEqual(result.world, {
     location: "Kafe",
+    locationId: "loc:cafe",
     time: "19:50",
-    scene: undefined,
   });
 });
 

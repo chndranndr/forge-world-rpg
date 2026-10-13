@@ -477,6 +477,14 @@ test("message paging, FTS, and scoped NPC/item detail work", (t) => {
       source: "story",
     },
     {
+      id: "player-secret",
+      text: "Ren knows the secret route.",
+      visibility: "private",
+      knownBy: ["player"],
+      createdAt: "2026-10-01T00:00:02.500Z",
+      source: "story",
+    },
+    {
       id: "unknown-secret",
       text: "A hidden secret from the valley.",
       visibility: "private",
@@ -496,12 +504,16 @@ test("message paging, FTS, and scoped NPC/item detail work", (t) => {
   assert.equal(aikoFacts[0].source, "story");
   assert.equal(aikoFacts[0].visibility, "private");
   assert.deepEqual(aikoFacts[0].knownBy, ["aiko"]);
+  assert.equal(
+    aikoFacts.some((fact) => fact.id === "player-secret"),
+    false,
+  );
   assert.deepEqual(
     db
       .searchMemory(one.id, "secret")
       .filter((hit) => hit.kind === "fact")
       .map((hit) => hit.id),
-    ["known-secret", "unknown-secret"],
+    ["player-secret"],
   );
   assert.equal(
     db

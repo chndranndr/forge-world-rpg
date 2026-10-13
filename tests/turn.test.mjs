@@ -420,12 +420,17 @@ test("requestChoices rejects proposals that change state", async () => {
   assert.match(outcome.error, /tidak boleh mengubah state/);
 });
 
-test("requestChoices fails when model gives no choices", async () => {
+test("requestChoices accepts empty suggestions without changing the session", async () => {
   const session = await makeSession();
-  const fetchImpl = scriptedFetch([{ narrative: "Kosong.", effects: [] }]);
+  const fetchImpl = scriptedFetch([
+    { narrative: "Kosong.", effects: [], choices: [] },
+  ]);
   const outcome = await turn.requestChoices(session.id, "key", { fetchImpl });
-  assert.equal(outcome.ok, false);
-  assert.match(outcome.error, /tidak memberikan pilihan/);
+  assert.equal(outcome.ok, true);
+  assert.deepEqual(outcome.choices, []);
+  assert.equal(outcome.boundSequence, session.nextSequence);
+  assert.deepEqual(await db.getSession(session.id), session);
+  assert.deepEqual(await db.getHistory(session.id), []);
 });
 
 test("narrative turn surfaces model choices in the outcome", async () => {

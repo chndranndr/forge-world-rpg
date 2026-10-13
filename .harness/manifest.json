@@ -30,8 +30,8 @@
       ],
       "verify": [
         "npm.cmd test (provider stubs)",
-        "live: Gemini connection and an earlier isolated turn passed; latest isolated turn ended RUN_FAILED after 2 successful requests and no commit (2026-10-01)",
-        "live: OpenRouter backend request (pending credential/acceptance)"
+        "live: OpenRouter google/gemini-3.8-flash opening and concise browser travel passed on an isolated database; a verbose suggested travel response and retry hit output truncation",
+        "live: latest Gemini opening failed RUN_FAILED after one provider attempt; usage is unknown"
       ]
     },
     "persistence": {
@@ -46,7 +46,7 @@
       ],
       "verify": [
         "npm.cmd test",
-        "browser: IndexedDB transfer and read-back on canonical origin (pending acceptance)"
+        "browser: IndexedDB transfer and read-back passed on canonical origin for an isolated fixture with 1 game, 1 session, and 1 message; the legacy database remained intact"
       ]
     },
     "game_library_editor": {
@@ -62,7 +62,7 @@
       ],
       "verify": [
         "npm.cmd test",
-        "browser: create/edit/start/restore playthrough (pending acceptance)"
+        "browser: imported and pinned lore, created and started a game, then opened and traveled to Morroc; restore, choices, and item use remain unverified in browser"
       ]
     },
     "rpg_engine": {
@@ -87,7 +87,7 @@
       ],
       "verify": [
         "npm.cmd test (provider stubs and API integration)",
-        "browser: live opening, turn, choices, and item use (pending acceptance)"
+        "browser: OpenRouter opening and concise travel passed; one verbose suggested action and its retry failed on output truncation; choices and item use remain unverified in browser"
       ]
     },
     "json_template": {
@@ -130,7 +130,11 @@
         "tests/server-db.test.mjs",
         "tests/agent.test.mjs"
       ],
-      "verify": ["npm.cmd run check", "npm.cmd test", "npm.cmd run doctor"]
+      "verify": [
+        "npm.cmd run check",
+        "npm.cmd test",
+        "npm.cmd run doctor (128 tests; typecheck, format, and builds passed on 2026-10-12)"
+      ]
     },
     "repository_commands": {
       "status": "implemented",
@@ -190,7 +194,25 @@
     "tsconfig.json",
     "tsconfig.server.json",
     "vite.config.js",
-    "examples/game-template.json"
+    "examples/game-template.json",
+    ".audit/upgrade-baseline.json",
+    ".audit/upgrade-decisions.tsv",
+    "examples/lorebook-game.json",
+    "examples/lorebook-prontera.json",
+    "scripts/upgrade-baseline.mjs",
+    "scripts/upgrade-provider-smoke.mjs",
+    "scripts/upgrade-verify.mjs",
+    "shared/lore.ts",
+    "shared/world.ts",
+    "tests/fixtures/upgrade-legacy.json",
+    "tests/fixtures/upgrade-ragnarok.json",
+    "tests/upgrade-api.test.mjs",
+    "tests/upgrade-baseline.test.mjs",
+    "tests/upgrade-domain.test.mjs",
+    "tests/upgrade-runtime.test.mjs",
+    "tests/upgrade-storage.test.mjs",
+    "todo.md",
+    "upgrade_implementation_plan.md"
   ],
   "commands": {
     "setup": "npm run setup",
@@ -210,25 +232,25 @@
     },
     {
       "capability": "live_ai_and_browser_acceptance",
-      "reason": "Earlier Gemini turn passed, but the latest current-code turn failed before commit; OpenRouter credential and browser acceptance are pending.",
-      "next_step": "Investigate the current-code Gemini turn failure, then test OpenRouter when its server credential is configured and run browser acceptance on the canonical origin."
+      "reason": "The latest Gemini opening failed with unknown usage. A verbose OpenRouter suggested travel response and retry hit output truncation, while concise travel passed. A/B/C, viewport, and broader browser recovery acceptance remain pending.",
+      "next_step": "Diagnose the current Gemini failure, rerun its opening and movement, then complete A/B/C, viewport, and browser restore acceptance."
     }
   ],
   "evidence_gaps": [
     {
       "capability": "ai_connection",
-      "gap": "Gemini connection and an earlier isolated turn passed. The latest isolated retest recorded 2 successful requests (1591 input, 390 output tokens) but ended RUN_FAILED with no committed messages. OpenRouter live request remains pending because no credential is configured.",
-      "next_step": "Investigate the current-code Gemini turn failure; configure OpenRouter server-side and test its connection and one turn."
+      "gap": "Latest Gemini opening failed RUN_FAILED after one provider attempt with unknown usage. OpenRouter google/gemini-3.8-flash opening and concise travel passed through backend/browser. A verbose suggested travel action and retry hit output truncation. Provider billing and A/B/C remain unverified.",
+      "next_step": "Record safe Gemini failure diagnostics, rerun the provider acceptance, and complete A/B/C."
     },
     {
       "capability": "persistence",
-      "gap": "Transfer/read-back telah diuji pada SQLite sementara, tetapi belum melalui browser dan IndexedDB nyata di origin canonical.",
-      "next_step": "Uji migrasi data lama dari Settings dan pastikan IndexedDB tetap utuh."
+      "gap": "Browser transfer/read-back passed on the canonical origin for an isolated fixture with 1 game, 1 session, and 1 message; the legacy IndexedDB remained intact. Broad multi-save migration and rollback acceptance remain open.",
+      "next_step": "Exercise a multi-session legacy profile and browser rollback before closing persistence acceptance."
     },
     {
       "capability": "turn_flow",
-      "gap": "Belum ada playthrough browser live, benchmark A/B/C, uji recall cerita lebih dari 100 pesan, atau acceptance tablet/zoom. Port canonical 5173 sedang menyajikan server development proyek lain.",
-      "next_step": "Jalankan acceptance browser saat port canonical tersedia, lalu uji provider, cerita panjang, benchmark, dan viewport pada jalur backend."
+      "gap": "The isolated browser imported and pinned lore, created and started a mapped game, opened with OpenRouter, and committed concise travel to loc:morroc. The player world endpoint returned Morroc and local NPCs Piri, Nima, and Sava. One verbose suggested action and its retry failed at the output limit. Choices, item use, multi-tab, A/B/C, and viewport acceptance remain open.",
+      "next_step": "Verify choices, item use, multi-tab, A/B/C, and viewport behavior; retain the failed verbose-action result as a provider reliability gap."
     }
   ]
 }

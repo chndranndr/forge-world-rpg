@@ -1,0 +1,325 @@
+{
+  "format": "fworld-template",
+  "version": 1,
+  "exportedAt": "2026-10-12T00:00:00.000Z",
+  "game": {
+    "title": "The Sograt Letter",
+    "description": "An original desert-road story using a small Ragnarok-inspired setting sample; no source text is included.",
+    "genre": "Fantasy adventure",
+    "tone": "Curious and grounded",
+    "language": "English",
+    "scenario": {
+      "setting": "This small journey connects five places: Prontera, Morroc, Morroc Market, the Pyramid, and Sograt. A courier's note has gone missing between the capital road and the desert, and people remember only fragments of the handoff.",
+      "startingSituation": "At a quiet gate in Prontera, a guard asks for help tracing a sealed letter. The route passes through Morroc and Morroc Market, then toward the Pyramid and the open stretch of Sograt.",
+      "worldRules": "Use only details present in this original scenario and the player's actions; do not assume outside canon or game mechanics."
+    },
+    "startingLocationId": "loc:prontera",
+    "lorebookRefs": [{ "packId": "fworld-original-ro", "version": 1 }],
+    "attributes": [
+      {
+        "id": "composure",
+        "name": "Composure",
+        "min": 0,
+        "max": 10,
+        "defaultValue": 5
+      },
+      {
+        "id": "insight",
+        "name": "Insight",
+        "min": 0,
+        "max": 10,
+        "defaultValue": 5
+      }
+    ],
+    "resources": [
+      {
+        "id": "zenny",
+        "name": "Zenny",
+        "min": 0,
+        "max": 500,
+        "initialValue": 80
+      }
+    ],
+    "relationships": [
+      {
+        "id": "trust",
+        "name": "Trust",
+        "min": -10,
+        "max": 10,
+        "defaultValue": 0
+      }
+    ],
+    "items": [
+      {
+        "id": "item:sealed-letter",
+        "name": "Sealed letter",
+        "description": "A plain envelope closed with a blue wax mark.",
+        "stackable": false,
+        "consumable": false,
+        "effects": [],
+        "tags": ["paper", "parcel"]
+      },
+      {
+        "id": "item:route-strip",
+        "name": "Route strip",
+        "description": "A narrow paper strip with five place names.",
+        "stackable": false,
+        "consumable": false,
+        "effects": [],
+        "tags": ["paper", "travel"]
+      },
+      {
+        "id": "item:water-flask",
+        "name": "Water flask",
+        "description": "A leather flask filled for a long walk.",
+        "stackable": false,
+        "consumable": false,
+        "effects": [],
+        "tags": ["travel"]
+      },
+      {
+        "id": "item:linen-wrap",
+        "name": "Linen wrap",
+        "description": "A folded square of clean linen.",
+        "stackable": true,
+        "maxStack": 8,
+        "consumable": false,
+        "effects": [],
+        "tags": ["cloth"]
+      },
+      {
+        "id": "item:bronze-token",
+        "name": "Bronze token",
+        "description": "A small token with a simple notch on one edge.",
+        "stackable": true,
+        "maxStack": 12,
+        "consumable": false,
+        "effects": [],
+        "tags": ["keepsake"]
+      },
+      {
+        "id": "item:travel-bread",
+        "name": "Travel bread",
+        "description": "A firm loaf wrapped in paper.",
+        "stackable": true,
+        "maxStack": 6,
+        "consumable": true,
+        "effects": [],
+        "tags": ["food"]
+      },
+      {
+        "id": "item:ink-pot",
+        "name": "Ink pot",
+        "description": "A tightly corked pot of dark ink.",
+        "stackable": false,
+        "consumable": false,
+        "effects": [],
+        "tags": ["writing"]
+      },
+      {
+        "id": "item:quill",
+        "name": "Quill",
+        "description": "A trimmed feather ready for writing.",
+        "stackable": false,
+        "consumable": false,
+        "effects": [],
+        "tags": ["writing"]
+      },
+      {
+        "id": "item:canvas-satchel",
+        "name": "Canvas satchel",
+        "description": "A light bag with two outside pockets.",
+        "stackable": false,
+        "consumable": false,
+        "effects": [],
+        "tags": ["container"]
+      },
+      {
+        "id": "item:brass-lantern",
+        "name": "Brass lantern",
+        "description": "A hooded lamp with a steady handle.",
+        "stackable": false,
+        "consumable": false,
+        "effects": [],
+        "tags": ["light"]
+      },
+      {
+        "id": "item:lamp-oil",
+        "name": "Lamp oil",
+        "description": "A sealed bottle for the brass lantern.",
+        "stackable": true,
+        "maxStack": 5,
+        "consumable": true,
+        "effects": [],
+        "tags": ["light"]
+      },
+      {
+        "id": "item:market-receipt",
+        "name": "Market receipt",
+        "description": "A short receipt with a blank note line.",
+        "stackable": true,
+        "maxStack": 10,
+        "consumable": false,
+        "effects": [],
+        "tags": ["paper"]
+      },
+      {
+        "id": "item:spare-button",
+        "name": "Spare button",
+        "description": "A dark button that can fasten a travel coat.",
+        "stackable": true,
+        "maxStack": 10,
+        "consumable": false,
+        "effects": [],
+        "tags": ["repair"]
+      },
+      {
+        "id": "item:cotton-cord",
+        "name": "Cotton cord",
+        "description": "A coil of soft cord for tying bundles.",
+        "stackable": true,
+        "maxStack": 10,
+        "consumable": false,
+        "effects": [],
+        "tags": ["craft"]
+      },
+      {
+        "id": "item:dry-fruit",
+        "name": "Dry fruit",
+        "description": "A small pouch of sweet dried fruit.",
+        "stackable": true,
+        "maxStack": 8,
+        "consumable": true,
+        "effects": [],
+        "tags": ["food"]
+      },
+      {
+        "id": "item:chalk-piece",
+        "name": "Chalk piece",
+        "description": "A white piece for marking a safe turn.",
+        "stackable": true,
+        "maxStack": 8,
+        "consumable": true,
+        "effects": [],
+        "tags": ["writing"]
+      },
+      {
+        "id": "item:folded-map",
+        "name": "Folded map",
+        "description": "A blank map sheet folded into quarters.",
+        "stackable": false,
+        "consumable": false,
+        "effects": [],
+        "tags": ["paper", "travel"]
+      },
+      {
+        "id": "item:wooden-spindle",
+        "name": "Wooden spindle",
+        "description": "A small spindle polished by frequent use.",
+        "stackable": false,
+        "consumable": false,
+        "effects": [],
+        "tags": ["tool"]
+      },
+      {
+        "id": "item:blue-ribbon",
+        "name": "Blue ribbon",
+        "description": "A narrow ribbon tied around a package corner.",
+        "stackable": true,
+        "maxStack": 8,
+        "consumable": false,
+        "effects": [],
+        "tags": ["cloth"]
+      },
+      {
+        "id": "item:clay-cup",
+        "name": "Clay cup",
+        "description": "A simple cup with a small repaired crack.",
+        "stackable": false,
+        "consumable": false,
+        "effects": [],
+        "tags": ["tool"]
+      }
+    ],
+    "player": {
+      "name": "Rin",
+      "description": "A careful traveler who prefers asking before guessing.",
+      "attributes": { "composure": 5, "insight": 5 },
+      "resources": { "zenny": 80 }
+    },
+    "npcs": [
+      {
+        "id": "npc:prontera_guard",
+        "name": "Edrin",
+        "description": "Keeps a small delivery ledger beside the Prontera gate.",
+        "personality": ["formal", "patient"],
+        "goals": ["account for every outbound parcel"],
+        "privateKnowledge": ["Edrin once copied a courier's route by mistake."],
+        "initialRelationships": { "trust": 0 }
+      },
+      {
+        "id": "npc:morroc_guard",
+        "name": "Sava",
+        "description": "Checks travelers arriving along the Morroc road.",
+        "personality": ["alert", "practical"],
+        "goals": ["keep the gate line moving"],
+        "privateKnowledge": [
+          "Sava has seen a blue mark on a package this week."
+        ],
+        "initialRelationships": { "trust": 0 }
+      },
+      {
+        "id": "npc:merchant",
+        "name": "Nima",
+        "description": "Sells useful travel goods at Morroc Market.",
+        "personality": ["cheerful", "sharp-eyed"],
+        "goals": ["find the owner of an unclaimed receipt"],
+        "privateKnowledge": ["Nima tucked a paper tag beneath the counter."],
+        "initialRelationships": { "trust": 0 }
+      },
+      {
+        "id": "npc:pyramid_scout",
+        "name": "Teren",
+        "description": "Waits near the path leading toward the Pyramid.",
+        "personality": ["reserved", "steady"],
+        "goals": ["guide visitors back before dusk"],
+        "privateKnowledge": [
+          "Teren found a loose ribbon near the trail marker."
+        ],
+        "initialRelationships": { "trust": 0 }
+      },
+      {
+        "id": "npc:sograt_guide",
+        "name": "Ami",
+        "description": "Knows a few shaded rest points across Sograt.",
+        "personality": ["kind", "observant"],
+        "goals": ["help travelers plan safe pauses"],
+        "privateKnowledge": ["Ami heard someone ask after a letter at dawn."],
+        "initialRelationships": { "trust": 0 }
+      },
+      {
+        "id": "npc:caravan_cook",
+        "name": "Vero",
+        "description": "Prepares simple meals for a small road caravan.",
+        "personality": ["sociable", "generous"],
+        "goals": ["keep the group supplied with water"],
+        "privateKnowledge": ["Vero lent a clay cup to a courier yesterday."],
+        "initialRelationships": { "trust": 0 }
+      },
+      {
+        "id": "npc:market_runner",
+        "name": "Piri",
+        "description": "Carries short errands between market stalls.",
+        "personality": ["quick", "curious"],
+        "goals": ["return a misplaced blue ribbon"],
+        "privateKnowledge": ["Piri remembers which stall had a crowded queue."],
+        "initialRelationships": { "trust": 0 }
+      }
+    ],
+    "startingInventory": [
+      { "itemId": "item:route-strip", "quantity": 1 },
+      { "itemId": "item:water-flask", "quantity": 1 },
+      { "itemId": "item:travel-bread", "quantity": 1 }
+    ]
+  }
+}
