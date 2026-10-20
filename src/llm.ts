@@ -11,6 +11,7 @@ export interface LlmSettings {
 export const DEFAULT_MODELS: Record<ProviderId, string> = {
   gemini: "gemini-2.5-flash",
   openrouter: "openai/gpt-5-mini",
+  custom: "",
 };
 
 export interface LlmUsage {
@@ -171,6 +172,12 @@ export async function complete(
   prompt: string,
   options: CompleteOptions = {},
 ): Promise<LlmResult> {
+  if (settings.provider === "custom") {
+    return {
+      kind: "error",
+      message: "Provider custom hanya tersedia melalui backend.",
+    };
+  }
   const { signal, timeoutMs = DEFAULT_TIMEOUT_MS, fetchImpl = fetch } = options;
   const { url, init } = requestFor(settings, prompt);
 

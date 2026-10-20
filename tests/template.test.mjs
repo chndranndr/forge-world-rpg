@@ -388,3 +388,31 @@ test("parse never writes the database", async () => {
   const after = await db.listGames();
   assert.deepEqual(after, before);
 });
+
+test("template accepts custom AI metadata and never carries profiles or credentials", async () => {
+  const file = await readFile(
+    new URL("../examples/game-template.json", import.meta.url),
+    "utf8",
+  );
+  const bundle = JSON.parse(file);
+  bundle.ai = { provider: "custom", model: "fixture-model" };
+  const { ai } = template.parseTemplate(bundle);
+  assert.deepEqual(ai, { provider: "custom", model: "fixture-model" });
+  assert.ok(!JSON.stringify(bundle).includes("credential"));
+  assert.ok(!JSON.stringify(bundle).includes("profileId"));
+
+  const unsupported = structuredClone(bundle);
+  unsupported.ai = { provider: "anthropic", model: "claude" };
+  assert.throws(
+    () => template.parseTemplate(unsupported),
+    (error) =>
+      error.problems?.some((problem) => /custom/.test(problem)) ?? false,
+  );
+
+  const missingModel = structuredClone(bundle);
+  missingModel.ai = { provider: "custom" };
+  assert.throws(
+    () => template.parseTemplate(missingModel),
+    (error) => error.problems?.some((problem) => /ai\.model/.test(problem)),
+  );
+});

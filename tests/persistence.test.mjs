@@ -5,6 +5,7 @@ import { createServer } from "vite";
 
 let server;
 let db;
+let narratorPrompt;
 
 function sampleGame(id) {
   return {
@@ -78,6 +79,7 @@ test.before(async () => {
   server = await createServer({ server: { port: 0, open: false } });
   await server.listen();
   db = await server.ssrLoadModule("/src/db.ts");
+  narratorPrompt = await server.ssrLoadModule("/shared/narrator-prompt.ts");
 });
 
 test.after(async () => {
@@ -313,14 +315,6 @@ test("a failed message write rolls back the session write in the same transactio
   const after = await db.getSession(session.id);
   assert.equal(after.nextSequence, before.nextSequence);
   assert.equal((await db.getHistory(session.id)).length, 0);
-});
-
-test("deleteGame refuses while sessions exist", async () => {
-  const game = sampleGame(crypto.randomUUID());
-  await db.saveGame(game);
-  await db.createSession(game, { provider: "gemini", model: "m" });
-  await assert.rejects(db.deleteGame(game.id), /session/);
-  assert.ok(await db.getGame(game.id));
 });
 
 test("validateDefinition catches references, duplicates, and range violations", async () => {
@@ -566,7 +560,11 @@ test("import strips foreign fields from game and session state on restore", asyn
   assert.equal("apiKey" in importedGame, false);
   const importedSession = await db.getSession(sessionId);
   assert.equal("hacked" in importedSession.state, false);
-  assert.deepEqual(importedSession.ai, { provider: "gemini", model: "m" });
+  assert.deepEqual(importedSession.ai, {
+    provider: "gemini",
+    model: "m",
+    systemPrompt: narratorPrompt.DEFAULT_NARRATOR_SYSTEM_PROMPT,
+  });
 });
 
 test("legacy snapshot does not create a missing database", async () => {

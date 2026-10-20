@@ -477,22 +477,46 @@ export function sceneParticipants(
   npcPresence: WorldState["npcPresence"],
   knownNpcIds: string[],
 ): string[] {
-  if (!map) return [PLAYER_ID, ...knownNpcIds];
+  if (!map) {
+    const present: string[] = [];
+    for (let index = knownNpcIds.length - 1; index >= 0; index -= 1) {
+      const npcId = knownNpcIds[index];
+      const presence = npcPresence?.[npcId];
+      if (
+        presence === "present" ||
+        (typeof presence === "object" && presence.present !== false)
+      ) {
+        present.push(npcId);
+      }
+    }
+    const presentIds = new Set(present);
+    return [
+      PLAYER_ID,
+      ...present,
+      ...knownNpcIds.filter((npcId) => !presentIds.has(npcId)),
+    ];
+  }
   const known = new Set(knownNpcIds);
   const location = map.locations.find((entry) => entry.id === locationId);
-  const participants = new Set<string>();
-  for (const npcId of knownNpcIds) {
-    if (npcPresence?.[npcId] === "present") participants.add(npcId);
-  }
-  for (const npcId of location?.npcIds ?? []) {
+  const scoped: string[] = [];
+  for (let index = knownNpcIds.length - 1; index >= 0; index -= 1) {
+    const npcId = knownNpcIds[index];
+    const presence = npcPresence?.[npcId];
     if (
-      known.has(npcId) &&
-      npcPresence?.[npcId] !== "absent" &&
-      npcPresence?.[npcId] !== "present"
+      typeof presence === "object" &&
+      presence.present !== false &&
+      presence.locationId === locationId
     ) {
-      participants.add(npcId);
+      scoped.push(npcId);
     }
   }
+  const explicitlyPresent = knownNpcIds.filter(
+    (npcId) => npcPresence?.[npcId] === "present",
+  );
+  const mapped = (location?.npcIds ?? []).filter(
+    (npcId) => known.has(npcId) && npcPresence?.[npcId] === undefined,
+  );
+  const participants = new Set([...scoped, ...explicitlyPresent, ...mapped]);
   return [PLAYER_ID, ...[...participants].slice(0, 6)];
 }
 

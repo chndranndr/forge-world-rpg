@@ -34,6 +34,33 @@
         "live: latest Gemini opening failed RUN_FAILED after one provider attempt; usage is unknown"
       ]
     },
+    "ai_profiles": {
+      "status": "implemented",
+      "artifacts": [
+        "shared/ai-profile.ts",
+        "server/custom-provider.ts",
+        "server/db.ts",
+        "server/main.ts",
+        "server/agent.ts",
+        "server/turn.ts",
+        "src/components/AiProfilesPanel.tsx",
+        "src/components/SettingsPanel.tsx",
+        "src/api.ts",
+        "src/ai-defaults.ts",
+        "tests/ai-profiles.test.mjs",
+        "tests/server-db.test.mjs",
+        "tests/upgrade-storage.test.mjs",
+        "tests/settings-defaults.test.mjs",
+        "tests/llm.test.mjs",
+        "tests/template.test.mjs"
+      ],
+      "verify": [
+        "npm.cmd run doctor (typecheck, format, 162 tests, client/server builds)",
+        "npm.cmd test: profile CRUD/validation/key rotation/409 conflict/persistence-failure via HTTP; snapshot isolation, binding retention and provider-switch release in SQLite; schema-2 to 3 migration with ledger/profile/binding and backup/restore staging; save JSON and template exclude credentials; legacy custom transport rejected without fetch",
+        "local fixture: real @ai-sdk/openai-compatible adapter performed tool call + tool result + forced repair against a loopback Chat Completions fixture with stable URL/model/auth; redirect and 401 fail without partial gameplay commit; keyless custom sends no Authorization; no fallback to global keys",
+        "browser on canonical origin with isolated backend/fixtures: created two custom profiles (different endpoints/models) with separate keys, saved default profile, reload retained profiles/default with empty key field, one session opened and committed tool-continuation turn, profile model edit did not change the session until Terapkan profil, rotated key used by the next run, exports/localStorage contained no keys"
+      ]
+    },
     "persistence": {
       "status": "partial",
       "artifacts": [
@@ -237,6 +264,11 @@
     }
   ],
   "evidence_gaps": [
+    {
+      "capability": "ai_profiles",
+      "gap": "Custom OpenAI-compatible turns were verified end-to-end only against loopback HTTP fixtures. No real cloud custom endpoint, vendor model, or paid request was exercised.",
+      "next_step": "When a real endpoint/model/key and paid-request authorization are available, run one opening plus tool-continuation turn through a custom profile and record protocol-level evidence."
+    },
     {
       "capability": "ai_connection",
       "gap": "Latest Gemini opening failed RUN_FAILED after one provider attempt with unknown usage. OpenRouter google/gemini-3.8-flash opening and concise travel passed through backend/browser. A verbose suggested travel action and retry hit output truncation. Provider billing and A/B/C remain unverified.",

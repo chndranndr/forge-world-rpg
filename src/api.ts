@@ -20,6 +20,7 @@ import type {
   WorldState,
 } from "../shared/types";
 import type { Choice } from "../shared/engine";
+import type { AiProfile, AiProfileInput } from "../shared/ai-profile";
 
 export interface Versioned<T> {
   value: T;
@@ -290,11 +291,12 @@ export function listSessions(gameId: string): Promise<SessionRecord[]> {
 export function startSession(
   definition: GameDefinition,
   expectedGameRevision: number | undefined,
-  ai: AiConfig,
+  source:
+    { ai: AiConfig; profileId?: never } | { profileId: string; ai?: never },
 ): Promise<{ game: GameRecord; session: SessionRecord }> {
   return api(
     "/sessions/start",
-    json("POST", { definition, expectedGameRevision, ai }),
+    json("POST", { definition, expectedGameRevision, ...source }),
   );
 }
 
@@ -465,16 +467,71 @@ export function getAiSettings(): Promise<AiSettings> {
 }
 
 export function saveAiCredential(
-  provider: AiConfig["provider"],
+  provider: "gemini" | "openrouter",
   apiKey: string,
 ): Promise<{ configured: boolean }> {
   return api(`/ai/credentials/${provider}`, json("PUT", { apiKey }));
 }
 
+export function listAiProfiles(): Promise<AiProfile[]> {
+  return api("/ai/profiles");
+}
+
+export function createAiProfile(input: AiProfileInput): Promise<AiProfile> {
+  return api("/ai/profiles", json("POST", input));
+}
+
+export function updateAiProfile(
+  id: string,
+  expectedRevision: number,
+  input: AiProfileInput,
+): Promise<AiProfile> {
+  return api(
+    `/ai/profiles/${encodeURIComponent(id)}`,
+    json("PUT", { expectedRevision, ...input }),
+  );
+}
+
+export function saveAiProfileCredential(
+  id: string,
+  expectedRevision: number,
+  apiKey: string,
+): Promise<{ credentialConfigured: boolean }> {
+  return api(
+    `/ai/profiles/${encodeURIComponent(id)}/credential`,
+    json("PUT", { expectedRevision, apiKey }),
+  );
+}
+
+export interface SessionAiProfileInfo {
+  profileId: string;
+  baseURL?: string;
+  credentialConfigured: boolean;
+}
+
+export function getSessionAiProfile(
+  sessionId: string,
+): Promise<SessionAiProfileInfo | null> {
+  return api(`/sessions/${encodeURIComponent(sessionId)}/ai-profile`);
+}
+
+export function applySessionAiProfile(
+  sessionId: string,
+  expectedRevision: number,
+  profileId: string,
+): Promise<SessionRecord> {
+  return api(
+    `/sessions/${encodeURIComponent(sessionId)}/ai-profile`,
+    json("PUT", { expectedRevision, profileId }),
+  );
+}
+
 export function testAiConnection(
-  ai: AiConfig,
+  input:
+    | { profileId: string; sessionId?: string }
+    | { provider: AiConfig["provider"]; model: string; sessionId?: string },
 ): Promise<{ message: string; usage: unknown }> {
-  return api("/ai/test", json("POST", ai));
+  return api("/ai/test", json("POST", input));
 }
 
 export interface LegacyMigration {

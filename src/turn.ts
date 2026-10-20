@@ -20,9 +20,23 @@ import {
   type CheckRecord,
   type GameDefinition,
   type GameSession,
+  type ItemEffect,
   type Message,
+  type TurnEffect,
   type SessionState,
 } from "./types";
+function legacyItemEffects(effects: TurnEffect[]): ItemEffect[] {
+  const itemEffects: ItemEffect[] = [];
+  for (const effect of effects) {
+    if (effect.type === "REGISTER_NPC") {
+      throw new Error(
+        "REGISTER_NPC is unsupported by the legacy src/turn.ts flow.",
+      );
+    }
+    itemEffects.push(effect);
+  }
+  return itemEffects;
+}
 
 const RECENT_MESSAGE_LIMIT = 24;
 const MAX_CONTEXT_CHARS = 24_000;
@@ -457,7 +471,11 @@ export async function submitTurn(
     let newState: SessionState;
     let applied: string[];
     try {
-      const result = applyEffects(def, session.state, response.effects);
+      const result = applyEffects(
+        def,
+        session.state,
+        legacyItemEffects(response.effects),
+      );
       newState = result.state;
       applied = result.applied;
     } catch (error) {
@@ -486,7 +504,11 @@ export async function submitTurn(
       }
       response = retry.response;
       try {
-        const result = applyEffects(def, session.state, response.effects);
+        const result = applyEffects(
+          def,
+          session.state,
+          legacyItemEffects(response.effects),
+        );
         newState = result.state;
         applied = result.applied;
       } catch (secondError) {

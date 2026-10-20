@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiError,
   beginOpening,
@@ -17,8 +17,22 @@ import {
   type SessionWorldView,
 } from "../api";
 import { storyIllustration } from "../illustrations";
+import { StoryMarkdown } from "./StoryMarkdown";
+import { createUuid } from "../../shared/uuid";
 import type { Choice } from "../../shared/engine.js";
 import { type ItemDefinition, type Message } from "../types";
+
+const StoryMessageBody = memo(function StoryMessageBody({
+  message,
+}: {
+  message: Pick<Message, "role" | "content">;
+}) {
+  return message.role === "NARRATOR" || message.role === "NPC" ? (
+    <StoryMarkdown content={message.content} />
+  ) : (
+    <p>{message.content}</p>
+  );
+});
 
 interface SessionViewProps {
   sessionId: string;
@@ -205,6 +219,17 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
     if (error) errorRef.current?.focus();
   }, [error]);
 
+  function createRunRequestId(): string | null {
+    try {
+      return createUuid();
+    } catch {
+      setError(
+        "Browser ini tidak mendukung pembuatan ID aman. Gunakan browser terbaru.",
+      );
+      return null;
+    }
+  }
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -356,11 +381,14 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
             : `Run ${run.status}.`,
         );
         if (stored.kind !== "item") {
-          setRetryAction({
-            ...stored,
-            requestId: crypto.randomUUID(),
-            expectedRevision: latest.revision,
-          });
+          const requestId = createRunRequestId();
+          if (requestId) {
+            setRetryAction({
+              ...stored,
+              requestId,
+              expectedRevision: latest.revision,
+            });
+          }
         }
         busyRef.current = false;
         setBusy(false);
@@ -468,9 +496,11 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
     data: { input?: string; itemId?: string; expectedRevision?: number },
   ) {
     if (busyRef.current || pendingRun) return false;
+    const requestId = createRunRequestId();
+    if (!requestId) return false;
     const stored: StoredRun = {
       kind,
-      requestId: crypto.randomUUID(),
+      requestId,
       expectedRevision: data.expectedRevision ?? sessionRevision,
       ...(data.input === undefined ? {} : { input: data.input }),
       ...(data.itemId === undefined ? {} : { itemId: data.itemId }),
@@ -617,7 +647,7 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
                   {ROLE_LABELS[message.role]}
                   {message.speakerId ? ` (${message.speakerId})` : ""}
                 </header>
-                <p>{message.content}</p>
+                <StoryMessageBody message={message} />
                 {message.check && (
                   <p className="check-badge">
                     Check {message.check.attributeId}: skor{" "}
@@ -1005,7 +1035,7 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
                 <header>
                   #{message.sequence} {ROLE_LABELS[message.role]}
                 </header>
-                <p>{message.content}</p>
+                <StoryMessageBody message={message} />
               </li>
             ))}
           </ol>

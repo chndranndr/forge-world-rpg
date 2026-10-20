@@ -47,10 +47,13 @@ import type {
   NpcDefinition,
 } from "../types";
 import exampleTemplate from "../../examples/game-template.json";
+import { createUuid } from "../../shared/uuid";
+
 interface GameEditorProps {
   gameId: string;
   initialDraft?: GameDefinition | null;
   defaultAi: AiConfig;
+  defaultProfileId?: string;
   onBack: () => void;
   onOpenSettings: () => void;
   onDraftPersisted: () => void;
@@ -134,6 +137,7 @@ export default function GameEditor({
   gameId,
   initialDraft,
   defaultAi,
+  defaultProfileId,
   onBack,
   onOpenSettings,
   onDraftPersisted,
@@ -649,10 +653,22 @@ export default function GameEditor({
       const result = await startSession(
         current,
         revision ?? undefined,
-        defaultAi,
+        defaultProfileId === undefined
+          ? { ai: defaultAi }
+          : { profileId: defaultProfileId },
       );
       onStarted(result.session.value.id);
     } catch (error) {
+      if (
+        defaultProfileId !== undefined &&
+        error instanceof ApiError &&
+        error.status === 404
+      ) {
+        setErrors([
+          "Profil AI default tidak ditemukan. Buka Settings untuk memilih profil default baru.",
+        ]);
+        return;
+      }
       if (error instanceof ApiError && error.status === 409) {
         try {
           const latest = await getGame(gameId);
@@ -1562,7 +1578,7 @@ export default function GameEditor({
               attributes: [
                 ...d.attributes,
                 {
-                  id: crypto.randomUUID(),
+                  id: createUuid(),
                   name: "",
                   min: 0,
                   max: 10,
@@ -1674,7 +1690,7 @@ export default function GameEditor({
             patchFn((d) => ({
               resources: [
                 ...d.resources,
-                { id: crypto.randomUUID(), name: "", min: 0, initialValue: 0 },
+                { id: createUuid(), name: "", min: 0, initialValue: 0 },
               ],
             }))
           }
@@ -1777,7 +1793,7 @@ export default function GameEditor({
               relationships: [
                 ...d.relationships,
                 {
-                  id: crypto.randomUUID(),
+                  id: createUuid(),
                   name: "",
                   min: -10,
                   max: 10,
@@ -2133,7 +2149,7 @@ export default function GameEditor({
               items: [
                 ...d.items,
                 {
-                  id: crypto.randomUUID(),
+                  id: createUuid(),
                   name: "",
                   stackable: true,
                   maxStack: 1,
@@ -2364,7 +2380,7 @@ export default function GameEditor({
               npcs: [
                 ...d.npcs,
                 {
-                  id: crypto.randomUUID(),
+                  id: createUuid(),
                   name: "",
                   personality: [],
                   goals: [],

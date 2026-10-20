@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { request as httpRequest } from "node:http";
+import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { createServer as createViteServer } from "vite";
@@ -10,18 +11,21 @@ let serverApi;
 let databaseApi;
 let turnApi;
 let loreApi;
+let narratorPrompt;
 
 test.before(async () => {
   vite = await createViteServer({
     server: { middlewareMode: true, hmr: false },
     appType: "custom",
   });
-  [serverApi, databaseApi, turnApi, loreApi] = await Promise.all([
-    vite.ssrLoadModule("/server/main.ts"),
-    vite.ssrLoadModule("/server/db.ts"),
-    vite.ssrLoadModule("/server/turn.ts"),
-    vite.ssrLoadModule("/shared/lore.ts"),
-  ]);
+  [serverApi, databaseApi, turnApi, loreApi, narratorPrompt] =
+    await Promise.all([
+      vite.ssrLoadModule("/server/main.ts"),
+      vite.ssrLoadModule("/server/db.ts"),
+      vite.ssrLoadModule("/server/turn.ts"),
+      vite.ssrLoadModule("/shared/lore.ts"),
+      vite.ssrLoadModule("/shared/narrator-prompt.ts"),
+    ]);
 });
 
 test.after(async () => {
@@ -55,7 +59,7 @@ test("persists context overflow before any AI attempt or state commit", async (t
   });
 
   const definition = game("context-overflow");
-  definition.player.description = "x".repeat(25_000);
+  definition.player.description = "x".repeat(512_000);
   const started = database.startSession({
     definition,
     ai: { provider: "gemini", model: "gemini-test" },
@@ -79,7 +83,7 @@ test("persists context overflow before any AI attempt or state commit", async (t
   assert.equal(run.error.code, "CONTEXT_TOO_LARGE");
   assert.match(
     run.error.message,
-    /\d+ karakter.*batasnya 24000 karakter dan 6000 token/i,
+    /\d+ karakter.*batasnya 512000 karakter dan 128000 token/i,
   );
   assert.match(run.error.message, /ringkas konfigurasi game atau aksi pemain/i);
 
@@ -89,6 +93,137 @@ test("persists context overflow before any AI attempt or state commit", async (t
   assert.deepEqual(after.state, session.state);
   assert.equal(database.getHistory(session.id).length, 0);
   assert.equal(database.getUsageSummary(session.id, requestId).requests, 0);
+});
+
+test("logs safe metadata when a turn fails", async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "fworld-run-failure-"));
+  const database = new databaseApi.GameDatabase(join(directory, "data.sqlite"));
+  const originalGetWorldMap = database.getWorldMap;
+  const originalConsoleError = console.error;
+  const logs = [];
+  t.after(() => {
+    console.error = originalConsoleError;
+    database.getWorldMap = originalGetWorldMap;
+    database.close();
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  const started = database.startSession({
+    definition: game("run-failure-diagnostics"),
+    ai: { provider: "gemini", model: "gemini-test" },
+  });
+  const session = started.session.value;
+  const failure = new Error(
+    "secret provider response and private player action",
+  );
+  failure.name = "AI_APICallError";
+  failure.code = "ECONNRESET";
+  failure.statusCode = 503;
+  database.getWorldMap = () => {
+    throw failure;
+  };
+  console.error = (message, details) => logs.push([message, details]);
+
+  const requestId = "safe-failure-log";
+  turnApi.startSessionRun(database, {
+    sessionId: session.id,
+    requestId,
+    expectedRevision: started.session.revision,
+    work: { kind: "turn", input: "private player action" },
+    providerKey: "",
+  });
+
+  let run = database.getRun(session.id, requestId);
+  for (let attempt = 0; run?.status === "running" && attempt < 100; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    run = database.getRun(session.id, requestId);
+  }
+  assert.equal(run?.status, "failed");
+  assert.equal(run.error.code, "RUN_FAILED");
+  assert.deepEqual(logs, [
+    [
+      "[fworld] run gagal",
+      {
+        sessionId: session.id,
+        requestId,
+        kind: "turn",
+        provider: "gemini",
+        model: "gemini-test",
+        code: "RUN_FAILED",
+        errorName: "AI_APICallError",
+        causeCode: "ECONNRESET",
+        statusCode: 503,
+      },
+    ],
+  ]);
+  assert.doesNotMatch(
+    JSON.stringify(logs),
+    /secret provider response|private player action/,
+  );
+});
+
+test("development API allows only exact private IPv4 host and origin pairs", async (t) => {
+  const lanAddress = Object.values(networkInterfaces())
+    .flatMap((entries) => entries ?? [])
+    .find(({ address, family, internal }) => {
+      if (internal || family !== "IPv4") return false;
+      const [first, second] = address.split(".").map(Number);
+      return (
+        first === 10 ||
+        (first === 172 && second >= 16 && second <= 31) ||
+        (first === 192 && second === 168)
+      );
+    })?.address;
+  if (!lanAddress) {
+    t.skip("No private IPv4 interface is available.");
+    return;
+  }
+
+  const directory = mkdtempSync(join(tmpdir(), "fworld-lan-origin-"));
+  const databasePath = join(directory, "data.sqlite");
+  const database = new databaseApi.GameDatabase(databasePath);
+  const server = serverApi.createHttpServer(
+    { current: database, path: databasePath },
+    {
+      development: true,
+      backupDirectory: join(directory, "backups"),
+      envFilePath: join(directory, ".env"),
+    },
+  );
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  t.after(async () => {
+    await new Promise((resolve) => server.close(resolve));
+    database.close();
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  const url = `http://127.0.0.1:${server.address().port}/api/health`;
+  const status = (host, origin) =>
+    new Promise((resolve, reject) => {
+      const request = httpRequest(
+        url,
+        { headers: { host, origin } },
+        (response) => {
+          response.resume();
+          response.on("end", () => resolve(response.statusCode));
+        },
+      );
+      request.once("error", reject);
+      request.end();
+    });
+
+  assert.equal(
+    await status(`${lanAddress}:5173`, `http://${lanAddress}:5173`),
+    200,
+  );
+  assert.equal(await status("192.0.2.1:5173", "http://192.0.2.1:5173"), 403);
+  assert.equal(
+    await status(`${lanAddress}:5173`, "http://192.0.2.1:5173"),
+    403,
+  );
 });
 
 test("local API enforces origin and JSON writes, returns revisions, and restores SQLite backups", async (t) => {
@@ -292,6 +427,90 @@ test("local API enforces origin and JSON writes, returns revisions, and restores
   const sessionStart = await started.json();
   assert.equal(sessionStart.session.value.gameId, "api-game");
   assert.equal(sessionStart.session.revision, 1);
+  assert.equal(
+    sessionStart.session.value.ai.systemPrompt,
+    narratorPrompt.DEFAULT_NARRATOR_SYSTEM_PROMPT,
+  );
+  const customSystemPrompt = "A complete custom narrator prompt.\nSecond line.";
+  const customStart = await fetch(
+    `${base}/sessions/start`,
+    json("POST", {
+      definition: game("api-custom-prompt"),
+      ai: {
+        provider: "gemini",
+        model: "gemini-test",
+        systemPrompt: customSystemPrompt,
+      },
+    }),
+  );
+  assert.equal(customStart.status, 201);
+  assert.equal(
+    (await customStart.json()).session.value.ai.systemPrompt,
+    customSystemPrompt,
+  );
+  const connectionPrompt = await fetch(
+    `${base}/ai/test`,
+    json("POST", {
+      provider: "gemini",
+      model: "gemini-test",
+      systemPrompt: customSystemPrompt,
+    }),
+  );
+  assert.equal(connectionPrompt.status, 400);
+  const sessionId = sessionStart.session.value.id;
+  const blankPrompt = await fetch(
+    `${base}/sessions/${sessionId}/ai`,
+    json("PUT", {
+      expectedRevision: 1,
+      ai: {
+        provider: "gemini",
+        model: "gemini-test",
+        systemPrompt: " \n ",
+      },
+    }),
+  );
+  assert.equal(blankPrompt.status, 400);
+  const oversizedPrompt = await fetch(
+    `${base}/sessions/${sessionId}/ai`,
+    json("PUT", {
+      expectedRevision: 1,
+      ai: {
+        provider: "gemini",
+        model: "gemini-test",
+        systemPrompt: "x".repeat(
+          narratorPrompt.MAX_NARRATOR_SYSTEM_PROMPT_CHARS + 1,
+        ),
+      },
+    }),
+  );
+  assert.equal(oversizedPrompt.status, 400);
+  const updated = await fetch(
+    `${base}/sessions/${sessionId}/ai`,
+    json("PUT", {
+      expectedRevision: 1,
+      ai: {
+        provider: "gemini",
+        model: "gemini-test",
+        systemPrompt: customSystemPrompt,
+      },
+    }),
+  );
+  assert.equal(
+    updated.status,
+    200,
+    `session AI update failed: ${JSON.stringify(await updated.clone().json())}`,
+  );
+  const updatedRecord = await updated.json();
+  assert.equal(updatedRecord.revision, 2);
+  assert.equal(updatedRecord.value.ai.systemPrompt, customSystemPrompt);
+  const readBack = await fetch(`${base}/sessions/${sessionId}`, {
+    headers: { Origin: "http://127.0.0.1:5173" },
+  });
+  assert.equal(readBack.status, 200);
+  assert.equal(
+    (await readBack.json()).value.ai.systemPrompt,
+    customSystemPrompt,
+  );
 
   const stale = await fetch(
     `${base}/games/api-game`,

@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
 import { createServer } from "vite";
 
-test("frontend starts, serves its entry point, and renders the app", async () => {
+test("frontend starts and renders app and narrative dialogue", async (t) => {
   const server = await createServer({
     server: { port: 0, open: false },
   });
@@ -26,6 +26,45 @@ test("frontend starts, serves its entry point, and renders the app", async () =>
     assert.match(markup, /<main>/);
     assert.match(markup, /<h1 class="brand">.*Fworld<\/h1>/);
     assert.match(markup, /class="bottom-nav"/);
+    const { StoryMarkdown } = await server.ssrLoadModule(
+      "/src/components/StoryMarkdown.tsx",
+    );
+    await t.test(
+      "quoted dialogue stays normal across Markdown formatting",
+      () => {
+        const storyMarkup = renderToStaticMarkup(
+          createElement(StoryMarkdown, {
+            content: [
+              'Mioca menekan **Accept Order**. "Untuk Katsu-nya? Omakase *set-nya* sudah disediakan." Setelah itu.',
+              "",
+              '- "Bawa mantel."',
+              "",
+              "Narasi lanjutan.",
+            ].join("\n"),
+          }),
+        );
+        const dialogueText = [
+          ...storyMarkup.matchAll(
+            /<span class="story-dialogue">([^<]*)<\/span>/g,
+          ),
+        ]
+          .map(([, text]) => text)
+          .join("")
+          .replaceAll("&quot;", '"');
+
+        assert.equal(
+          dialogueText,
+          '"Untuk Katsu-nya? Omakase set-nya sudah disediakan.""Bawa mantel."',
+        );
+        assert.match(storyMarkup, /<li><span class="story-dialogue">/);
+        assert.match(storyMarkup, /<strong>Accept Order<\/strong>/);
+        assert.match(
+          storyMarkup,
+          /<em><span class="story-dialogue">set-nya<\/span><\/em>/,
+        );
+        assert.match(storyMarkup, /<p>Narasi lanjutan\.<\/p>/);
+      },
+    );
   } finally {
     await server.close();
   }

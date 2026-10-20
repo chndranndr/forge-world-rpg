@@ -18,6 +18,7 @@ import {
   type Server,
   type ServerResponse,
 } from "node:http";
+import { networkInterfaces } from "node:os";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -31,9 +32,11 @@ import {
   type Message,
   type WorldLocation,
 } from "../shared/types.js";
+import { normalizeNarratorSystemPrompt } from "../shared/narrator-prompt.js";
 import { MAX_LOREBOOK_BYTES } from "../shared/lore.js";
 import { sceneParticipants } from "../shared/world.js";
 import { exportTemplate } from "../shared/template.js";
+import type { AiProfile } from "../shared/ai-profile.js";
 import {
   ConflictError,
   CorruptDatabaseError,
@@ -43,8 +46,11 @@ import {
   ValidationError,
   type MigrationReceipt,
   type RunRecord,
+  type StoredAiProfile,
+  type StoredSession,
 } from "./db.js";
 import { getSessionRun, startSessionRun } from "./turn.js";
+import { createCustomModel } from "./custom-provider.js";
 
 const JSON_LIMIT = 2 * 1024 * 1024;
 const LOREBOOK_IMPORT_ENVELOPE_BYTES =
@@ -54,6 +60,25 @@ const LOREBOOK_IMPORT_LIMIT =
   MAX_LOREBOOK_BYTES + LOREBOOK_IMPORT_ENVELOPE_BYTES;
 const TRANSFER_LIMIT = 32 * 1024 * 1024;
 const CANONICAL_ORIGIN = "http://127.0.0.1:5173";
+
+function developmentLanAddresses(): string[] {
+  const addresses = new Set<string>();
+  for (const entries of Object.values(networkInterfaces())) {
+    for (const entry of entries ?? []) {
+      if (entry.internal || entry.family !== "IPv4") continue;
+      const [first, second] = entry.address.split(".").map(Number);
+      if (
+        first === 10 ||
+        (first === 172 && second >= 16 && second <= 31) ||
+        (first === 192 && second === 168)
+      ) {
+        addresses.add(entry.address);
+      }
+    }
+  }
+  return [...addresses];
+}
+
 const ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MIME: Record<string, string> = {
@@ -200,6 +225,22 @@ function publicSession(value: unknown): Record<string, unknown> {
   }
   const definition = value.definitionSnapshot;
   const state = value.state;
+  const ai = value.ai;
+  if (
+    !isObject(ai) ||
+    (ai.provider !== "gemini" &&
+      ai.provider !== "openrouter" &&
+      ai.provider !== "custom") ||
+    typeof ai.model !== "string"
+  ) {
+    throw new CorruptDatabaseError("Session AI config tidak valid.");
+  }
+  let aiSystemPrompt: string;
+  try {
+    aiSystemPrompt = normalizeNarratorSystemPrompt(ai.systemPrompt);
+  } catch {
+    throw new CorruptDatabaseError("Session AI config tidak valid.");
+  }
   const world = isObject(state.world) ? state.world : undefined;
   if (
     !world ||
@@ -268,7 +309,11 @@ function publicSession(value: unknown): Record<string, unknown> {
       facts,
       world: safeWorld,
     },
-    ai: value.ai,
+    ai: {
+      provider: ai.provider,
+      model: ai.model,
+      systemPrompt: aiSystemPrompt,
+    },
     nextSequence: value.nextSequence,
     updatedAt: value.updatedAt,
     ...(value.lorebookRefs === undefined
@@ -468,19 +513,41 @@ function providerKey(provider: AiConfig["provider"]): string | undefined {
   );
 }
 
-function saveProviderKey(
+function credentialEnvironmentName(credentialId: string): string {
+  if (!ID_PATTERN.test(credentialId)) {
+    throw new CorruptDatabaseError("Credential AI id tidak valid.");
+  }
+  return `FWORLD_AI_KEY_${credentialId.replace(/-/g, "").toUpperCase()}`;
+}
+
+function credentialKey(credentialId: string): string | undefined {
+  return (
+    process.env[credentialEnvironmentName(credentialId)]?.trim() || undefined
+  );
+}
+
+function saveProviderEnvironment(
   envFilePath: string,
-  provider: AiConfig["provider"],
-  apiKey: string,
+  assignments: Record<string, string>,
 ): void {
-  if (!/^[A-Za-z0-9._-]{1,512}$/.test(apiKey)) {
-    throw new ValidationError("Format API key tidak valid.");
+  const names = Object.keys(assignments);
+  if (names.length === 0) {
+    throw new ValidationError("Tidak ada credential untuk disimpan.");
+  }
+  for (const name of names) {
+    if (!/^[A-Z][A-Z0-9_]{0,127}$/.test(name)) {
+      throw new ValidationError("Nama environment credential tidak valid.");
+    }
+    const value = assignments[name];
+    if (
+      typeof value !== "string" ||
+      value.length > 512 ||
+      /[\r\n\u0000]/.test(value)
+    ) {
+      throw new ValidationError("Format API key tidak valid.");
+    }
   }
 
-  const environmentName =
-    provider === "gemini"
-      ? "FWORLD_GEMINI_API_KEY"
-      : "FWORLD_OPENROUTER_API_KEY";
   let contents = "";
   try {
     contents = readFileSync(envFilePath, "utf8");
@@ -500,20 +567,28 @@ function saveProviderKey(
   const hasTrailingNewline = /\r?\n$/.test(contents);
   const lines = contents ? contents.split(/\r?\n/) : [];
   if (hasTrailingNewline) lines.pop();
-  const assignment = new RegExp(
-    "^\\s*(?:export\\s+)?" + environmentName + "\\s*=",
-  );
-  let replaced = false;
+  const assignmentPattern = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/;
+  const handled = new Set<string>();
   const updatedLines: string[] = [];
   for (const line of lines) {
-    if (assignment.test(line)) {
-      if (!replaced) updatedLines.push(environmentName + "=" + apiKey);
-      replaced = true;
-    } else {
+    const match = line.match(assignmentPattern);
+    const name = match?.[1];
+    if (name === undefined || assignments[name] === undefined) {
       updatedLines.push(line);
+      continue;
+    }
+    if (!handled.has(name)) {
+      handled.add(name);
+      if (assignments[name] !== "") {
+        updatedLines.push(`${name}=${assignments[name]}`);
+      }
     }
   }
-  if (!replaced) updatedLines.push(environmentName + "=" + apiKey);
+  for (const name of names) {
+    if (!handled.has(name) && assignments[name] !== "") {
+      updatedLines.push(`${name}=${assignments[name]}`);
+    }
+  }
   let updated = updatedLines.join(newline);
   if (hasTrailingNewline && updated) updated += newline;
   if (hasByteOrderMark) updated = "\uFEFF" + updated;
@@ -531,10 +606,37 @@ function saveProviderKey(
       "CREDENTIAL_PERSISTENCE_FAILED",
     );
   }
-  process.env[environmentName] = apiKey;
+  for (const name of names) {
+    if (assignments[name] === "") delete process.env[name];
+    else process.env[name] = assignments[name];
+  }
 }
 
-function providerModel(ai: AiConfig, key: string) {
+function saveProviderKey(
+  envFilePath: string,
+  provider: "gemini" | "openrouter",
+  apiKey: string,
+): void {
+  if (!/^[A-Za-z0-9._-]{1,512}$/.test(apiKey)) {
+    throw new ValidationError("Format API key tidak valid.");
+  }
+  const environmentName =
+    provider === "gemini"
+      ? "FWORLD_GEMINI_API_KEY"
+      : "FWORLD_OPENROUTER_API_KEY";
+  saveProviderEnvironment(envFilePath, { [environmentName]: apiKey });
+}
+
+function providerModel(ai: AiConfig, key: string, baseURL?: string) {
+  if (ai.provider === "custom") {
+    if (!baseURL) {
+      throw new ValidationError("Base URL provider custom tidak tersedia.");
+    }
+    return createCustomModel(ai.model, {
+      baseURL,
+      ...(key ? { apiKey: key } : {}),
+    });
+  }
   if (!key)
     throw new HttpError(
       "Credential provider belum dikonfigurasi di server.",
@@ -546,6 +648,54 @@ function providerModel(ai: AiConfig, key: string) {
   if (ai.provider === "openrouter")
     return createOpenRouter({ apiKey: key })(ai.model);
   throw new ValidationError("Provider tidak dikenal.");
+}
+
+function resolveSessionProviderConfig(
+  db: GameDatabase,
+  session: StoredSession,
+): { apiKey?: string; baseURL?: string } {
+  const binding = db.getSessionAiBinding(session.id);
+  if (binding) {
+    if (binding.provider !== session.ai.provider) {
+      throw new CorruptDatabaseError(
+        "Binding AI sesi tidak cocok dengan snapshot sesi.",
+      );
+    }
+    const key = credentialKey(binding.credentialId);
+    if (binding.provider === "custom") {
+      if (!binding.baseURL) {
+        throw new CorruptDatabaseError("Binding custom tanpa Base URL.");
+      }
+      return {
+        ...(key === undefined ? {} : { apiKey: key }),
+        baseURL: binding.baseURL,
+      };
+    }
+    if (!key) {
+      throw new HttpError(
+        "API key profil AI belum dikonfigurasi di server.",
+        503,
+        "PROVIDER_NOT_CONFIGURED",
+      );
+    }
+    return { apiKey: key };
+  }
+  if (session.ai.provider === "custom") {
+    throw new HttpError(
+      "Pilih profil AI untuk provider custom.",
+      503,
+      "AI_PROFILE_REQUIRED",
+    );
+  }
+  const key = providerKey(session.ai.provider);
+  if (!key) {
+    throw new HttpError(
+      "Credential provider belum dikonfigurasi di server.",
+      503,
+      "PROVIDER_NOT_CONFIGURED",
+    );
+  }
+  return { apiKey: key };
 }
 
 function allowedRequest(
@@ -844,13 +994,34 @@ function validateRequestId(value: unknown): string {
 }
 
 function parseAi(value: unknown): AiConfig {
-  const input = objectBody(value, ["provider", "model"], ["provider", "model"]);
-  if (input.provider !== "gemini" && input.provider !== "openrouter") {
-    throw new ValidationError("Provider harus gemini atau openrouter.");
+  const input = objectBody(
+    value,
+    ["provider", "model", "systemPrompt"],
+    ["provider", "model"],
+  );
+  if (
+    input.provider !== "gemini" &&
+    input.provider !== "openrouter" &&
+    input.provider !== "custom"
+  ) {
+    throw new ValidationError(
+      "Provider harus gemini, openrouter, atau custom.",
+    );
+  }
+  let systemPrompt: string;
+  try {
+    systemPrompt = normalizeNarratorSystemPrompt(input.systemPrompt);
+  } catch (error) {
+    throw new ValidationError(
+      error instanceof Error
+        ? error.message
+        : "System prompt narrator tidak valid.",
+    );
   }
   return {
     provider: input.provider,
     model: requiredString(input.model, "model", 200),
+    systemPrompt,
   };
 }
 
@@ -863,6 +1034,23 @@ function stripVersion<T extends { revision: number }>(
 
 function versioned<T extends { revision: number }>(record: T) {
   return { value: stripVersion(record), revision: record.revision };
+}
+
+function publicAiProfile(
+  profile: StoredAiProfile,
+  credentialConfigured: boolean,
+): AiProfile {
+  const base = {
+    id: profile.id,
+    revision: profile.revision,
+    name: profile.name,
+    model: profile.model,
+    systemPrompt: profile.systemPrompt,
+    credentialConfigured,
+  };
+  return profile.provider === "custom"
+    ? { ...base, provider: "custom", baseURL: profile.baseURL }
+    : { ...base, provider: profile.provider };
 }
 
 function backupFiles(directory: string) {
@@ -953,13 +1141,21 @@ export function createHttpServer(
   databaseRef: DatabaseRef,
   options: HttpOptions = {},
 ): Server {
+  const lanAddresses = options.development ? developmentLanAddresses() : [];
   const hosts = new Set(
-    options.allowedHosts ??
-      (options.development
+    options.allowedHosts ?? [
+      ...(options.development
         ? ["127.0.0.1:5173", "127.0.0.1:3001"]
         : ["127.0.0.1:5173"]),
+      ...lanAddresses.map((address) => `${address}:5173`),
+    ],
   );
-  const origins = new Set(options.allowedOrigins ?? [CANONICAL_ORIGIN]);
+  const origins = new Set(
+    options.allowedOrigins ?? [
+      CANONICAL_ORIGIN,
+      ...lanAddresses.map((address) => `http://${address}:5173`),
+    ],
+  );
   const backupDirectory = resolve(options.backupDirectory ?? "./backups");
   const envFilePath = resolve(options.envFilePath ?? ".env");
   const staticRoot = options.staticRoot
@@ -1028,7 +1224,7 @@ export function createHttpServer(
           if (pathname === "/api/health" && method === "GET") {
             jsonResponse(response, 200, {
               status: "ok",
-              schemaVersion: 2,
+              schemaVersion: 3,
               nodeVersion: process.versions.node,
             });
             return;
@@ -1174,9 +1370,26 @@ export function createHttpServer(
           if (pathname === "/api/sessions/start" && method === "POST") {
             const input = objectBody(
               body,
-              ["definition", "expectedGameRevision", "ai"],
-              ["definition", "ai"],
+              ["definition", "expectedGameRevision", "ai", "profileId"],
+              ["definition"],
             );
+            const hasAi = input.ai !== undefined;
+            const hasProfile = input.profileId !== undefined;
+            if (hasAi === hasProfile) {
+              throw new ValidationError(
+                "Session start harus memakai tepat salah satu ai atau profileId.",
+              );
+            }
+            if (hasAi) {
+              const ai = parseAi(input.ai);
+              if (ai.provider === "custom") {
+                throw new HttpError(
+                  "Pilih profil AI untuk provider custom.",
+                  400,
+                  "AI_PROFILE_REQUIRED",
+                );
+              }
+            }
             const started = db.startSessionForDefinition({
               definition: input.definition,
               ...(input.expectedGameRevision === undefined
@@ -1186,7 +1399,11 @@ export function createHttpServer(
                       input.expectedGameRevision,
                     ),
                   }),
-              ai: parseAi(input.ai),
+              ...(hasProfile
+                ? {
+                    profileId: requiredString(input.profileId, "profileId"),
+                  }
+                : { ai: input.ai }),
             });
             jsonResponse(response, 201, {
               ...started,
@@ -1201,13 +1418,114 @@ export function createHttpServer(
             jsonResponse(response, 201, db.importSave(body));
             return;
           }
+          if (pathname === "/api/ai/profiles" && method === "GET") {
+            strictQuery(url, []);
+            jsonResponse(
+              response,
+              200,
+              db
+                .listAiProfiles()
+                .map((profile) =>
+                  publicAiProfile(
+                    profile,
+                    Boolean(credentialKey(profile.credentialId)),
+                  ),
+                ),
+            );
+            return;
+          }
+          if (pathname === "/api/ai/profiles" && method === "POST") {
+            const input = objectBody(
+              body,
+              ["name", "provider", "model", "systemPrompt", "baseURL"],
+              ["name", "provider", "model", "systemPrompt"],
+            );
+            const created = db.createAiProfile(input);
+            jsonResponse(response, 201, publicAiProfile(created, false));
+            return;
+          }
+          const profileMatch = pathname.match(
+            /^\/api\/ai\/profiles\/([^/]+)(?:\/(credential))?$/,
+          );
+          if (profileMatch) {
+            const profileId = requiredId(profileMatch[1], "profileId");
+            if (profileMatch[2] === "credential" && method === "PUT") {
+              const input = objectBody(
+                body,
+                ["expectedRevision", "apiKey"],
+                ["expectedRevision", "apiKey"],
+              );
+              const expectedRevision = requiredRevision(input.expectedRevision);
+              if (
+                typeof input.apiKey !== "string" ||
+                input.apiKey.length > 512
+              ) {
+                throw new ValidationError("API key tidak valid.");
+              }
+              const apiKey = input.apiKey.trim();
+              if (apiKey && !/^[A-Za-z0-9._~+/-]+=*$/.test(apiKey)) {
+                throw new ValidationError("Format API key tidak valid.");
+              }
+              const profile = db.getAiProfile(profileId);
+              if (!profile)
+                throw new NotFoundError("Profil AI tidak ditemukan.");
+              if (profile.revision !== expectedRevision) {
+                throw new ConflictError(
+                  `Profil AI revision conflict: expected ${expectedRevision}, found ${profile.revision}.`,
+                );
+              }
+              saveProviderEnvironment(envFilePath, {
+                [credentialEnvironmentName(profile.credentialId)]: apiKey,
+              });
+              jsonResponse(response, 200, {
+                credentialConfigured: Boolean(apiKey),
+              });
+              return;
+            }
+            if (!profileMatch[2] && method === "PUT") {
+              const input = objectBody(
+                body,
+                [
+                  "expectedRevision",
+                  "name",
+                  "provider",
+                  "model",
+                  "systemPrompt",
+                  "baseURL",
+                ],
+                [
+                  "expectedRevision",
+                  "name",
+                  "provider",
+                  "model",
+                  "systemPrompt",
+                ],
+              );
+              const { expectedRevision: _expectedRevision, ...profileInput } =
+                input;
+              const updated = db.updateAiProfile(
+                profileId,
+                profileInput,
+                requiredRevision(input.expectedRevision),
+              );
+              jsonResponse(
+                response,
+                200,
+                publicAiProfile(
+                  updated,
+                  Boolean(credentialKey(updated.credentialId)),
+                ),
+              );
+              return;
+            }
+          }
           const credentialMatch = pathname.match(
             /^\/api\/ai\/credentials\/(gemini|openrouter)$/,
           );
           if (credentialMatch && method === "PUT") {
             const input = objectBody(body, ["apiKey"], ["apiKey"]);
             const apiKey = requiredString(input.apiKey, "apiKey", 512).trim();
-            const provider = credentialMatch[1] as AiConfig["provider"];
+            const provider = credentialMatch[1] as "gemini" | "openrouter";
             saveProviderKey(envFilePath, provider, apiKey);
             jsonResponse(response, 200, { configured: true });
             return;
@@ -1230,14 +1548,83 @@ export function createHttpServer(
             return;
           }
           if (pathname === "/api/ai/test" && method === "POST") {
-            const ai = parseAi(body);
-            const key = providerKey(ai.provider);
-            if (!key)
-              throw new HttpError(
-                "Credential provider belum dikonfigurasi di server.",
-                503,
-                "PROVIDER_NOT_CONFIGURED",
+            const input = objectBody(
+              body,
+              ["profileId", "provider", "model", "sessionId"],
+              [],
+            );
+            const hasProfile = input.profileId !== undefined;
+            const hasDraft =
+              input.provider !== undefined || input.model !== undefined;
+            if (hasProfile === hasDraft) {
+              throw new ValidationError(
+                "Uji koneksi memakai tepat salah satu profileId atau provider dan model.",
               );
+            }
+            let session: StoredSession | undefined;
+            if (input.sessionId !== undefined) {
+              session = db.getSession(
+                requiredString(input.sessionId, "sessionId"),
+              );
+              if (!session) throw new NotFoundError("Session tidak ditemukan.");
+            }
+            let ai: AiConfig;
+            let key: string | undefined;
+            let baseURL: string | undefined;
+            if (hasProfile) {
+              const profile = db.getAiProfile(
+                requiredString(input.profileId, "profileId"),
+              );
+              if (!profile)
+                throw new NotFoundError("Profil AI tidak ditemukan.");
+              ai = {
+                provider: profile.provider,
+                model: profile.model,
+                systemPrompt: profile.systemPrompt,
+              };
+              key = credentialKey(profile.credentialId);
+              if (profile.provider === "custom") baseURL = profile.baseURL;
+              else if (!key) {
+                throw new HttpError(
+                  "API key profil AI belum dikonfigurasi di server.",
+                  503,
+                  "PROVIDER_NOT_CONFIGURED",
+                );
+              }
+            } else {
+              ai = parseAi({
+                provider: input.provider,
+                model: input.model,
+              });
+              const binding = session
+                ? db.getSessionAiBinding(session.id)
+                : undefined;
+              if (binding && binding.provider === ai.provider) {
+                key = credentialKey(binding.credentialId);
+                if (binding.provider === "custom") baseURL = binding.baseURL;
+                else if (!key) {
+                  throw new HttpError(
+                    "API key profil AI belum dikonfigurasi di server.",
+                    503,
+                    "PROVIDER_NOT_CONFIGURED",
+                  );
+                }
+              } else if (ai.provider === "custom") {
+                throw new HttpError(
+                  "Pilih profil AI untuk provider custom.",
+                  400,
+                  "AI_PROFILE_REQUIRED",
+                );
+              } else {
+                key = providerKey(ai.provider);
+                if (!key)
+                  throw new HttpError(
+                    "Credential provider belum dikonfigurasi di server.",
+                    503,
+                    "PROVIDER_NOT_CONFIGURED",
+                  );
+              }
+            }
             const startedAt = performance.now();
             const record = db.startAiRequest({
               kind: "connection_test",
@@ -1249,7 +1636,7 @@ export function createHttpServer(
             const timeout = setTimeout(() => controller.abort(), 20_000);
             try {
               const result = await generateText({
-                model: providerModel(ai, key),
+                model: providerModel(ai, key ?? "", baseURL),
                 prompt: "Jawab dengan tepat satu kata: siap.",
                 maxRetries: 0,
                 maxOutputTokens: 8,
@@ -1433,15 +1820,64 @@ export function createHttpServer(
               });
               return;
             }
+            if (action === "ai-profile" && method === "GET") {
+              const session = db.getSession(id);
+              if (!session) throw new NotFoundError("Session tidak ditemukan.");
+              const binding = db.getSessionAiBinding(id);
+              jsonResponse(
+                response,
+                200,
+                binding
+                  ? {
+                      profileId: binding.profileId,
+                      ...(binding.baseURL === undefined
+                        ? {}
+                        : { baseURL: binding.baseURL }),
+                      credentialConfigured: Boolean(
+                        credentialKey(binding.credentialId),
+                      ),
+                    }
+                  : null,
+              );
+              return;
+            }
+            if (action === "ai-profile" && method === "PUT") {
+              const input = objectBody(
+                body,
+                ["expectedRevision", "profileId"],
+                ["expectedRevision", "profileId"],
+              );
+              const updated = db.applySessionAiProfile(
+                id,
+                requiredString(input.profileId, "profileId"),
+                requiredRevision(input.expectedRevision),
+              );
+              jsonResponse(response, 200, {
+                value: publicSession(updated),
+                revision: updated.revision,
+              });
+              return;
+            }
             if (action === "ai" && method === "PUT") {
               const input = objectBody(
                 body,
                 ["expectedRevision", "ai"],
                 ["expectedRevision", "ai"],
               );
+              const ai = parseAi(input.ai);
+              if (ai.provider === "custom") {
+                const binding = db.getSessionAiBinding(id);
+                if (!binding || binding.provider !== "custom") {
+                  throw new HttpError(
+                    "Pilih profil AI untuk provider custom.",
+                    400,
+                    "AI_PROFILE_REQUIRED",
+                  );
+                }
+              }
               const updated = db.updateSession(
                 id,
-                { ai: parseAi(input.ai) },
+                { ai },
                 requiredRevision(input.expectedRevision),
               );
               jsonResponse(response, 200, {
@@ -1476,6 +1912,9 @@ export function createHttpServer(
                 ["requestId", "expectedRevision"],
                 ["requestId", "expectedRevision"],
               );
+              const session = db.getSession(id);
+              if (!session) throw new NotFoundError("Session tidak ditemukan.");
+              const providerConfig = resolveSessionProviderConfig(db, session);
               jsonResponse(
                 response,
                 202,
@@ -1485,9 +1924,12 @@ export function createHttpServer(
                     requestId: validateRequestId(input.requestId),
                     expectedRevision: requiredRevision(input.expectedRevision),
                     work: { kind: "opening" },
-                    providerKey: providerKey(
-                      db.getSession(id)?.ai.provider ?? "gemini",
-                    ),
+                    ...(providerConfig.apiKey === undefined
+                      ? {}
+                      : { providerKey: providerConfig.apiKey }),
+                    ...(providerConfig.baseURL === undefined
+                      ? {}
+                      : { providerBaseURL: providerConfig.baseURL }),
                   }),
                 ),
               );
@@ -1502,6 +1944,7 @@ export function createHttpServer(
               const text = requiredString(input.input, "input", 8000);
               const session = db.getSession(id);
               if (!session) throw new NotFoundError("Session tidak ditemukan.");
+              const providerConfig = resolveSessionProviderConfig(db, session);
               jsonResponse(
                 response,
                 202,
@@ -1511,7 +1954,12 @@ export function createHttpServer(
                     requestId: validateRequestId(input.requestId),
                     expectedRevision: requiredRevision(input.expectedRevision),
                     work: { kind: "turn", input: text },
-                    providerKey: providerKey(session.ai.provider),
+                    ...(providerConfig.apiKey === undefined
+                      ? {}
+                      : { providerKey: providerConfig.apiKey }),
+                    ...(providerConfig.baseURL === undefined
+                      ? {}
+                      : { providerBaseURL: providerConfig.baseURL }),
                   }),
                 ),
               );
@@ -1525,6 +1973,7 @@ export function createHttpServer(
               );
               const session = db.getSession(id);
               if (!session) throw new NotFoundError("Session tidak ditemukan.");
+              const providerConfig = resolveSessionProviderConfig(db, session);
               jsonResponse(
                 response,
                 202,
@@ -1534,7 +1983,12 @@ export function createHttpServer(
                     requestId: validateRequestId(input.requestId),
                     expectedRevision: requiredRevision(input.expectedRevision),
                     work: { kind: "choices" },
-                    providerKey: providerKey(session.ai.provider),
+                    ...(providerConfig.apiKey === undefined
+                      ? {}
+                      : { providerKey: providerConfig.apiKey }),
+                    ...(providerConfig.baseURL === undefined
+                      ? {}
+                      : { providerBaseURL: providerConfig.baseURL }),
                   }),
                 ),
               );

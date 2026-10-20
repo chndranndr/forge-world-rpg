@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -10,6 +10,7 @@ let vite;
 let api;
 let engine;
 let world;
+let narratorPrompt;
 
 test.before(async () => {
   vite = await createServer({
@@ -19,6 +20,7 @@ test.before(async () => {
   api = await vite.ssrLoadModule("/server/db.ts");
   engine = await vite.ssrLoadModule("/shared/engine.ts");
   world = await vite.ssrLoadModule("/shared/world.ts");
+  narratorPrompt = await vite.ssrLoadModule("/shared/narrator-prompt.ts");
 });
 
 test.after(async () => {
@@ -355,6 +357,99 @@ test("v1 databases migrate and reopen, and restore upgrades before replacing the
     restored.listGames().map((game) => game.id),
     ["legacy-v1-game"],
   );
+});
+
+test("startup repairs missing tables and indexes without losing surviving story data", (t) => {
+  const { db, databasePath, track } = withDb(t);
+  const started = start(db, definition("repair-game"), "repair-session");
+  commitBatch(db, "repair-session", "before-repair", [
+    message("repair-session", 0, "Original story phrase survives repair."),
+  ]);
+  db.close();
+
+  const raw = new DatabaseSync(databasePath);
+  raw.exec(`
+    PRAGMA foreign_keys = OFF;
+    INSERT INTO story_summary_cursors(session_id, next_sequence)
+    VALUES ('repair-session', 1);
+    DROP TABLE story_summary_cursors;
+    DROP TABLE messages_fts;
+  `);
+  raw.close();
+
+  const originalWarn = console.warn;
+  const warnings = [];
+  console.warn = (...args) => warnings.push(args);
+  let repaired;
+  try {
+    repaired = new api.GameDatabase(databasePath);
+  } finally {
+    console.warn = originalWarn;
+  }
+  track(repaired);
+
+  assert.deepEqual(
+    repaired.listGames().map((game) => game.id),
+    [started.game.value.id],
+  );
+  assert.equal(repaired.getSession("repair-session").nextSequence, 1);
+  assert.deepEqual(
+    repaired.getHistory("repair-session").map((item) => item.content),
+    ["Original story phrase survives repair."],
+  );
+  assert.deepEqual(
+    repaired
+      .searchMemory("repair-session", "survives repair")
+      .map((item) => item.sequence),
+    [0],
+  );
+  assert.equal(warnings.length, 1);
+  assert.deepEqual(warnings[0][1].tables, ["story_summary_cursors"]);
+  assert.match(warnings[0][0], /Restore a backup/);
+
+  const current = repaired.getSession("repair-session");
+  commitBatch(repaired, "repair-session", "after-repair", [
+    message(
+      "repair-session",
+      current.nextSequence,
+      "Fresh message is indexed after repair.",
+    ),
+  ]);
+  assert.equal(
+    repaired
+      .searchMemory("repair-session", "indexed after repair")
+      .some((item) => item.kind === "message" && item.sequence === 1),
+    true,
+  );
+});
+
+test("v1 repair reports missing table rows as backup-only recovery", (t) => {
+  const { db, directory, track } = withDb(t);
+  db.close();
+  const databasePath = join(directory, "legacy-v1-missing-table.sqlite");
+  createV1Database(databasePath);
+  const raw = new DatabaseSync(databasePath);
+  raw.exec("PRAGMA foreign_keys = OFF; DROP TABLE messages;");
+  raw.close();
+
+  const originalWarn = console.warn;
+  const warnings = [];
+  console.warn = (...args) => warnings.push(args);
+  let repaired;
+  try {
+    repaired = new api.GameDatabase(databasePath);
+  } finally {
+    console.warn = originalWarn;
+  }
+  track(repaired);
+
+  assert.deepEqual(
+    repaired.listGames().map((game) => game.id),
+    ["legacy-v1-game"],
+  );
+  assert.equal(warnings.length, 1);
+  assert.deepEqual(warnings[0][1].tables, ["messages"]);
+  assert.match(warnings[0][0], /Restore a backup/);
 });
 
 test("lore publication is immutable, transactional, escaped, scoped, and location-aware", (t) => {
@@ -991,4 +1086,482 @@ test("scoped history, extractive summaries, and telemetry remain idempotent and 
     db.estimateTokens(100, "openrouter", "model-without-observations"),
     { approximateTokens: 25, method: "chars-per-4" },
   );
+});
+
+test("legacy session rows and saves inherit the narrator default; custom prompts round-trip", (t) => {
+  const { db, databasePath } = withDb(t, "fworld-narrator-prompt-");
+  const started = start(
+    db,
+    definition("narrator-prompt-game"),
+    "narrator-prompt-session",
+  );
+  const raw = new DatabaseSync(databasePath);
+  raw
+    .prepare("UPDATE sessions SET ai_json = ? WHERE id = ?")
+    .run(
+      JSON.stringify({ provider: ai.provider, model: ai.model }),
+      started.session.value.id,
+    );
+  raw.close();
+
+  const legacySession = db.getSession(started.session.value.id);
+  assert.equal(
+    legacySession.ai.systemPrompt,
+    narratorPrompt.DEFAULT_NARRATOR_SYSTEM_PROMPT,
+  );
+  const customSystemPrompt = "Custom narrator prompt for save restore.";
+  db.updateSession(
+    legacySession.id,
+    {
+      ai: { ...ai, systemPrompt: customSystemPrompt },
+    },
+    legacySession.revision,
+  );
+
+  const bundle = db.exportSave(legacySession.id);
+  assert.equal(bundle.session.ai.systemPrompt, customSystemPrompt);
+  const oldBundle = structuredClone(bundle);
+  delete oldBundle.session.ai.systemPrompt;
+  const oldImport = db.importSave(oldBundle);
+  assert.equal(
+    db.getSession(oldImport.sessionId).ai.systemPrompt,
+    narratorPrompt.DEFAULT_NARRATOR_SYSTEM_PROMPT,
+  );
+  const customImport = db.importSave(bundle);
+  assert.equal(
+    db.getSession(customImport.sessionId).ai.systemPrompt,
+    customSystemPrompt,
+  );
+
+  const blankBundle = structuredClone(bundle);
+  blankBundle.session.ai.systemPrompt = " \n ";
+  assert.throws(() => db.importSave(blankBundle), api.ImportError);
+  const oversizedBundle = structuredClone(bundle);
+  oversizedBundle.session.ai.systemPrompt = "x".repeat(
+    narratorPrompt.MAX_NARRATOR_SYSTEM_PROMPT_CHARS + 1,
+  );
+  assert.throws(() => db.importSave(oversizedBundle), api.ImportError);
+});
+
+function createV2Database(path) {
+  const raw = new DatabaseSync(path);
+  raw.exec(`
+    PRAGMA foreign_keys = ON;
+    CREATE TABLE games (
+      id TEXT PRIMARY KEY NOT NULL,
+      definition_json TEXT NOT NULL CHECK (json_valid(definition_json)),
+      revision INTEGER NOT NULL CHECK (revision > 0),
+      updated_at TEXT NOT NULL
+    ) STRICT;
+    CREATE TABLE sessions (
+      id TEXT PRIMARY KEY NOT NULL,
+      game_id TEXT NOT NULL REFERENCES games(id) ON DELETE RESTRICT,
+      definition_snapshot_json TEXT NOT NULL CHECK (json_valid(definition_snapshot_json)),
+      state_json TEXT NOT NULL CHECK (json_valid(state_json)),
+      ai_json TEXT NOT NULL CHECK (json_valid(ai_json)),
+      next_sequence INTEGER NOT NULL CHECK (next_sequence >= 0),
+      revision INTEGER NOT NULL CHECK (revision > 0),
+      updated_at TEXT NOT NULL,
+      world_map_json TEXT CHECK (world_map_json IS NULL OR json_valid(world_map_json)),
+      lore_refs_json TEXT CHECK (lore_refs_json IS NULL OR json_valid(lore_refs_json))
+    ) STRICT;
+    CREATE INDEX sessions_by_game ON sessions(game_id, updated_at DESC);
+    CREATE TABLE messages (
+      id TEXT PRIMARY KEY NOT NULL,
+      session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      turn_id TEXT NOT NULL,
+      sequence INTEGER NOT NULL CHECK (sequence >= 0),
+      role TEXT NOT NULL CHECK (role IN ('PLAYER','NPC','NARRATOR','SYSTEM_EVENT')),
+      speaker_id TEXT,
+      content TEXT NOT NULL,
+      check_json TEXT CHECK (check_json IS NULL OR json_valid(check_json)),
+      created_at TEXT NOT NULL,
+      visibility TEXT CHECK (visibility IS NULL OR visibility IN ('public','private')),
+      known_by_json TEXT CHECK (known_by_json IS NULL OR json_valid(known_by_json)),
+      UNIQUE (session_id, sequence)
+    ) STRICT;
+    CREATE INDEX messages_page ON messages(session_id, sequence);
+    CREATE VIRTUAL TABLE messages_fts USING fts5(
+      content, content='messages', content_rowid='rowid',
+      tokenize='unicode61 remove_diacritics 2'
+    );
+    CREATE TABLE turns (
+      session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      request_id TEXT NOT NULL,
+      input_hash TEXT NOT NULL,
+      expected_revision INTEGER NOT NULL CHECK (expected_revision > 0),
+      kind TEXT NOT NULL CHECK (kind IN ('turn','opening','choices','item_use')),
+      status TEXT NOT NULL CHECK (status IN ('running','committed','failed','interrupted')),
+      result_json TEXT CHECK (result_json IS NULL OR json_valid(result_json)),
+      error_json TEXT CHECK (error_json IS NULL OR json_valid(error_json)),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (session_id, request_id)
+    ) STRICT;
+    CREATE UNIQUE INDEX one_running_turn_per_session ON turns(session_id)
+      WHERE status = 'running';
+    CREATE TABLE ai_requests (
+      id TEXT PRIMARY KEY NOT NULL,
+      session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
+      request_id TEXT,
+      kind TEXT NOT NULL CHECK (kind IN ('turn','opening','choices','connection_test')),
+      attempt INTEGER NOT NULL CHECK (attempt > 0),
+      provider TEXT NOT NULL CHECK (provider IN ('gemini','openrouter')),
+      model TEXT NOT NULL,
+      input_tokens INTEGER CHECK (input_tokens IS NULL OR input_tokens >= 0),
+      output_tokens INTEGER CHECK (output_tokens IS NULL OR output_tokens >= 0),
+      total_tokens INTEGER CHECK (total_tokens IS NULL OR total_tokens >= 0),
+      cached_input_tokens INTEGER CHECK (cached_input_tokens IS NULL OR cached_input_tokens >= 0),
+      reasoning_tokens INTEGER CHECK (reasoning_tokens IS NULL OR reasoning_tokens >= 0),
+      status TEXT NOT NULL CHECK (status IN ('running','succeeded','failed','unknown')),
+      latency_ms INTEGER CHECK (latency_ms IS NULL OR latency_ms >= 0),
+      finish_reason TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    ) STRICT;
+    CREATE INDEX ai_usage_by_session ON ai_requests(session_id, created_at);
+    CREATE INDEX ai_usage_by_run ON ai_requests(session_id, request_id, attempt);
+    CREATE UNIQUE INDEX ai_attempt_once ON ai_requests(session_id, request_id, kind, attempt)
+      WHERE request_id IS NOT NULL;
+    CREATE TABLE migrations (
+      fingerprint TEXT PRIMARY KEY NOT NULL,
+      counts_json TEXT NOT NULL CHECK (json_valid(counts_json)),
+      ids_json TEXT NOT NULL CHECK (json_valid(ids_json)),
+      receipt_json TEXT NOT NULL CHECK (json_valid(receipt_json)),
+      created_at TEXT NOT NULL
+    ) STRICT;
+    CREATE TABLE lore_packs (
+      pack_id TEXT NOT NULL,
+      pack_version INTEGER NOT NULL CHECK (pack_version > 0),
+      name TEXT NOT NULL,
+      description TEXT,
+      entry_count INTEGER NOT NULL CHECK (entry_count >= 0),
+      link_count INTEGER NOT NULL CHECK (link_count >= 0),
+      digest TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (pack_id, pack_version)
+    ) STRICT;
+    CREATE TABLE lore_entries (
+      pack_id TEXT NOT NULL,
+      pack_version INTEGER NOT NULL,
+      entry_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      name TEXT NOT NULL,
+      aliases_json TEXT NOT NULL CHECK (json_valid(aliases_json)),
+      parent_id TEXT,
+      summary TEXT NOT NULL,
+      body TEXT NOT NULL,
+      tags_json TEXT NOT NULL CHECK (json_valid(tags_json)),
+      visibility TEXT NOT NULL CHECK (visibility IN ('public','narrator','discovery')),
+      metadata_json TEXT NOT NULL CHECK (json_valid(metadata_json)),
+      provenance_json TEXT NOT NULL CHECK (json_valid(provenance_json)),
+      PRIMARY KEY (pack_id, pack_version, entry_id)
+    ) STRICT;
+    CREATE TABLE lore_links (
+      pack_id TEXT NOT NULL,
+      pack_version INTEGER NOT NULL,
+      from_id TEXT NOT NULL,
+      to_id TEXT NOT NULL,
+      relation TEXT NOT NULL,
+      PRIMARY KEY (pack_id, pack_version, from_id, to_id, relation)
+    ) STRICT;
+    CREATE TABLE context_telemetry (
+      session_id TEXT NOT NULL,
+      request_id TEXT NOT NULL,
+      context_chars INTEGER NOT NULL CHECK (context_chars >= 0),
+      approximate_tokens INTEGER NOT NULL CHECK (approximate_tokens >= 0),
+      token_estimate_method TEXT NOT NULL,
+      sections_json TEXT NOT NULL CHECK (json_valid(sections_json)),
+      selected_lore_ids_json TEXT NOT NULL CHECK (json_valid(selected_lore_ids_json)),
+      omissions_json TEXT NOT NULL CHECK (json_valid(omissions_json)),
+      tool_calls INTEGER NOT NULL CHECK (tool_calls >= 0),
+      repairs INTEGER NOT NULL CHECK (repairs >= 0),
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (session_id, request_id),
+      FOREIGN KEY (session_id, request_id)
+        REFERENCES turns(session_id, request_id) ON DELETE CASCADE
+    ) STRICT;
+    CREATE TABLE story_summaries (
+      session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      from_sequence INTEGER NOT NULL CHECK (from_sequence >= 0),
+      to_sequence INTEGER NOT NULL CHECK (to_sequence >= from_sequence),
+      summary TEXT NOT NULL,
+      source_digest TEXT NOT NULL,
+      visibility TEXT NOT NULL CHECK (visibility IN ('public','private')),
+      known_by_json TEXT NOT NULL CHECK (json_valid(known_by_json)),
+      created_at TEXT NOT NULL,
+      UNIQUE (session_id, from_sequence, to_sequence, visibility, known_by_json, source_digest)
+    ) STRICT;
+    CREATE INDEX story_summaries_by_session
+      ON story_summaries(session_id, to_sequence DESC);
+    CREATE INDEX story_summaries_by_scope
+      ON story_summaries(session_id, visibility, to_sequence DESC);
+    CREATE TABLE story_summary_cursors (
+      session_id TEXT PRIMARY KEY NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      next_sequence INTEGER NOT NULL CHECK (next_sequence >= 0)
+    ) STRICT;
+    PRAGMA user_version = 2;
+  `);
+
+  const game = definition("legacy-v2-game");
+  const session = {
+    id: "legacy-v2-session",
+    gameId: game.id,
+    definitionSnapshot: game,
+    state: engine.buildInitialState(game),
+    ai: { provider: "gemini", model: "gemini-legacy-v2" },
+    nextSequence: 1,
+    updatedAt: "2026-10-18T00:00:01.000Z",
+  };
+  raw
+    .prepare(
+      "INSERT INTO games(id, definition_json, revision, updated_at) VALUES (?, ?, 1, ?)",
+    )
+    .run(game.id, JSON.stringify(game), game.updatedAt);
+  raw
+    .prepare(
+      `INSERT INTO sessions(
+         id, game_id, definition_snapshot_json, state_json, ai_json,
+         next_sequence, revision, updated_at, world_map_json, lore_refs_json
+       ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, NULL, NULL)`,
+    )
+    .run(
+      session.id,
+      session.gameId,
+      JSON.stringify(session.definitionSnapshot),
+      JSON.stringify(session.state),
+      JSON.stringify(session.ai),
+      session.nextSequence,
+      session.updatedAt,
+    );
+  raw
+    .prepare(
+      `INSERT INTO messages(
+         id, session_id, turn_id, sequence, role, speaker_id, content,
+         check_json, created_at, visibility, known_by_json
+       ) VALUES (?, ?, ?, 0, 'NARRATOR', NULL, ?, NULL, ?, 'public', NULL)`,
+    )
+    .run(
+      "legacy-v2-message",
+      session.id,
+      "legacy-v2-turn",
+      "V2 sentinel history survives the schema 3 upgrade.",
+      "2026-10-18T00:00:01.000Z",
+    );
+  raw
+    .prepare(
+      `INSERT INTO lore_packs(
+         pack_id, pack_version, name, entry_count, link_count, digest, created_at
+       ) VALUES ('legacy-v2-pack', 1, 'Legacy Pack', 1, 0, 'digest-v2', ?)`,
+    )
+    .run("2026-10-18T00:00:00.000Z");
+  raw
+    .prepare(
+      `INSERT INTO lore_entries(
+         pack_id, pack_version, entry_id, kind, name, aliases_json, parent_id,
+         summary, body, tags_json, visibility, metadata_json, provenance_json
+       ) VALUES ('legacy-v2-pack', 1, 'legacy:entry-v2', 'world', 'Legacy Entry',
+         '[]', NULL, 'Legacy summary', 'Legacy body', '[]', 'public', '{}',
+         '{"sourceId":"legacy-v2-tests"}')`,
+    )
+    .run();
+  raw
+    .prepare(
+      `INSERT INTO turns(
+         session_id, request_id, input_hash, expected_revision, kind, status,
+         result_json, error_json, created_at, updated_at
+       ) VALUES (?, 'legacy-v2-request', 'hash-v2', 1, 'turn', 'committed',
+         '{"ok":true}', NULL, ?, ?)`,
+    )
+    .run(session.id, "2026-10-18T00:00:01.000Z", "2026-10-18T00:00:02.000Z");
+  raw
+    .prepare(
+      `INSERT INTO ai_requests(
+         id, session_id, request_id, kind, attempt, provider, model,
+         input_tokens, output_tokens, total_tokens, cached_input_tokens,
+         reasoning_tokens, status, latency_ms, finish_reason, created_at, updated_at
+       ) VALUES ('legacy-v2-ledger', ?, 'legacy-v2-request', 'turn', 1,
+         'openrouter', 'legacy/router', 10, 5, 15, NULL, NULL, 'succeeded',
+         1200, 'stop', ?, ?)`,
+    )
+    .run(session.id, "2026-10-18T00:00:01.000Z", "2026-10-18T00:00:02.000Z");
+  raw.close();
+}
+
+test("populated schema-2 data migrates to schema 3 and accepts custom ledger and bindings", (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "fworld-v2-upgrade-"));
+  const databasePath = join(directory, "legacy-v2.sqlite");
+  createV2Database(databasePath);
+  const db = new api.GameDatabase(databasePath);
+  t.after(() => {
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  const raw = new DatabaseSync(databasePath);
+  const version = raw.prepare("PRAGMA user_version").get().user_version;
+  const tableNames = raw
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+    .all()
+    .map((row) => row.name);
+  raw.close();
+  assert.equal(version, 3);
+  assert.ok(tableNames.includes("ai_credentials"));
+  assert.ok(tableNames.includes("ai_profiles"));
+  assert.ok(tableNames.includes("session_ai_bindings"));
+
+  assert.equal(
+    db.getHistory("legacy-v2-session")[0].content,
+    "V2 sentinel history survives the schema 3 upgrade.",
+  );
+  assert.equal(db.getGame("legacy-v2-game").title, "Lantern Cafe");
+  assert.equal(
+    db.getLoreEntry(
+      [{ packId: "legacy-v2-pack", version: 1 }],
+      "legacy:entry-v2",
+    ).name,
+    "Legacy Entry",
+  );
+  const usage = db.getUsageSummary("legacy-v2-session", "legacy-v2-request");
+  assert.equal(usage.totalTokens, 15);
+
+  const custom = db.createAiProfile({
+    name: "Fixture custom",
+    provider: "custom",
+    model: "fixture-model",
+    systemPrompt: "Fixture prompt.",
+    baseURL: "https://api.example.com/v1",
+  });
+  const started = db.startSessionForDefinition({
+    definition: definition("v2-upgrade-custom-game"),
+    profileId: custom.id,
+    sessionId: "v2-upgrade-custom-session",
+  });
+  assert.equal(started.session.value.ai.provider, "custom");
+  const ledger = db.startAiRequest({
+    kind: "connection_test",
+    attempt: 1,
+    provider: "custom",
+    model: "fixture-model",
+  });
+  db.finishAiRequest(ledger.id, {
+    status: "succeeded",
+    usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7 },
+  });
+  db.close();
+
+  const reopened = new api.GameDatabase(databasePath);
+  assert.equal(
+    reopened.getSessionAiBinding("v2-upgrade-custom-session").credentialId,
+    custom.credentialId,
+  );
+  assert.equal(
+    reopened.getSession("v2-upgrade-custom-session").ai.model,
+    "fixture-model",
+  );
+  assert.equal(
+    reopened.getHistory("legacy-v2-session")[0].content,
+    "V2 sentinel history survives the schema 3 upgrade.",
+  );
+
+  const rawAfter = new DatabaseSync(databasePath);
+  const ledgerCount = rawAfter
+    .prepare(
+      "SELECT COUNT(*) AS count FROM ai_requests WHERE provider = 'custom'",
+    )
+    .get().count;
+  const attemptIndex = rawAfter
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'ai_attempt_once'",
+    )
+    .get();
+  rawAfter.close();
+  assert.equal(ledgerCount, 1);
+  assert.ok(attemptIndex);
+  reopened.close();
+});
+
+test("v2 backups migrate through staging and invalid bindings are rejected before swap", async (t) => {
+  const { db, directory, databasePath, track } = withDb(
+    t,
+    "fworld-v2-restore-",
+  );
+  db.close();
+  const v2Path = join(directory, "restore-source-v2.sqlite");
+  createV2Database(v2Path);
+  const restored = await api.GameDatabase.restoreFrom(v2Path, databasePath);
+  track(restored);
+  assert.equal(restored.getSession("legacy-v2-session").nextSequence, 1);
+  assert.equal(
+    restored.getHistory("legacy-v2-session")[0].content,
+    "V2 sentinel history survives the schema 3 upgrade.",
+  );
+
+  const geminiProfile = restored.createAiProfile({
+    name: "Mismatch gemini",
+    provider: "gemini",
+    model: "gemini-test",
+    systemPrompt: "Fixture prompt.",
+  });
+  const started = restored.startSessionForDefinition({
+    definition: definition("binding-mismatch-game"),
+    profileId: geminiProfile.id,
+    sessionId: "binding-mismatch-session",
+  });
+  const custom = restored.createAiProfile({
+    name: "Mismatch custom",
+    provider: "custom",
+    model: "fixture-model",
+    systemPrompt: "Fixture prompt.",
+    baseURL: "https://api.example.com/v1",
+  });
+  const raw = new DatabaseSync(databasePath);
+  raw
+    .prepare(
+      `UPDATE session_ai_bindings SET credential_id = ? WHERE session_id = ?`,
+    )
+    .run(custom.credentialId, started.session.value.id);
+  raw.close();
+  const badBackup = join(directory, "binding-mismatch-backup.sqlite");
+  await restored.backupTo(badBackup);
+  await assert.rejects(
+    api.GameDatabase.restoreFrom(
+      badBackup,
+      join(directory, "binding-mismatch-target.sqlite"),
+    ),
+    (error) => error.code === "CORRUPT_DATABASE",
+  );
+});
+
+test("SQLite backups carry profile metadata but never credential tokens", async (t) => {
+  const { db, directory } = withDb(t, "fworld-profile-backup-");
+  const profile = db.createAiProfile({
+    name: "Backup custom",
+    provider: "custom",
+    model: "fixture-model",
+    systemPrompt: "Fixture prompt.",
+    baseURL: "https://api.example.com/v1",
+  });
+  db.startSessionForDefinition({
+    definition: definition("backup-binding-game"),
+    profileId: profile.id,
+    sessionId: "backup-binding-session",
+  });
+  const dummyToken = "dummy-token-fworld-backup-never";
+  const backupPath = join(directory, "profile-backup.sqlite");
+  await db.backupTo(backupPath);
+  const bytes = readFileSync(backupPath);
+  assert.ok(!bytes.includes(dummyToken));
+
+  const raw = new DatabaseSync(backupPath, { readOnly: true });
+  const profileNames = raw
+    .prepare("SELECT name FROM ai_profiles")
+    .all()
+    .map((row) => row.name);
+  const bindingCount = raw
+    .prepare("SELECT COUNT(*) AS count FROM session_ai_bindings")
+    .get().count;
+  raw.close();
+  assert.deepEqual(profileNames, ["Backup custom"]);
+  assert.equal(bindingCount, 1);
 });

@@ -4,6 +4,7 @@ import { createServer } from "vite";
 
 let server;
 let agent;
+let narratorPrompt;
 
 test.before(async () => {
   server = await createServer({
@@ -11,6 +12,7 @@ test.before(async () => {
     appType: "custom",
   });
   agent = await server.ssrLoadModule("/server/agent.ts");
+  narratorPrompt = await server.ssrLoadModule("/shared/narrator-prompt.ts");
 });
 
 test.after(async () => {
@@ -138,6 +140,8 @@ function fakeStep(
 
 test("uses the session model, fixed request limits, compact context, and counts a JSON repair", async () => {
   const session = makeSession();
+  const customSystemPrompt = "Custom narrator system prompt for this session.";
+  session.ai.systemPrompt = customSystemPrompt;
   const history = Array.from({ length: 30 }, (_, sequence) => ({
     id: `m-${sequence}`,
     sessionId: session.id,
@@ -173,10 +177,15 @@ test("uses the session model, fixed request limits, compact context, and counts 
     {
       generateText: async (options) => {
         calls += 1;
+        assert.equal(options.system, customSystemPrompt);
+        assert.equal(
+          options.system.length + options.prompt.length,
+          estimatedChars,
+        );
         if (calls === 1) {
           assert.equal(options.model.modelId, "gemini-test");
           assert.equal(options.maxRetries, 0);
-          assert.equal(options.maxOutputTokens, 2400);
+          assert.equal(options.maxOutputTokens, 4096);
           assert.equal(options.stopWhen({ steps: [{}, {}] }), false);
           assert.equal(options.stopWhen({ steps: [{}, {}, {}] }), true);
           assert.equal(options.abortSignal.aborted, false);
@@ -243,7 +252,7 @@ test("uses the session model, fixed request limits, compact context, and counts 
   assert.equal(finished[1].usage.totalTokens, 16);
 });
 
-test("gives choice generation a compact output budget and repairs token-limited responses", async () => {
+test("repairs choice generation after output-limit truncation", async () => {
   const session = makeSession("openrouter");
   const finished = [];
   let calls = 0;
@@ -257,7 +266,7 @@ test("gives choice generation a compact output budget and repairs token-limited 
     {
       generateText: async (options) => {
         calls += 1;
-        assert.equal(options.maxOutputTokens, calls === 1 ? 2400 : 1800);
+        assert.equal(options.maxOutputTokens, calls === 1 ? 4096 : 1800);
         if (calls === 1) {
           assert.match(options.system, /0–3 distinct/);
           assert.doesNotMatch(options.system, /exactly three|exactly 3/i);
@@ -672,6 +681,79 @@ test("uses OpenRouter only when selected in the session snapshot", async () => {
   assert.equal(result.response.narrative, "Ready.");
 });
 
+test("pins OpenRouter Gemini tool continuations to one provider", async () => {
+  const originalFetch = globalThis.fetch;
+  const requestBodies = [];
+  globalThis.fetch = async (input, init) => {
+    const raw =
+      init?.body ??
+      (input instanceof Request ? await input.clone().text() : "");
+    const body = JSON.parse(raw);
+    requestBodies.push(body);
+    const toolCall = requestBodies.length === 1;
+    return new Response(
+      JSON.stringify({
+        id: `gen-${requestBodies.length}`,
+        object: "chat.completion",
+        created: 1,
+        model: body.model,
+        choices: [
+          {
+            index: 0,
+            message: toolCall
+              ? {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "call-item-details",
+                      type: "function",
+                      function: {
+                        name: "get_item_details",
+                        arguments: JSON.stringify({ itemId: "umbrella" }),
+                      },
+                    },
+                  ],
+                }
+              : {
+                  role: "assistant",
+                  content: JSON.stringify({
+                    narrative: "Ready.",
+                    effects: [],
+                  }),
+                },
+            finish_reason: toolCall ? "tool_calls" : "stop",
+          },
+        ],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      }),
+      { headers: { "Content-Type": "application/json" } },
+    );
+  };
+
+  try {
+    const gemini = makeSession("openrouter");
+    gemini.ai.model = "google/gemini-3.6-flash";
+    const result = await agent.runNarrator(makeInput({ session: gemini }));
+    assert.equal(result.response.narrative, "Ready.");
+    assert.deepEqual(
+      requestBodies.slice(0, 2).map(({ provider }) => provider),
+      [
+        { order: ["google-ai-studio"], allow_fallbacks: false },
+        { order: ["google-ai-studio"], allow_fallbacks: false },
+      ],
+    );
+
+    const otherModel = makeSession("openrouter");
+    otherModel.ai.model = "openai/gpt-4o-mini";
+    await agent.runNarrator(makeInput({ session: otherModel }));
+    assert.equal(requestBodies[2].provider, undefined);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("fails the active attempt without fabricating usage after a provider error", async () => {
   const started = [];
   const finished = [];
@@ -958,9 +1040,31 @@ test("keeps principal context scoped and unaffected by unrelated actors or items
   assert.equal(await runAndCapture(expanded), ordinaryPrompt);
 });
 
+test("allows input above the former context limit without increasing output", async () => {
+  const session = makeSession();
+  session.definitionSnapshot.player.description = "x".repeat(500_000);
+  let captured;
+  const result = await agent.runNarrator(makeInput({ session }), {
+    generateText: async (options) => {
+      captured = options.system.length + options.prompt.length;
+      assert.equal(options.maxOutputTokens, 4_096);
+      assert.match(options.prompt, /x{500000}/);
+      return {
+        text: JSON.stringify({
+          narrative: "Hujan turun.",
+          effects: [],
+        }),
+        finishReason: "stop",
+      };
+    },
+  });
+  assert.ok(captured > 500_000 && captured <= 512_000);
+  assert.equal(result.response.narrative, "Hujan turun.");
+});
+
 test("fails before the provider when required context exceeds its limit", async () => {
   const session = makeSession();
-  session.definitionSnapshot.player.description = "x".repeat(25_000);
+  session.definitionSnapshot.player.description = "x".repeat(512_000);
   let providerCalled = false;
   await assert.rejects(
     agent.runNarrator(makeInput({ session }), {
@@ -972,9 +1076,10 @@ test("fails before the provider when required context exceeds its limit", async 
     (error) => {
       assert.ok(error instanceof agent.NarratorContextError);
       assert.ok(error.actualChars > error.maxChars);
-      assert.equal(error.maxChars, 24_000);
+      assert.equal(error.maxChars, 512_000);
+      assert.equal(error.maxTokens, 128_000);
       assert.match(error.message, new RegExp(String(error.actualChars)));
-      assert.match(error.message, /24,?000|24000/);
+      assert.match(error.message, /512000 karakter dan 128000 token/);
       assert.match(error.message, /ringkas konfigurasi game atau aksi pemain/i);
       return true;
     },
@@ -1347,4 +1452,23 @@ test("uses opaque discovery handles across a gated lore repair", async () => {
       { id: opaqueHandle, discoveryCandidate: true },
     ]);
   }
+});
+
+test("sessions without an override use the shipped narrator JSON default", async () => {
+  const result = await agent.runNarrator(makeInput(), {
+    generateText: async (options) => {
+      assert.equal(
+        options.system,
+        narratorPrompt.DEFAULT_NARRATOR_SYSTEM_PROMPT,
+      );
+      await fakeStep(options);
+      return {
+        text: JSON.stringify({
+          narrative: "The scene continues.",
+          effects: [],
+        }),
+      };
+    },
+  });
+  assert.equal(result.response.narrative, "The scene continues.");
 });

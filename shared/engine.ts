@@ -1,4 +1,5 @@
 import { PLAYER_ID } from "./types.js";
+import { validateDefinition } from "./validation.js";
 import { sceneParticipants } from "./world.js";
 
 import type {
@@ -12,6 +13,9 @@ import type {
   ItemDefinition,
   ItemEffect,
   LoreEntry,
+  TurnEffect,
+  NpcDefinition,
+  RegisterNpcEffect,
   RelationshipDefinition,
   ResourceDefinition,
   SessionState,
@@ -84,6 +88,9 @@ export class EngineError extends Error {
 export interface ApplyResult {
   state: SessionState;
   applied: string[];
+}
+export interface NarratorApplyResult extends ApplyResult {
+  definition?: GameDefinition;
 }
 
 export interface CheckParams {
@@ -347,13 +354,13 @@ function applyOne(
         source: "story",
       };
       next.facts.push(fact);
-      return `Fakta baru dicatat: "${fact.text}"`;
+      return "Fakta baru dicatat";
     }
     case "REMOVE_FACT": {
       const fact = next.facts.find((entry) => entry.id === effect.target);
       if (!fact) fail(`Fakta "${effect.target}" tidak ditemukan`);
       next.facts.splice(next.facts.indexOf(fact), 1);
-      return `Fakta dihapus: "${fact.text}"`;
+      return "Fakta dihapus";
     }
     case "DISCOVER_LORE": {
       if (!context?.worldMap)
@@ -458,9 +465,16 @@ function applyOne(
       if (typeof effect.present !== "boolean") {
         fail("NPC_PRESENCE membutuhkan present boolean");
       }
+      const previous = next.world.npcPresence?.[effect.npcId];
+      const presence =
+        typeof previous === "object"
+          ? { locationId: previous.locationId, present: effect.present }
+          : effect.present
+            ? "present"
+            : "absent";
       next.world.npcPresence = {
         ...(next.world.npcPresence ?? {}),
-        [effect.npcId]: effect.present ? "present" : "absent",
+        [effect.npcId]: presence,
       };
       refreshActiveCharacters(game, next, context);
       return `Kehadiran NPC "${effect.npcId}" diperbarui`;
@@ -484,6 +498,119 @@ export function applyEffects(
     applied.push(applyOne(game, next, effect, context));
   }
   return { state: next, applied };
+}
+function normalizedNpcName(value: string): string {
+  return value.normalize("NFKC").trim().replace(/\s+/gu, " ").toLowerCase();
+}
+
+function registerNpc(
+  game: GameDefinition,
+  next: SessionState,
+  raw: RegisterNpcEffect,
+  context?: EffectContext,
+): string {
+  const parsedEffect = parseEffect(raw);
+  if (parsedEffect.type !== "REGISTER_NPC") {
+    fail("Effect bukan REGISTER_NPC");
+  }
+  const effect = parsedEffect;
+  const usedIds = new Set([
+    PLAYER_ID,
+    game.id,
+    ...game.attributes.map(({ id }) => id),
+    ...game.resources.map(({ id }) => id),
+    ...game.relationships.map(({ id }) => id),
+    ...game.items.map(({ id }) => id),
+    ...game.npcs.map(({ id }) => id),
+    ...(game.worldMap?.locations.map(({ id }) => id) ?? []),
+    ...(context?.worldMap?.locations.map(({ id }) => id) ?? []),
+  ]);
+  if (usedIds.has(effect.id)) {
+    fail(`REGISTER_NPC.id "${effect.id}" sudah digunakan`);
+  }
+  const normalizedName = normalizedNpcName(effect.name);
+  if (
+    normalizedName === normalizedNpcName(game.player.name) ||
+    game.npcs.some((npc) => normalizedNpcName(npc.name) === normalizedName)
+  ) {
+    fail(`Nama NPC "${effect.name}" sudah digunakan`);
+  }
+
+  const npc: NpcDefinition = {
+    id: effect.id,
+    name: effect.name,
+    personality: effect.personality,
+    goals: effect.goals,
+    privateKnowledge: [],
+    initialRelationships: {},
+    ...(effect.description === undefined
+      ? {}
+      : { description: effect.description }),
+    ...(effect.role === undefined ? {} : { role: effect.role }),
+  };
+  const candidate = { ...game, npcs: [...game.npcs, npc] };
+  const definitionProblems = validateDefinition(candidate);
+  if (definitionProblems.length) {
+    fail(`REGISTER_NPC tidak valid: ${definitionProblems.join(" ")}`);
+  }
+
+  next.relationships.push({
+    npcId: npc.id,
+    values: Object.fromEntries(
+      game.relationships.map(({ id, defaultValue }) => [id, defaultValue]),
+    ),
+  });
+  const worldMap = context?.worldMap ?? candidate.worldMap;
+  if (worldMap) {
+    const locationId = next.world.locationId;
+    if (
+      !locationId ||
+      !worldMap.locations.some((location) => location.id === locationId)
+    ) {
+      fail("REGISTER_NPC membutuhkan lokasi encounter yang valid");
+    }
+    next.world.npcPresence = {
+      ...(next.world.npcPresence ?? {}),
+      [npc.id]: { locationId },
+    };
+  } else {
+    next.world.npcPresence = {
+      ...(next.world.npcPresence ?? {}),
+      [npc.id]: "present",
+    };
+  }
+  refreshActiveCharacters(candidate, next, {
+    ...context,
+    ...(worldMap ? { worldMap } : {}),
+  });
+  game.npcs.push(npc);
+  return `NPC "${npc.name}" terdaftar`;
+}
+
+export function applyNarratorEffects(
+  game: GameDefinition,
+  state: SessionState,
+  effects: TurnEffect[],
+  context?: EffectContext,
+): NarratorApplyResult {
+  const next = structuredClone(state);
+  let definition: GameDefinition | undefined;
+  let currentGame = game;
+  const applied: string[] = [];
+  for (const effect of effects) {
+    if (effect.type === "REGISTER_NPC") {
+      definition ??= structuredClone(game);
+      currentGame = definition;
+      applied.push(registerNpc(currentGame, next, effect, context));
+    } else {
+      applied.push(applyOne(currentGame, next, effect, context));
+    }
+  }
+  return {
+    state: next,
+    applied,
+    ...(definition ? { definition } : {}),
+  };
 }
 
 export function validateCheckRequest(
@@ -597,7 +724,7 @@ export interface Choice {
 export interface NarrativeProposal {
   type: "narrative";
   narrative: string;
-  effects: ItemEffect[];
+  effects: TurnEffect[];
   world?: {
     location?: string;
     locationId?: string;
@@ -643,6 +770,16 @@ function parseStringList(raw: unknown, label: string): string[] {
   for (const value of raw) entries.push(parseRequiredText(value, label));
   return entries;
 }
+const NPC_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
+const REGISTER_NPC_FIELDS = [
+  "type",
+  "id",
+  "name",
+  "description",
+  "personality",
+  "role",
+  "goals",
+];
 const EFFECT_FIELDS: Record<string, readonly string[]> = {
   ATTRIBUTE_CHANGE: ["type", "target", "operation", "value"],
   RESOURCE_CHANGE: ["type", "target", "operation", "value"],
@@ -655,6 +792,7 @@ const EFFECT_FIELDS: Record<string, readonly string[]> = {
   REVEAL_FACT: ["type", "factId", "npcId"],
   SET_FLAG: ["type", "target", "value"],
   NPC_PRESENCE: ["type", "npcId", "present"],
+  REGISTER_NPC: REGISTER_NPC_FIELDS,
 };
 
 function assertOnlyKeys(
@@ -666,7 +804,7 @@ function assertOnlyKeys(
   if (unexpected) fail(`${label} contains unsupported field "${unexpected}"`);
 }
 
-function parseEffect(raw: unknown): ItemEffect {
+function parseEffect(raw: unknown): TurnEffect {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     fail("Effect harus berupa object");
   }
@@ -756,6 +894,57 @@ function parseEffect(raw: unknown): ItemEffect {
         npcId: parseRequiredText(obj.npcId, "NPC_PRESENCE.npcId"),
         present: obj.present,
       };
+    case "REGISTER_NPC": {
+      const id = parseRequiredText(obj.id, "REGISTER_NPC.id");
+      if (id.length > 128 || !NPC_ID_PATTERN.test(id)) {
+        fail("REGISTER_NPC.id tidak valid");
+      }
+      const name = parseRequiredText(obj.name, "REGISTER_NPC.name");
+      if (name.length > 100)
+        fail("REGISTER_NPC.name melebihi batas 100 karakter");
+      if (
+        !Array.isArray(obj.personality) ||
+        obj.personality.length > 6 ||
+        !Array.isArray(obj.goals) ||
+        obj.goals.length > 6
+      ) {
+        fail(
+          "REGISTER_NPC personality/goals harus array dengan maksimal 6 nilai",
+        );
+      }
+      const personality = parseStringList(
+        obj.personality,
+        "REGISTER_NPC.personality",
+      );
+      const goals = parseStringList(obj.goals, "REGISTER_NPC.goals");
+      for (const value of [...personality, ...goals]) {
+        if (value.length > 160)
+          fail("REGISTER_NPC teks melebihi batas 160 karakter");
+      }
+      const description =
+        obj.description === undefined
+          ? undefined
+          : parseRequiredText(obj.description, "REGISTER_NPC.description");
+      const role =
+        obj.role === undefined
+          ? undefined
+          : parseRequiredText(obj.role, "REGISTER_NPC.role");
+      if (description && description.length > 500) {
+        fail("REGISTER_NPC.description melebihi batas 500 karakter");
+      }
+      if (role && role.length > 120) {
+        fail("REGISTER_NPC.role melebihi batas 120 karakter");
+      }
+      return {
+        type,
+        id,
+        name,
+        personality,
+        goals,
+        ...(description === undefined ? {} : { description }),
+        ...(role === undefined ? {} : { role }),
+      };
+    }
     default:
       fail(`Tipe effect tidak dikenal: "${type}"`);
   }
@@ -811,7 +1000,7 @@ export function parseTurnResponse(raw: unknown): TurnResponse {
     fail("Respons AI membutuhkan narrative string");
   }
 
-  const effects: ItemEffect[] = [];
+  const effects: TurnEffect[] = [];
   if (obj.effects !== undefined) {
     if (!Array.isArray(obj.effects)) fail("effects harus array");
     for (const effect of obj.effects) effects.push(parseEffect(effect));

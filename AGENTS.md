@@ -1,20 +1,65 @@
-# Panduan agen
+# AGENTS.md
 
+## 1. Context & Source of Truth
+- Read [README.md](README.md)  for actual setup, commands, and verification. Inspect only relevant files before changing code.
+- Read relevant sections of [prd.md](prd.md) for product requirements. The PRD describes targets, not necessarily implemented features.
+- [Manifest Kuskus](.harness/manifest.json)records project profiles and verification evidence.
+- Existing behavior, code, and tests establish the current baseline; reconcile conflicts with explicit requirements.
+- Do not assume functionality exists. Verify uncertain assumptions against the repository.
 
-- Baca [README.md](README.md) untuk kondisi aktual, perintah, dan verifikasi.
-- Baca [prd.md](prd.md) untuk kebutuhan produk; PRD menggambarkan target, bukan fitur yang sudah tersedia.
-- [Manifest Kuskus](.harness/manifest.json) mencatat profil dan bukti verifikasi.
-- Pertahankan React + TypeScript + Vite, CSS biasa, dan backend lokal Node.js + SQLite sesuai [rencana backend](backend_agent_Implementation_plan.md). Jangan menambahkan login, cloud sync, akses jaringan umum, atau database remote.
-- Init hanya menyiapkan scaffold. Implementasikan fitur produk ketika diminta; jangan membuat modul kosong untuk rencana masa depan.
-- Gunakan origin aplikasi `http://127.0.0.1:5173` secara konsisten. Database server adalah sumber save aktif; IndexedDB hanya dibaca untuk migrasi/recovery dan bukan fallback writer ketika backend mati.
-- Draft editor yang belum disimpan tetap berada di memory browser. Simpan credential provider hanya di environment server atau `.env` yang di-ignore; jangan masukkan credential ke source, bundle, log, atau export.
-- Jalankan backend pada Node.js 24.13+ loopback. Jangan membuka bind publik atau menambahkan akses LAN tanpa permintaan eksplisit dari user.
-- Jangan memasukkan credential ke source/log/backup.
-- Setelah perubahan, jalankan `npm run doctor` dan review diff. Di PowerShell gunakan `npm.cmd` jika shim `npm` diblokir.
-- Solve the problem, not merely the prompt
-- Test behavior, not implementation
-- Reuse before creating
-- Prefer code that is simple, explicit, cohesive, and consistent with the repository
-- If an assumption is uncertain, verify it.
-- If an approach fails, revise the hypothesis and continue.
-- Never weaken tests or hide failures just to make the task pass.
+## 2. Project Constraints
+- Preserve React + TypeScript + Vite, plain CSS, and local Node.js + SQLite architecture.
+- Do not introduce authentication, cloud sync, general network access, or remote databases without explicit approval.
+- Initialization creates scaffolding only. Implement requested features, not speculative future modules.
+- Use `http://127.0.0.1:5173` consistently as the application origin.
+- Server-side SQLite is the authoritative persistence layer. IndexedDB is read-only for migration/recovery, never a fallback writer.
+- Keep unsaved editor drafts in browser memory.
+- Run the backend on Node.js 24.13+ bound to loopback only. Never expose LAN/public access without approval.
+- Keep provider credentials in server environment variables or ignored `.env` files. Never expose secrets in source, frontend bundles, logs, exports, or backups.
+
+## 3. Execution Strategy
+- Solve the underlying problem, not merely the literal prompt. Challenge incorrect premises when evidence warrants it.
+- Clarify only decisions that materially affect correctness or safety; otherwise proceed with reasonable, stated assumptions.
+- Identify the smallest relevant code path before implementation. Avoid broad repository exploration without a concrete need.
+- Prefer minimal, cohesive, reversible changes. Avoid unrelated refactoring and speculative abstractions.
+- Reuse existing utilities, patterns, and dependencies before creating new ones.
+- Keep code simple, explicit, readable, and consistent with repository conventions.
+- Prefer existing tooling over adding dependencies. Justify new dependencies by demonstrated need.
+- Use parallel work only for truly independent tasks; avoid orchestration overhead for small changes.
+- If an approach fails, inspect the evidence, revise the hypothesis, and retry. Do not repeat the same failed action blindly.
+
+## 4. Testing Strategy
+- Test observable behavior and requirements, not implementation details.
+- Prioritize tests by risk: critical business logic, persistence, migrations, concurrency, security, and regressions.
+- For bug fixes, reproduce the failure with a focused regression test when practical, then fix the cause.
+- For new behavior, define acceptance criteria before implementation; use TDD when it improves clarity.
+- Prefer deterministic tests with realistic inputs and meaningful assertions. Cover important edge cases and failure paths.
+- Choose the cheapest effective test layer: unit tests for pure logic, integration tests for boundaries, E2E for critical user journeys.
+- Avoid redundant tests, excessive mocking, brittle snapshots, and assertions coupled to internal structure.
+- Never modify tests merely to accommodate broken implementation. Update tests only when requirements or intended behavior genuinely change.
+- Never weaken assertions, suppress failures, or delete meaningful tests to obtain a passing result.
+- Test coverage is diagnostic, not a target. Optimize for defect detection and confidence, not test count.
+
+## 5. Fast Verification Loop
+- During development, run the smallest relevant test, typecheck, or lint scope that can catch the current failure.
+- Fix failures before expanding verification. Avoid repeated full-suite runs without a reason.
+- After code changes, run `npm run doctor` and review the final diff. In PowerShell, use `npm.cmd` if the `npm` shim is blocked.
+- Run broader integration/E2E verification only when changed behavior or risk justifies it.
+- Treat existing failures, new failures, and environment limitations separately. Never claim verification that was not performed.
+- Never bypass required final checks solely to save time.
+
+## 6. Completion Criteria
+- Requested behavior works and relevant edge cases are handled.
+- No unintended behavior, security regression, or architecture violation was introduced.
+- Tests validate the expected behavior rather than reproducing implementation assumptions.
+- Diff contains no unrelated changes, temporary artifacts, debug code, or exposed credentials.
+- Report concisely: what changed, verification performed, results, and remaining risks or blockers.
+
+## Core Principles
+- **Correctness over apparent completion.**
+- **Test behavior, not implementation.**
+- **Verify proportionally to risk.**
+- **Reuse before creating.**
+- **Make the smallest change that solves the problem.**
+- **Optimize feedback loops, not just code generation speed.**
+- **Never hide failures or claim unverified success.**

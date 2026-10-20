@@ -51,7 +51,7 @@ export function exportTemplate(game: GameDefinition): GameTemplateBundle {
 
 export function parseTemplate(raw: unknown): {
   draft: TemplateDraft;
-  ai?: AiConfig;
+  ai?: Pick<AiConfig, "provider" | "model">;
 } {
   const problems: string[] = [];
   if (hasDangerousKeysDeep(raw)) {
@@ -123,8 +123,14 @@ export function parseTemplate(raw: unknown): {
   const aiRaw = candidate.ai as Record<string, unknown> | undefined;
   let ai: AiConfig | undefined;
   if (aiRaw) {
-    if (aiRaw.provider !== "gemini" && aiRaw.provider !== "openrouter") {
-      throw new ImportError(["ai.provider harus gemini atau openrouter."]);
+    if (
+      aiRaw.provider !== "gemini" &&
+      aiRaw.provider !== "openrouter" &&
+      aiRaw.provider !== "custom"
+    ) {
+      throw new ImportError([
+        "ai.provider harus gemini, openrouter, atau custom.",
+      ]);
     }
     if (typeof aiRaw.model !== "string") {
       throw new ImportError(["ai.model harus string."]);

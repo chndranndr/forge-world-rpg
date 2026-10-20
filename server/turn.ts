@@ -60,11 +60,52 @@ function errorForStorage(error: unknown): { code: string; message: string } {
   ) {
     return { code: "PROVIDER_NOT_CONFIGURED", message: error.message };
   }
+  if (error instanceof Error && /profil ai/i.test(error.message)) {
+    return { code: "AI_PROFILE_REQUIRED", message: error.message };
+  }
   return {
     code: "RUN_FAILED",
     message:
       "Run gagal. Periksa koneksi, konfigurasi provider, dan log server.",
   };
+}
+
+function safeFailureDetails(error: unknown): {
+  errorName: string;
+  causeCode?: string;
+  statusCode?: number;
+} {
+  const details: {
+    errorName: string;
+    causeCode?: string;
+    statusCode?: number;
+  } = {
+    errorName:
+      error instanceof Error && /^[A-Za-z0-9_.-]{1,80}$/.test(error.name)
+        ? error.name
+        : error instanceof Error
+          ? "Error"
+          : typeof error,
+  };
+  if (
+    error instanceof Error &&
+    "code" in error &&
+    typeof error.code === "string" &&
+    /^[A-Za-z0-9_.-]{1,64}$/.test(error.code)
+  ) {
+    details.causeCode = error.code;
+  }
+  if (
+    error instanceof Error &&
+    "statusCode" in error &&
+    typeof error.statusCode === "number" &&
+    Number.isInteger(error.statusCode) &&
+    error.statusCode >= 100 &&
+    error.statusCode <= 599
+  ) {
+    details.statusCode = error.statusCode;
+  }
+  return details;
 }
 
 function publishRun(run: RunRecord): RunRecord {
@@ -86,6 +127,7 @@ export function startSessionRun(
     expectedRevision: number;
     work: Work;
     providerKey?: string;
+    providerBaseURL?: string;
   },
 ): RunRecord {
   const kind = input.work.kind;
@@ -130,13 +172,17 @@ async function runStarted(
     expectedRevision: number;
     work: Work;
     providerKey?: string;
+    providerBaseURL?: string;
   },
   started: RunRecord,
 ): Promise<void> {
   if (started.status !== "running") return;
+  let failureSession: StoredSession | undefined;
   try {
     const session = db.getSession(input.sessionId);
     if (!session) throw new Error("Session tidak ditemukan.");
+    failureSession = session;
+    let nextState: SessionState = session.state;
     if (session.revision !== input.expectedRevision) {
       throw new Error("Revision session berubah sebelum run dimulai.");
     }
@@ -206,6 +252,9 @@ async function runStarted(
       kind,
       playerAction,
       providerKey: input.providerKey ?? "",
+      ...(input.providerBaseURL === undefined
+        ? {}
+        : { providerBaseURL: input.providerBaseURL }),
       ...(worldMap ? { worldMap } : {}),
       ...(movement ? { movement } : {}),
       lore: loreEntries,
@@ -268,7 +317,7 @@ async function runStarted(
     const now = new Date().toISOString();
     const turnId = randomUUID();
     const messages: Message[] = [];
-    let nextState: SessionState = structuredClone(session.state);
+    let nextDefinitionSnapshot = session.definitionSnapshot;
     if (kind === "turn") {
       if (input.work.kind !== "turn" || !movement) {
         throw new Error("Aksi turn atau movement candidate tidak tersedia.");
@@ -278,7 +327,23 @@ async function runStarted(
         throw new Error("Narrator did not validate turn effects.");
       }
       nextState = applied.state;
-      const recipients = narratorParticipants(session, worldMap);
+      nextDefinitionSnapshot = applied.definition ?? session.definitionSnapshot;
+      const existingNpcIds = new Set(
+        session.definitionSnapshot.npcs.map(({ id }) => id),
+      );
+      const encounteredNpcIds = nextDefinitionSnapshot.npcs
+        .filter(
+          ({ id }) =>
+            !existingNpcIds.has(id) &&
+            nextState.world.activeCharacters.includes(id),
+        )
+        .map(({ id }) => id);
+      const recipients = [
+        ...new Set([
+          ...narratorParticipants(session, worldMap),
+          ...encounteredNpcIds,
+        ]),
+      ];
       const messageScope = {
         visibility: "private" as const,
         knownBy: recipients,
@@ -333,6 +398,7 @@ async function runStarted(
 
     const updatedSession = {
       ...withoutRevision(session),
+      definitionSnapshot: nextDefinitionSnapshot,
       state: nextState,
       nextSequence: session.nextSequence + messages.length,
       updatedAt: now,
@@ -340,6 +406,9 @@ async function runStarted(
     db.commitRun(input.sessionId, input.requestId, {
       state: nextState,
       messages,
+      ...(nextDefinitionSnapshot === session.definitionSnapshot
+        ? {}
+        : { definitionSnapshot: nextDefinitionSnapshot }),
       result: {
         session: { value: updatedSession, revision: session.revision + 1 },
         messages,
@@ -348,13 +417,34 @@ async function runStarted(
       },
     });
   } catch (error) {
+    const failure = errorForStorage(error);
+    if (failure.code === "RUN_FAILED") {
+      console.error("[fworld] run gagal", {
+        sessionId: input.sessionId,
+        requestId: input.requestId,
+        kind: input.work.kind,
+        ...(failureSession
+          ? {
+              provider: failureSession.ai.provider,
+              model: failureSession.ai.model,
+            }
+          : {}),
+        code: failure.code,
+        ...safeFailureDetails(error),
+      });
+    }
     try {
       const current = db.getRun(input.sessionId, input.requestId);
       if (current?.status === "running") {
-        db.failRun(input.sessionId, input.requestId, errorForStorage(error));
+        db.failRun(input.sessionId, input.requestId, failure);
       }
-    } catch {
-      // Preserve the failed run status whenever the database remains writable.
+    } catch (persistenceError) {
+      console.error("[fworld] run failure persistence failed", {
+        sessionId: input.sessionId,
+        requestId: input.requestId,
+        kind: input.work.kind,
+        ...safeFailureDetails(persistenceError),
+      });
     }
   }
 }

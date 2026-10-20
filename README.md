@@ -24,6 +24,8 @@ npm.cmd run dev
 
 Buka `http://127.0.0.1:5173`. Vite meneruskan `/api` ke backend `http://127.0.0.1:3001`. Jangan ganti ke `localhost`; browser menyimpan IndexedDB legacy berdasarkan origin.
 
+Untuk membuka aplikasi dari ponsel di jaringan lokal tepercaya, set `server.host` di `vite.config.js` ke `"0.0.0.0"`, lalu akses `http://<IPv4-laptop>:5173`. Izinkan Node.js hanya pada profil Private Windows Firewall. Backend tetap bind ke loopback; saat development, pemeriksaan `Host`/`Origin` hanya mengizinkan origin exact dari alamat IPv4 private lokal pada port 5173. Perangkat lain di jaringan itu juga dapat mengakses aplikasi; jangan gunakan Wi-Fi publik. Browser modern menyediakan Web Crypto `getRandomValues()` pada HTTP LAN untuk membuat ID aksi yang aman. Restart kedua server setelah mengubah konfigurasi.
+
 Untuk menjalankan build lokal:
 
 ```powershell
@@ -37,15 +39,33 @@ Backend menyajikan frontend dan API pada `http://127.0.0.1:5173`. Hentikan serve
 
 Opsional, buat `.env` dari `.env.example`, lalu isi `GEMINI_API_KEY` dan/atau `OPENROUTER_API_KEY`. File `.env` diabaikan Git. Settings juga bisa menerima atau mengganti API key; backend menyimpannya sebagai `FWORLD_GEMINI_API_KEY` atau `FWORLD_OPENROUTER_API_KEY` di `.env`, dan nilai ini diprioritaskan atas credential environment biasa. Backend hanya mengembalikan status configured; key tidak tersimpan permanen di browser, database game, log, backup, atau export. Request AI nyata memerlukan koneksi internet dan credential provider yang sesuai.
 
-Provider dan model dipilih di Settings. Pilihan global disimpan lokal di browser dan menjadi default sesi baru; konfigurasi setiap sesi aktif disimpan terpisah dan dapat diubah dari Settings tanpa mengubah default global.
+Provider ketiga adalah **OpenAI-compatible** melalui profil AI. Endpoint custom memakai HTTPS, atau HTTP khusus loopback (`localhost`, `127.0.0.1`, `[::1]`) untuk fixture lokal; Base URL wajib memuat prefix API seperti `https://api.example.com/v1` dan tidak boleh berakhir dengan `/chat/completions`. Key endpoint boleh kosong untuk endpoint tanpa autentikasi.
 
-Uji koneksi memakai prompt singkat dan tidak memvalidasi ukuran context cerita. Narrator membatasi context wajib plus pesan terbaru hingga 24.000 karakter; nilai relasi aktif dikirim sekali, sedangkan detail NPC lain tersedia lewat tool. Jika context wajib masih terlalu besar, run berhenti sebelum memanggil provider dan menampilkan `CONTEXT_TOO_LARGE` beserta ukuran aktual dan batasnya, tanpa mengubah save. Restart backend setelah perubahan kode server; server development tidak memuat ulang handler yang sudah berjalan.
+Profil AI menyimpan nama, provider, model, prompt narrator, dan Base URL custom di SQLite; API key disimpan terpisah di `.env` sebagai `FWORLD_AI_KEY_<credentialId>` dan hanya dikembalikan sebagai status configured. Metadata dan key disimpan lewat tombol berbeda. Mengubah nama/model/prompt mempertahankan identitas credential; mengubah provider atau Base URL membuat identitas baru tanpa menyalin key lama. Sesi menyimpan snapshot saat profil dimulai atau diterapkan, jadi mengedit profil tidak mengubah sesi berjalan sampai **Terapkan profil** ditekan; key yang dirotasi pada identitas yang sama dipakai run berikutnya. Profil default sesi baru dipilih di Settings dan baru tersimpan setelah **Simpan pengaturan AI**. Profil tidak ikut template, save JSON, atau export; backup SQLite membawa metadata dan binding tanpa key.
 
-Gunakan **Settings → Migrasi data IndexedDB** dari origin canonical untuk mengunduh atau mentransfer data lama. Transfer memvalidasi seluruh store, memakai Web Lock, memverifikasi read-back, dan membiarkan IndexedDB lama utuh. Gunakan **Backup backend** untuk backup/pemulihan SQLite. Restore save JSON v1 membuat salinan dengan ID baru; template JSON tetap di alur Create Game.
+Provider, model, dan prompt sistem narrator diatur melalui Settings. Prompt bawaan dikemas dari `shared/narrator-system-prompt.json`; teks yang diedit menggantikan seluruh prompt bawaan dan dapat dipulihkan kapan saja. Perubahan default global baru disimpan setelah tombol **Simpan pengaturan AI** ditekan, lalu disalin ke sesi baru. Preferensi ukuran teks juga baru disimpan setelah tombol **Simpan ukuran teks** ditekan. Prompt sesi aktif tersimpan terpisah di konfigurasi sesi serta ikut save/export; template game tidak membawa prompt. Prompt wajib berisi teks non-whitespace dan dibatasi 8.000 karakter.
+
+Untuk request OpenRouter `google/gemini-*`, provider dipin ke `google-ai-studio` tanpa fallback agar signature reasoning tetap pada endpoint yang sama selama lanjutan tool. Jika endpoint itu tidak tersedia, run gagal alih-alih berpindah ke provider Google lain.
+
+Uji koneksi memakai prompt singkat yang independen dari prompt narrator dan tidak memvalidasi ukuran context cerita. Prompt narrator terhitung dalam batas input narrator 512.000 karakter dan sekitar 128.000 token; nilai relasi aktif dikirim sekali, sedangkan detail NPC lain tersedia lewat tool. Jika context wajib masih terlalu besar, run berhenti sebelum memanggil provider dan menampilkan `CONTEXT_TOO_LARGE` beserta ukuran aktual dan batasnya, tanpa mengubah save. Mengubah prompt dapat memengaruhi perilaku narrator, tetapi engine dan API tetap memvalidasi perubahan state secara deterministik. Kegagalan run yang tak terduga mencatat ID session/run, jenis aksi, provider/model jika tersedia, tipe/kode error, dan status HTTP di terminal backend tanpa mencatat prompt, isi respons, atau credential. Restart backend setelah perubahan kode server; server development tidak memuat ulang handler yang sudah berjalan.
+
+Masing-masing permintaan model narrator dibatasi 4.096 token output; satu permintaan perbaikan tetap dibatasi 1.800 token.
+
+Gunakan **Settings → Migrasi data IndexedDB** dari origin canonical untuk mengunduh atau mentransfer data lama. Transfer memvalidasi seluruh store, memakai Web Lock, memverifikasi read-back, dan membiarkan IndexedDB lama utuh. Gunakan **Backup backend** untuk backup/pemulihan SQLite. Menghapus cerita menghapus seluruh sesi dan riwayatnya setelah konfirmasi; penghapusan ditolak saat run AI masih aktif. Restore save JSON v1 membuat salinan dengan ID baru; template JSON tetap di alur Create Game.
+
+## NPC dalam sesi
+
+Jika ingin cerita dimulai tanpa NPC, hapus NPC awal di **Editor** sebelum memulai session. Saat karakter player berinteraksi langsung dengan orang baru, narrator dapat mendaftarkannya sebagai NPC pada sesi itu. Sekadar menyebut atau melihat orang tidak cukup untuk membuat NPC.
+
+NPC yang didaftarkan tersimpan bersama sesi dan tidak mengubah template game. Mereka dapat muncul lagi dalam cerita dan tercakup dalam ekspor serta pemulihan save. Tab **People** menampilkan karakter yang hadir di adegan saat ini.
+
+## Format cerita
+
+Pesan narator dan NPC mendukung Markdown untuk paragraf, heading, penekanan, daftar, kutipan, kode, dan tautan. HTML mentah tidak dirender; gambar Markdown hanya menampilkan teks alternatif dan tidak mengambil gambar eksternal. Narasi tampil italic kuning pada panel gelap; teks di antara tanda kutip ganda tampil normal. Pesan pemain dan event sistem tetap teks biasa.
 
 ## Format lorebook dan save
 
-SQLite memakai schema v2. Database v1 dimigrasikan saat dibuka; restore memvalidasi dan memigrasikan salinan staging sebelum mengganti database aktif. Backup SQLite mencakup pack lore, indeks, pin session, history, dan ringkasan cerita. Credential provider tetap berada di luar backup.
+SQLite memakai schema v3. Database v1 dan v2 dimigrasikan saat dibuka; tabel schema yang hilang dibuat ulang saat startup tanpa menghapus tabel lain. Isi tabel yang terhapus tidak dapat dipulihkan dari schema—restore backup untuk mendapatkan kembali datanya; indeks pencarian turunan dibangun ulang dari data yang masih ada. Restore memvalidasi dan memigrasikan salinan staging sebelum mengganti database aktif. Backup SQLite mencakup pack lore, indeks, pin session, history, ringkasan cerita, serta metadata profil AI dan binding session. Credential provider selalu berada di luar backup.
 
 `examples/lorebook-prontera.json` adalah pack kecil dengan 21 entri berprosa asli, berlisensi CC0-1.0. `examples/lorebook-game.json` adalah template playable yang merujuk versi pack tersebut. Artikel lore tidak otomatis menjadi NPC playable, item inventory, atau effects. Pemetaan memakai `metadata.actorId` atau `metadata.itemId` yang harus menunjuk definisi game.
 

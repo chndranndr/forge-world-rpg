@@ -408,6 +408,7 @@ details.card > *:not(summary) {
 
 .message {
   padding: 18px 0;
+  min-width: 0;
   border-bottom: 1px solid var(--line);
 }
 
@@ -419,12 +420,137 @@ details.card > *:not(summary) {
   text-transform: uppercase;
 }
 
-.message p {
+.message-PLAYER > p {
   font-family: var(--serif);
-  font-size: 18px;
-  line-height: 1.65;
+  font-size: 1.125rem;
+  line-height: 1.75;
   margin: 8px 0 0;
   white-space: pre-wrap;
+}
+
+.story-prose {
+  --story-dialogue: #f5f2ea;
+  max-width: 70ch;
+  font-family: var(--serif);
+  font-size: 1.125rem;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+  margin-top: 0.75rem;
+  padding: 12px;
+  border-radius: 4px;
+  background: #303236;
+  color: #ffdf36;
+  font-style: italic;
+}
+
+.story-prose > :first-child {
+  margin-top: 0;
+}
+
+.story-prose > :last-child {
+  margin-bottom: 0;
+}
+
+.story-prose p {
+  margin: 0 0 1.1em;
+  white-space: pre-line;
+}
+
+.story-prose .story-dialogue {
+  color: var(--story-dialogue);
+  font-style: normal;
+}
+
+.story-prose :is(h1, h2, h3, h4, h5, h6) {
+  font-family: var(--serif);
+  color: inherit;
+  font-style: inherit;
+  line-height: 1.25;
+  margin: 1.6em 0 0.6em;
+  text-wrap: balance;
+}
+
+.story-prose h3 {
+  font-size: 1.75rem;
+}
+
+.story-prose h4 {
+  font-size: 1.5rem;
+}
+
+.story-prose :is(h5, h6) {
+  font-size: 1.25rem;
+}
+
+.story-prose :is(ul, ol) {
+  padding-left: 1.5em;
+  margin: 0 0 1.1em;
+}
+
+.story-prose li {
+  padding-left: 0.25em;
+  margin: 0.35em 0;
+}
+
+.story-prose li > p {
+  margin: 0.5em 0;
+}
+
+.story-prose blockquote {
+  border-left: 1px solid var(--copper);
+  padding-left: 1.2em;
+  margin: 1.4em 0;
+  font-style: inherit;
+  color: inherit;
+}
+
+.story-prose blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+.story-prose a {
+  color: inherit;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+.story-prose a:hover {
+  color: var(--story-dialogue);
+}
+
+.story-prose code {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.85em;
+  background: var(--surface);
+  padding: 0.15em 0.3em;
+  border-radius: 3px;
+  color: var(--ink);
+  font-style: normal;
+}
+
+.story-prose pre {
+  max-width: 100%;
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 1em;
+  margin: 1.2em 0;
+  line-height: 1.6;
+  white-space: pre;
+  color: var(--ink);
+  font-style: normal;
+}
+
+.story-prose pre code {
+  padding: 0;
+  background: none;
+}
+
+.story-prose hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 1.8em 0;
 }
 
 .message-PLAYER {
@@ -437,15 +563,18 @@ details.card > *:not(summary) {
   border-left: 0;
 }
 
-.message-SYSTEM_EVENT p {
+.message-SYSTEM_EVENT > p {
   font-family: var(--sans);
   font-size: 14px;
+  line-height: 1.65;
   color: var(--green);
+  margin: 8px 0 0;
+  white-space: pre-wrap;
 }
 
 .check-badge {
   display: inline-block;
-  margin-top: 8px;
+  margin: 8px 0 0;
   padding: 3px 10px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -455,8 +584,6 @@ details.card > *:not(summary) {
 }
 
 .composer {
-  position: sticky;
-  bottom: calc(64px + env(safe-area-inset-bottom));
   background: var(--paper);
   padding: 12px 0;
   margin-top: 16px;

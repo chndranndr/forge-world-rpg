@@ -553,7 +553,7 @@ Example:
 
 # 13. NPC System
 
-User dapat membuat sejumlah NPC awal.
+User dapat membuat sejumlah NPC awal, termasuk nol NPC. Jika session dimulai tanpa NPC, narrator dapat mengusulkan orang baru sebagai NPC setelah karakter player berinteraksi langsung dengannya. Penyebutan atau penampakan orang saja tidak mendaftarkannya. NPC baru tersimpan hanya di session dan tidak mengubah game template.
 
 NPC fields:
 
@@ -1157,6 +1157,7 @@ Continue the story naturally.
 
 Do not force a predetermined storyline.
 ```
+Prompt sistem narrator bawaan berasal dari `shared/narrator-system-prompt.json`. Settings global menyimpan prompt pengganti lengkap di preferensi browser dan menyalinnya ke sesi baru; Settings sesi mengubah konfigurasi tersimpan sesi itu saja. Prompt sesi ikut save import/export tetapi tidak masuk template game. Data lama tanpa field prompt memakai default JSON. Prompt harus non-whitespace, maksimal 8.000 karakter, dan seluruh panjangnya dihitung dalam batas context narrator 512.000 karakter atau sekitar 128.000 token; uji koneksi memakai prompt tersendiri. Prompt dapat memengaruhi perilaku model, tetapi bukan otoritas state.
 
 ---
 
@@ -1621,7 +1622,7 @@ Padahal revolver tidak ada.
 
 Untuk MVP:
 
-System prompt harus melarang hal tersebut.
+Prompt bawaan mengarahkan narrator untuk tidak mengarang state, tetapi dapat diedit dan tidak menjadi batas keamanan. Engine dan API tetap memvalidasi state secara deterministik; konsistensi semantik narasi tidak dijamin.
 
 Jika model tetap melakukannya, response validation dapat mendeteksi references terhadap unavailable item jika terdapat structured item action.
 
@@ -1669,10 +1670,15 @@ Gunakan satu modul agent/provider dengan percabangan `gemini` / `openrouter` dan
 
 AI Settings menampilkan pilihan provider (`Gemini` / `OpenRouter`), model ID, status credential terkonfigurasi, penggunaan token, tombol uji koneksi, dan input API key. UI hanya menyimpan draft masked di memory sampai dikirim ke backend loopback; backend menyimpan key pada environment server atau `.env` lokal yang di-ignore, lalu hanya mengembalikan status configured. Key tidak disimpan di browser storage, game database, log, backup, atau export. Simpan pilihan provider/model pada session. Pergantian provider/model hanya di antara turn, mempertahankan state/history, dan membatalkan status uji koneksi sebelumnya. Semua request tool, narasi, dan repair dalam satu run memakai konfigurasi yang sama.
 
+Provider ketiga, `custom`, memakai endpoint OpenAI-compatible (Chat Completions dengan system messages dan tool calls) melalui Vercel AI SDK pada backend. Endpoint menerima HTTPS atau HTTP loopback saja, wajib memuat prefix API, dan tidak menambahkan `/v1` otomatis. Tidak ada fallback antar provider; endpoint yang tidak mendukung tool calls gagal dengan error yang ada.
+
+Profil AI adalah konfigurasi bernama berisi nama, provider, model, prompt narrator, dan Base URL custom. Metadata profil dan binding sesi tersimpan di SQLite; API key disimpan per identitas credential di environment backend sebagai `FWORLD_AI_KEY_<credentialId>` dan tidak pernah dikembalikan ke frontend atau ikut save/backup/export. Mengedit nama/model/prompt mempertahankan identitas credential; mengubah provider atau Base URL membuat identitas baru tanpa menyalin key. Sesi menyalin snapshot konfigurasi saat session dimulai atau saat profil diterapkan ulang, sehingga edit profil tidak mengubah sesi berjalan; rotasi key pada identitas yang sama berlaku untuk run berikutnya. Satu profil default dapat dipilih untuk sesi baru; tanpa profil, sesi memakai konfigurasi manual lama.
+
 | Provider | Integrasi awal |
 | --- | --- |
 | Gemini | Google provider AI SDK, credential server-side |
 | OpenRouter | OpenRouter AI SDK provider, credential server-side |
+| OpenAI-compatible | `@ai-sdk/openai-compatible` dengan Base URL per profil, credential per identitas |
 
 Mapping mengikuti [referensi Gemini API](https://ai.google.dev/api) dan [OpenRouter Quickstart](https://openrouter.ai/docs/quickstart). Normalisasi text, token usage jika tersedia, serta error/refusal/response kosong sebelum diteruskan ke engine; jangan berasumsi format response keduanya sama.
 
@@ -1712,7 +1718,7 @@ User dapat membuat player character.
 
 ## FR-07
 
-User dapat membuat NPC.
+User dapat membuat NPC awal secara opsional. Narrator dapat mengusulkan NPC baru dalam session ketika karakter player berinteraksi langsung dengannya.
 
 ## FR-08
 
@@ -1765,6 +1771,10 @@ Game menyimpan long-term facts.
 ## FR-20
 
 Game dapat dilanjutkan setelah session ditutup.
+
+## FR-21
+
+Session menyimpan NPC yang didaftarkan narrator. Turn berikutnya memakai NPC yang sama tanpa membuat duplikat.
 
 ---
 
@@ -2002,7 +2012,7 @@ MVP dianggap playable jika user dapat:
 4. membuat custom resource/currency;
 5. membuat custom relationship attributes;
 6. membuat player;
-7. membuat minimal satu NPC;
+7. membuat NPC awal jika dikehendaki, atau memulai tanpa NPC lalu berinteraksi dengan orang baru hingga narrator mendaftarkannya di session;
 8. membuat item;
 9. menentukan starting inventory;
 10. memulai session;

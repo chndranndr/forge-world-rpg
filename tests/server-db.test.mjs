@@ -250,6 +250,35 @@ test("game update refreshes every session atomically and refuses active runs", (
   assert.deepEqual(db.getHistory(session.id), beforeHistory);
 });
 
+test("game deletion removes saved sessions and their history, but blocks active runs", (t) => {
+  const { db } = withDb(t);
+  const first = start(db);
+  commit(db, first.session.value, "history", [
+    message(first.session.value.id, 0, "This saved scene will be deleted."),
+  ]);
+  const second = start(db, definition(), "session-2");
+  db.startRun({
+    sessionId: second.session.value.id,
+    requestId: "active",
+    inputHash: "active-input",
+    expectedRevision: second.session.revision,
+  });
+
+  assert.throws(
+    () => db.deleteGame("game-1", second.game.revision),
+    (error) => error.code === "RUN_IN_PROGRESS",
+  );
+  assert.ok(db.getGame("game-1"));
+  assert.equal(db.listSessions("game-1").length, 2);
+
+  db.failRun(second.session.value.id, "active", { code: "CANCELLED" });
+  db.deleteGame("game-1", second.game.revision);
+  assert.equal(db.getGame("game-1"), undefined);
+  assert.deepEqual(db.listSessions("game-1"), []);
+  assert.equal(db.getSession(first.session.value.id), undefined);
+  assert.equal(db.getSession(second.session.value.id), undefined);
+});
+
 test("run start is idempotent, rejects conflicts, and commits session/history once", (t) => {
   const { db } = withDb(t);
   const session = start(db).session.value;
@@ -696,4 +725,190 @@ test("legacy transfer rolls back all rows on ID conflict", (t) => {
   assert.equal(db.getGame("game-b"), undefined);
   assert.equal(db.getSession("legacy-session"), undefined);
   assert.equal(db.listGames().length, 1);
+});
+
+test("AI profile snapshots stay stable across edits and rebinds keep identity", (t) => {
+  const { db } = withDb(t);
+  assert.throws(
+    () =>
+      db.createAiProfile({
+        name: "x",
+        provider: "custom",
+        model: "m",
+        systemPrompt: "p",
+      }),
+    (error) => error.code === "INVALID_INPUT",
+  );
+  assert.throws(
+    () =>
+      db.createAiProfile({
+        name: "x",
+        provider: "gemini",
+        model: "m",
+        systemPrompt: "p",
+        baseURL: "https://api.example.com/v1",
+      }),
+    (error) => error.code === "INVALID_INPUT",
+  );
+  assert.equal(db.getSessionAiBinding("missing-session"), undefined);
+
+  const profile = db.createAiProfile({
+    name: "Router A",
+    provider: "openrouter",
+    model: "model-1",
+    systemPrompt: "Prompt one.",
+  });
+  assert.equal(profile.revision, 1);
+  const started = db.startSessionForDefinition({
+    definition: definition("profile-game"),
+    profileId: profile.id,
+    sessionId: "profile-session",
+  });
+  assert.equal(started.session.value.ai.model, "model-1");
+  assert.equal(started.session.value.ai.systemPrompt, "Prompt one.");
+  const binding = db.getSessionAiBinding("profile-session");
+  assert.equal(binding.profileId, profile.id);
+  assert.equal(binding.credentialId, profile.credentialId);
+  assert.equal(binding.provider, "openrouter");
+
+  const edited = db.updateAiProfile(
+    profile.id,
+    {
+      name: "Router A",
+      provider: "openrouter",
+      model: "model-2",
+      systemPrompt: "Prompt two.",
+    },
+    profile.revision,
+  );
+  assert.equal(edited.revision, 2);
+  assert.equal(edited.credentialId, profile.credentialId);
+  assert.equal(db.getSession("profile-session").ai.model, "model-1");
+  const second = db.startSessionForDefinition({
+    definition: definition("profile-game-2"),
+    profileId: profile.id,
+    sessionId: "profile-session-2",
+  });
+  assert.equal(second.session.value.ai.model, "model-2");
+
+  const beforeCommit = db.getSession("profile-session");
+  commit(db, beforeCommit, "profile-run", [
+    message("profile-session", 0, "Committed history."),
+  ]);
+  const afterCommit = db.getSession("profile-session");
+  const applied = db.applySessionAiProfile(
+    "profile-session",
+    profile.id,
+    afterCommit.revision,
+  );
+  assert.equal(applied.ai.model, "model-2");
+  assert.equal(applied.ai.systemPrompt, "Prompt two.");
+  assert.equal(applied.nextSequence, afterCommit.nextSequence);
+  assert.deepEqual(applied.state, afterCommit.state);
+  assert.equal(
+    db.getHistory("profile-session")[0].content,
+    "Committed history.",
+  );
+
+  assert.throws(
+    () =>
+      db.applySessionAiProfile(
+        "profile-session",
+        profile.id,
+        afterCommit.revision,
+      ),
+    (error) => error.code === "CONFLICT",
+  );
+  assert.equal(db.getSession("profile-session").ai.model, "model-2");
+
+  const activeRevision = db.getSession("profile-session").revision;
+  db.startRun({
+    sessionId: "profile-session",
+    requestId: "active-profile-run",
+    inputHash: "hash-active-profile",
+    expectedRevision: activeRevision,
+  });
+  assert.throws(
+    () =>
+      db.applySessionAiProfile("profile-session", profile.id, activeRevision),
+    (error) => error.code === "RUN_IN_PROGRESS",
+  );
+  assert.equal(db.getSession("profile-session").revision, activeRevision);
+  assert.equal(
+    db.getSessionAiBinding("profile-session").credentialId,
+    profile.credentialId,
+  );
+
+  db.failRun("profile-session", "active-profile-run", {
+    code: "TEST_FAILURE",
+    message: "Test releases the running slot.",
+  });
+  const manual = db.updateSession(
+    "profile-session",
+    {
+      ai: {
+        provider: "openrouter",
+        model: "model-3",
+        systemPrompt: "Prompt three.",
+      },
+    },
+    activeRevision,
+  );
+  assert.equal(manual.ai.model, "model-3");
+  assert.equal(
+    db.getSessionAiBinding("profile-session").credentialId,
+    profile.credentialId,
+  );
+
+  db.updateSession(
+    "profile-session",
+    {
+      ai: {
+        provider: "gemini",
+        model: "gemini-x",
+        systemPrompt: "Prompt four.",
+      },
+    },
+    manual.revision,
+  );
+  assert.equal(db.getSessionAiBinding("profile-session"), undefined);
+
+  const custom = db.createAiProfile({
+    name: "Custom A",
+    provider: "custom",
+    model: "custom-1",
+    systemPrompt: "Prompt five.",
+    baseURL: "https://api.example.com/v1",
+  });
+  const bound = db.startSessionForDefinition({
+    definition: definition("custom-game"),
+    profileId: custom.id,
+    sessionId: "custom-session",
+  });
+  assert.equal(bound.session.value.ai.provider, "custom");
+  const oldBinding = db.getSessionAiBinding("custom-session");
+  const moved = db.updateAiProfile(
+    custom.id,
+    {
+      name: "Custom A",
+      provider: "custom",
+      model: "custom-1",
+      systemPrompt: "Prompt five.",
+      baseURL: "https://api.example.com/v2",
+    },
+    custom.revision,
+  );
+  assert.notEqual(moved.credentialId, custom.credentialId);
+  const keptBinding = db.getSessionAiBinding("custom-session");
+  assert.equal(keptBinding.credentialId, oldBinding.credentialId);
+  assert.equal(keptBinding.baseURL, "https://api.example.com/v1");
+  db.startSessionForDefinition({
+    definition: definition("custom-game-2"),
+    profileId: custom.id,
+    sessionId: "custom-session-2",
+  });
+  assert.equal(
+    db.getSessionAiBinding("custom-session-2").baseURL,
+    "https://api.example.com/v2",
+  );
 });

@@ -290,3 +290,18 @@ test("network failure reports error", async () => {
   assert.match(result.message, /Jaringan gagal/);
   assert.equal(result.usage, undefined);
 });
+
+test("custom provider is rejected by the legacy browser transport before any fetch", async () => {
+  const impl = fakeFetch(() => jsonResponse({}));
+  const result = await llm.complete(
+    { provider: "custom", model: "fixture-model", apiKey: "must-not-send" },
+    "tes",
+    { fetchImpl: impl },
+  );
+  assert.equal(result.kind, "error");
+  assert.equal(
+    result.message,
+    "Provider custom hanya tersedia melalui backend.",
+  );
+  assert.equal(impl.calls.length, 0);
+});

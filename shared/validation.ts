@@ -13,6 +13,8 @@ import {
   type SessionState,
 } from "./types.js";
 import { sceneParticipants, validateWorldMap } from "./world.js";
+import { normalizeNarratorSystemPrompt } from "./narrator-prompt.js";
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -902,7 +904,7 @@ function pickSessionState(raw: unknown): SessionState {
     world.discoveredLoreIds = [...state.world.discoveredLoreIds];
   }
   if (state.world.npcPresence !== undefined) {
-    world.npcPresence = { ...state.world.npcPresence };
+    world.npcPresence = structuredClone(state.world.npcPresence);
   }
   return {
     attributes: pickNumberRecord(state.attributes),
@@ -1235,9 +1237,33 @@ function collectSessionProblems(
               `state.world.npcPresence references unknown NPC "${npcId}".`,
             );
           }
-          if (presence !== "present" && presence !== "absent") {
+          if (presence === "present" || presence === "absent") continue;
+          if (!isObject(presence)) {
             problems.push(
-              `state.world.npcPresence[${npcId}] must be present or absent.`,
+              `state.world.npcPresence[${npcId}] must be present, absent, or a scoped presence.`,
+            );
+            continue;
+          }
+          if (
+            Object.keys(presence).some(
+              (key) => key !== "locationId" && key !== "present",
+            ) ||
+            typeof presence.locationId !== "string" ||
+            (presence.present !== undefined &&
+              typeof presence.present !== "boolean")
+          ) {
+            problems.push(
+              `state.world.npcPresence[${npcId}] scoped presence is malformed.`,
+            );
+            continue;
+          }
+          if (
+            !worldMap?.locations.some(
+              (location) => location.id === presence.locationId,
+            )
+          ) {
+            problems.push(
+              `state.world.npcPresence[${npcId}] locationId must identify a pinned map location.`,
             );
           }
         }
@@ -1437,9 +1463,24 @@ function collectBundleProblems(raw: unknown): string[] {
     problems.push("Session harus memiliki state object.");
   if (
     !isObject(session.ai) ||
-    (session.ai.provider !== "gemini" && session.ai.provider !== "openrouter")
+    (session.ai.provider !== "gemini" &&
+      session.ai.provider !== "openrouter" &&
+      session.ai.provider !== "custom")
   ) {
-    problems.push("Session harus memiliki ai.provider gemini atau openrouter.");
+    problems.push(
+      "Session harus memiliki ai.provider gemini, openrouter, atau custom.",
+    );
+  }
+  if (isObject(session.ai)) {
+    try {
+      normalizeNarratorSystemPrompt(session.ai.systemPrompt);
+    } catch (error) {
+      problems.push(
+        error instanceof Error
+          ? error.message
+          : "System prompt narrator tidak valid.",
+      );
+    }
   }
   if (typeof session.nextSequence !== "number") {
     problems.push("Session harus memiliki nextSequence angka.");
@@ -1567,7 +1608,11 @@ export function createExportBundle(
       gameId: session.gameId,
       definitionSnapshot: pickGameDefinition(session.definitionSnapshot),
       state: pickSessionState(session.state),
-      ai: { provider: session.ai.provider, model: session.ai.model },
+      ai: {
+        provider: session.ai.provider,
+        model: session.ai.model,
+        systemPrompt: normalizeNarratorSystemPrompt(session.ai.systemPrompt),
+      },
       nextSequence: session.nextSequence,
       updatedAt: session.updatedAt,
       ...(session.worldMap === undefined
@@ -1662,6 +1707,9 @@ export function validateExportBundle(raw: unknown): {
       ai: {
         provider: bundle.session.ai.provider,
         model: bundle.session.ai.model,
+        systemPrompt: normalizeNarratorSystemPrompt(
+          bundle.session.ai.systemPrompt,
+        ),
       },
       nextSequence: bundle.session.nextSequence,
       updatedAt: bundle.session.updatedAt,

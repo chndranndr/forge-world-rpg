@@ -16,6 +16,7 @@ import { exportTemplate } from "../template";
 import type { GameDefinition, ItemDefinition, NpcDefinition } from "../types";
 import exampleTemplate from "../../examples/game-template.json";
 import { storyIllustration } from "../illustrations";
+import { createUuid } from "../../shared/uuid";
 
 interface GameLibraryProps {
   onCreateDraft: (game: GameDefinition) => void;
@@ -35,7 +36,7 @@ const dateTimeFormatter = new Intl.DateTimeFormat("id-ID", {
 function seededGame(): GameDefinition {
   const example = exampleTemplate.game;
   return {
-    id: crypto.randomUUID(),
+    id: createUuid(),
     title: example.title,
     description: example.description,
     genre: example.genre,
@@ -139,6 +140,13 @@ export default function GameLibrary({
   }
 
   async function handleDelete(record: GameRecord) {
+    if (
+      !window.confirm(
+        `Hapus cerita "${record.value.title}" beserta seluruh sesi, riwayat pesan, dan data run-nya secara permanen?`,
+      )
+    ) {
+      return;
+    }
     const gameId = record.value.id;
     setBusy(true);
     try {

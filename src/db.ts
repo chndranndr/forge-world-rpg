@@ -79,15 +79,6 @@ export async function listGames(): Promise<GameDefinition[]> {
   return db.getAll("games");
 }
 
-export async function deleteGame(id: string): Promise<void> {
-  const sessions = await listSessions(id);
-  if (sessions.length > 0) {
-    throw new Error("Game masih memiliki session berjalan.");
-  }
-  const db = await getDb();
-  await db.delete("games", id);
-}
-
 export async function getSession(id: string): Promise<GameSession | undefined> {
   const db = await getDb();
   return db.get("sessions", id);

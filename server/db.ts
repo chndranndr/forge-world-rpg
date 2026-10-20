@@ -22,6 +22,7 @@ import {
   EXPORT_FORMAT,
   EXPORT_VERSION,
   type AiConfig,
+  PLAYER_ID,
   type ContextTelemetry,
   type ExportBundle,
   type GameDefinition,
@@ -40,10 +41,16 @@ import {
   type WorldLocation,
   type WorldMap,
 } from "../shared/types.js";
+import { normalizeNarratorSystemPrompt } from "../shared/narrator-prompt.js";
+import {
+  normalizeAiProfileInput,
+  normalizeCustomBaseURL,
+  type AiProfileInput,
+} from "../shared/ai-profile.js";
 
 export { ImportError } from "../shared/validation.js";
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 const DOCUMENT_LIMIT = 2 * 1024 * 1024;
 const TRANSFER_LIMIT = 32 * 1024 * 1024;
 const ID_LIMIT = 256;
@@ -113,8 +120,25 @@ export interface SessionStartResult {
 export interface StartSessionForDefinitionInput {
   definition: unknown;
   expectedGameRevision?: number;
-  ai: unknown;
   sessionId?: string;
+  ai?: unknown;
+  profileId?: string;
+}
+export type StoredAiProfile = AiProfileInput & {
+  id: string;
+  revision: number;
+  credentialId: string;
+};
+export interface StoredAiBinding {
+  profileId: string;
+  credentialId: string;
+  provider: AiConfig["provider"];
+  baseURL?: string;
+}
+interface AiProfileSnapshot {
+  ai: AiConfig;
+  profileId: string;
+  credentialId: string;
 }
 export type RunStatus = "running" | "committed" | "failed" | "interrupted";
 export type RunKind = "turn" | "opening" | "choices" | "item_use";
@@ -225,12 +249,14 @@ export interface SessionUpdate {
   ai?: unknown;
   definitionSnapshot?: unknown;
   state?: unknown;
+  profileId?: string;
 }
 
 export interface RunCommit {
   state: unknown;
   messages: unknown[];
   result: unknown;
+  definitionSnapshot?: unknown;
 }
 
 export interface RunCommitResult {
@@ -622,7 +648,11 @@ function validateDefinitionDocument(
 
 function normalizeAi(raw: unknown): AiConfig {
   if (!isObject(raw)) throw new ValidationError("AI config harus object.");
-  if (raw.provider !== "gemini" && raw.provider !== "openrouter") {
+  if (
+    raw.provider !== "gemini" &&
+    raw.provider !== "openrouter" &&
+    raw.provider !== "custom"
+  ) {
     throw new ValidationError("AI provider tidak dikenal.");
   }
   if (
@@ -632,7 +662,21 @@ function normalizeAi(raw: unknown): AiConfig {
   ) {
     throw new ValidationError("AI model tidak valid.");
   }
-  return { provider: raw.provider, model: raw.model.trim() };
+  let systemPrompt: string;
+  try {
+    systemPrompt = normalizeNarratorSystemPrompt(raw.systemPrompt);
+  } catch (error) {
+    throw new ValidationError(
+      error instanceof Error
+        ? error.message
+        : "System prompt narrator tidak valid.",
+    );
+  }
+  return {
+    provider: raw.provider,
+    model: raw.model.trim(),
+    systemPrompt,
+  };
 }
 
 function assertPlainArray(
@@ -833,7 +877,9 @@ function readAiRequest(row: SqlRow): AiRequestRecord {
   const provider = String(row.provider);
   const status = String(row.status) as AiRequestRecord["status"];
   if (
-    (provider !== "gemini" && provider !== "openrouter") ||
+    (provider !== "gemini" &&
+      provider !== "openrouter" &&
+      provider !== "custom") ||
     !AI_STATUSES.has(status)
   ) {
     throw new CorruptDatabaseError("Ledger AI rusak.");
@@ -1050,6 +1096,414 @@ export class GameDatabase {
     this.#scheduleSummaryMaintenance();
   }
 
+  #schemaObjectExists(name: string): boolean {
+    return Boolean(
+      this.#db
+        .prepare("SELECT 1 AS found FROM sqlite_master WHERE name = ?")
+        .get(name),
+    );
+  }
+
+  #missingSchemaTables(version: number): string[] {
+    const existing = new Set(
+      this.#db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type IN ('table','view')",
+        )
+        .all()
+        .map((row) => String(row.name)),
+    );
+    const names = [
+      "games",
+      "sessions",
+      "messages",
+      "turns",
+      "ai_requests",
+      "migrations",
+    ];
+    if (version >= 2) {
+      names.push(
+        "lore_packs",
+        "lore_entries",
+        "lore_links",
+        "context_telemetry",
+        "story_summaries",
+        "story_summary_cursors",
+      );
+    }
+    if (version >= 3) {
+      names.push("ai_credentials", "ai_profiles", "session_ai_bindings");
+    }
+    return names.filter((name) => !existing.has(name));
+  }
+
+  #ensureCoreSchema(): void {
+    const rebuildMessagesFts = [
+      "messages",
+      "messages_fts",
+      "messages_ai",
+      "messages_ad",
+      "messages_au",
+    ].some((name) => !this.#schemaObjectExists(name));
+    this.#db.exec(`
+      CREATE TABLE IF NOT EXISTS games (
+        id TEXT PRIMARY KEY NOT NULL,
+        definition_json TEXT NOT NULL CHECK (json_valid(definition_json)),
+        revision INTEGER NOT NULL CHECK (revision > 0),
+        updated_at TEXT NOT NULL
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS sessions (
+        id TEXT PRIMARY KEY NOT NULL,
+        game_id TEXT NOT NULL REFERENCES games(id) ON DELETE RESTRICT,
+        definition_snapshot_json TEXT NOT NULL CHECK (json_valid(definition_snapshot_json)),
+        state_json TEXT NOT NULL CHECK (json_valid(state_json)),
+        ai_json TEXT NOT NULL CHECK (json_valid(ai_json)),
+        next_sequence INTEGER NOT NULL CHECK (next_sequence >= 0),
+        revision INTEGER NOT NULL CHECK (revision > 0),
+        updated_at TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX IF NOT EXISTS sessions_by_game
+        ON sessions(game_id, updated_at DESC);
+      CREATE TABLE IF NOT EXISTS messages (
+        id TEXT PRIMARY KEY NOT NULL,
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        turn_id TEXT NOT NULL,
+        sequence INTEGER NOT NULL CHECK (sequence >= 0),
+        role TEXT NOT NULL CHECK (role IN ('PLAYER','NPC','NARRATOR','SYSTEM_EVENT')),
+        speaker_id TEXT,
+        content TEXT NOT NULL,
+        check_json TEXT CHECK (check_json IS NULL OR json_valid(check_json)),
+        created_at TEXT NOT NULL,
+        UNIQUE (session_id, sequence)
+      ) STRICT;
+      CREATE INDEX IF NOT EXISTS messages_page ON messages(session_id, sequence);
+      CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+        content, content='messages', content_rowid='rowid',
+        tokenize='unicode61 remove_diacritics 2'
+      );
+      CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
+        INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+      END;
+      CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
+        INSERT INTO messages_fts(messages_fts, rowid, content)
+        VALUES ('delete', old.rowid, old.content);
+      END;
+      CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE OF content ON messages BEGIN
+        INSERT INTO messages_fts(messages_fts, rowid, content)
+        VALUES ('delete', old.rowid, old.content);
+        INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+      END;
+      CREATE TABLE IF NOT EXISTS turns (
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        request_id TEXT NOT NULL,
+        input_hash TEXT NOT NULL,
+        expected_revision INTEGER NOT NULL CHECK (expected_revision > 0),
+        kind TEXT NOT NULL CHECK (kind IN ('turn','opening','choices','item_use')),
+        status TEXT NOT NULL CHECK (status IN ('running','committed','failed','interrupted')),
+        result_json TEXT CHECK (result_json IS NULL OR json_valid(result_json)),
+        error_json TEXT CHECK (error_json IS NULL OR json_valid(error_json)),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (session_id, request_id)
+      ) STRICT;
+      CREATE UNIQUE INDEX IF NOT EXISTS one_running_turn_per_session
+        ON turns(session_id) WHERE status = 'running';
+      CREATE TABLE IF NOT EXISTS ai_requests (
+        id TEXT PRIMARY KEY NOT NULL,
+        session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
+        request_id TEXT,
+        kind TEXT NOT NULL CHECK (kind IN ('turn','opening','choices','connection_test')),
+        attempt INTEGER NOT NULL CHECK (attempt > 0),
+        provider TEXT NOT NULL CHECK (provider IN ('gemini','openrouter','custom')),
+        model TEXT NOT NULL,
+        input_tokens INTEGER CHECK (input_tokens IS NULL OR input_tokens >= 0),
+        output_tokens INTEGER CHECK (output_tokens IS NULL OR output_tokens >= 0),
+        total_tokens INTEGER CHECK (total_tokens IS NULL OR total_tokens >= 0),
+        cached_input_tokens INTEGER CHECK (cached_input_tokens IS NULL OR cached_input_tokens >= 0),
+        reasoning_tokens INTEGER CHECK (reasoning_tokens IS NULL OR reasoning_tokens >= 0),
+        status TEXT NOT NULL CHECK (status IN ('running','succeeded','failed','unknown')),
+        latency_ms INTEGER CHECK (latency_ms IS NULL OR latency_ms >= 0),
+        finish_reason TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX IF NOT EXISTS ai_usage_by_session
+        ON ai_requests(session_id, created_at);
+      CREATE INDEX IF NOT EXISTS ai_usage_by_run
+        ON ai_requests(session_id, request_id, attempt);
+      CREATE UNIQUE INDEX IF NOT EXISTS ai_attempt_once
+        ON ai_requests(session_id, request_id, kind, attempt)
+        WHERE request_id IS NOT NULL;
+      CREATE TABLE IF NOT EXISTS migrations (
+        fingerprint TEXT PRIMARY KEY NOT NULL,
+        counts_json TEXT NOT NULL CHECK (json_valid(counts_json)),
+        ids_json TEXT NOT NULL CHECK (json_valid(ids_json)),
+        receipt_json TEXT NOT NULL CHECK (json_valid(receipt_json)),
+        created_at TEXT NOT NULL
+      ) STRICT;
+    `);
+    if (rebuildMessagesFts) {
+      this.#db.exec(
+        "INSERT INTO messages_fts(messages_fts) VALUES ('rebuild')",
+      );
+    }
+  }
+
+  #ensureV2Columns(): void {
+    const sessionColumns = this.#db
+      .prepare("PRAGMA table_info(sessions)")
+      .all();
+    if (!sessionColumns.some((column) => column.name === "world_map_json")) {
+      this.#db.exec(
+        "ALTER TABLE sessions ADD COLUMN world_map_json TEXT CHECK (world_map_json IS NULL OR json_valid(world_map_json))",
+      );
+    }
+    if (!sessionColumns.some((column) => column.name === "lore_refs_json")) {
+      this.#db.exec(
+        "ALTER TABLE sessions ADD COLUMN lore_refs_json TEXT CHECK (lore_refs_json IS NULL OR json_valid(lore_refs_json))",
+      );
+    }
+    const messageColumns = this.#db
+      .prepare("PRAGMA table_info(messages)")
+      .all();
+    if (!messageColumns.some((column) => column.name === "visibility")) {
+      this.#db.exec(
+        "ALTER TABLE messages ADD COLUMN visibility TEXT CHECK (visibility IS NULL OR visibility IN ('public','private'))",
+      );
+    }
+    if (!messageColumns.some((column) => column.name === "known_by_json")) {
+      this.#db.exec(
+        "ALTER TABLE messages ADD COLUMN known_by_json TEXT CHECK (known_by_json IS NULL OR json_valid(known_by_json))",
+      );
+    }
+  }
+
+  #ensureV2Schema(): void {
+    const rebuildLoreFts = ["lore_entries", "lore_entries_fts"].some(
+      (name) => !this.#schemaObjectExists(name),
+    );
+    const rebuildSummaryFts = [
+      "story_summaries",
+      "story_summaries_fts",
+      "story_summaries_ai",
+      "story_summaries_ad",
+      "story_summaries_au",
+    ].some((name) => !this.#schemaObjectExists(name));
+    this.#db.exec(`
+      CREATE TABLE IF NOT EXISTS lore_packs (
+        pack_id TEXT NOT NULL,
+        pack_version INTEGER NOT NULL CHECK (pack_version > 0),
+        name TEXT NOT NULL,
+        description TEXT,
+        entry_count INTEGER NOT NULL CHECK (entry_count >= 0),
+        link_count INTEGER NOT NULL CHECK (link_count >= 0),
+        digest TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (pack_id, pack_version)
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS lore_entries (
+        pack_id TEXT NOT NULL,
+        pack_version INTEGER NOT NULL,
+        entry_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        name TEXT NOT NULL,
+        aliases_json TEXT NOT NULL CHECK (json_valid(aliases_json)),
+        parent_id TEXT,
+        summary TEXT NOT NULL,
+        body TEXT NOT NULL,
+        tags_json TEXT NOT NULL CHECK (json_valid(tags_json)),
+        visibility TEXT NOT NULL CHECK (visibility IN ('public','narrator','discovery')),
+        metadata_json TEXT NOT NULL CHECK (json_valid(metadata_json)),
+        provenance_json TEXT NOT NULL CHECK (json_valid(provenance_json)),
+        PRIMARY KEY (pack_id, pack_version, entry_id),
+        FOREIGN KEY (pack_id, pack_version)
+          REFERENCES lore_packs(pack_id, pack_version) ON DELETE CASCADE,
+        FOREIGN KEY (pack_id, pack_version, parent_id)
+          REFERENCES lore_entries(pack_id, pack_version, entry_id)
+          DEFERRABLE INITIALLY DEFERRED
+      ) STRICT;
+      CREATE INDEX IF NOT EXISTS lore_entries_by_parent
+        ON lore_entries(pack_id, pack_version, parent_id, entry_id);
+      CREATE INDEX IF NOT EXISTS lore_entries_by_kind
+        ON lore_entries(pack_id, pack_version, kind, visibility, entry_id);
+      CREATE TABLE IF NOT EXISTS lore_links (
+        pack_id TEXT NOT NULL,
+        pack_version INTEGER NOT NULL,
+        from_id TEXT NOT NULL,
+        to_id TEXT NOT NULL,
+        relation TEXT NOT NULL,
+        PRIMARY KEY (pack_id, pack_version, from_id, to_id, relation),
+        FOREIGN KEY (pack_id, pack_version)
+          REFERENCES lore_packs(pack_id, pack_version) ON DELETE CASCADE,
+        FOREIGN KEY (pack_id, pack_version, from_id)
+          REFERENCES lore_entries(pack_id, pack_version, entry_id)
+          ON DELETE CASCADE,
+        FOREIGN KEY (pack_id, pack_version, to_id)
+          REFERENCES lore_entries(pack_id, pack_version, entry_id)
+          ON DELETE CASCADE
+      ) STRICT;
+      CREATE INDEX IF NOT EXISTS lore_links_by_target
+        ON lore_links(pack_id, pack_version, to_id, relation, from_id);
+      CREATE VIRTUAL TABLE IF NOT EXISTS lore_entries_fts USING fts5(
+        pack_id UNINDEXED, pack_version UNINDEXED, entry_id UNINDEXED,
+        name, aliases, summary, body,
+        tokenize='unicode61 remove_diacritics 2'
+      );
+      CREATE TABLE IF NOT EXISTS context_telemetry (
+        session_id TEXT NOT NULL,
+        request_id TEXT NOT NULL,
+        context_chars INTEGER NOT NULL CHECK (context_chars >= 0),
+        approximate_tokens INTEGER NOT NULL CHECK (approximate_tokens >= 0),
+        token_estimate_method TEXT NOT NULL,
+        sections_json TEXT NOT NULL CHECK (json_valid(sections_json)),
+        selected_lore_ids_json TEXT NOT NULL CHECK (json_valid(selected_lore_ids_json)),
+        omissions_json TEXT NOT NULL CHECK (json_valid(omissions_json)),
+        tool_calls INTEGER NOT NULL CHECK (tool_calls >= 0),
+        repairs INTEGER NOT NULL CHECK (repairs >= 0),
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (session_id, request_id),
+        FOREIGN KEY (session_id, request_id)
+          REFERENCES turns(session_id, request_id) ON DELETE CASCADE
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS story_summaries (
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        from_sequence INTEGER NOT NULL CHECK (from_sequence >= 0),
+        to_sequence INTEGER NOT NULL CHECK (to_sequence >= from_sequence),
+        summary TEXT NOT NULL,
+        source_digest TEXT NOT NULL,
+        visibility TEXT NOT NULL CHECK (visibility IN ('public','private')),
+        known_by_json TEXT NOT NULL CHECK (json_valid(known_by_json)),
+        created_at TEXT NOT NULL,
+        UNIQUE (session_id, from_sequence, to_sequence, visibility, known_by_json, source_digest)
+      ) STRICT;
+      CREATE INDEX IF NOT EXISTS story_summaries_by_session
+        ON story_summaries(session_id, to_sequence DESC);
+      CREATE INDEX IF NOT EXISTS story_summaries_by_scope
+        ON story_summaries(session_id, visibility, to_sequence DESC);
+      CREATE VIRTUAL TABLE IF NOT EXISTS story_summaries_fts USING fts5(
+        summary, content='story_summaries', content_rowid='rowid',
+        tokenize='unicode61 remove_diacritics 2'
+      );
+      CREATE TRIGGER IF NOT EXISTS story_summaries_ai AFTER INSERT ON story_summaries BEGIN
+        INSERT INTO story_summaries_fts(rowid, summary) VALUES (new.rowid, new.summary);
+      END;
+      CREATE TRIGGER IF NOT EXISTS story_summaries_ad AFTER DELETE ON story_summaries BEGIN
+        INSERT INTO story_summaries_fts(story_summaries_fts, rowid, summary)
+        VALUES ('delete', old.rowid, old.summary);
+      END;
+      CREATE TRIGGER IF NOT EXISTS story_summaries_au AFTER UPDATE OF summary ON story_summaries BEGIN
+        INSERT INTO story_summaries_fts(story_summaries_fts, rowid, summary)
+        VALUES ('delete', old.rowid, old.summary);
+        INSERT INTO story_summaries_fts(rowid, summary) VALUES (new.rowid, new.summary);
+      END;
+      CREATE TABLE IF NOT EXISTS story_summary_cursors (
+        session_id TEXT PRIMARY KEY NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        next_sequence INTEGER NOT NULL CHECK (next_sequence >= 0)
+      ) STRICT;
+    `);
+    if (rebuildLoreFts) {
+      this.#db.exec(`
+        DELETE FROM lore_entries_fts;
+        INSERT INTO lore_entries_fts(
+          pack_id, pack_version, entry_id, name, aliases, summary, body
+        )
+        SELECT e.pack_id, e.pack_version, e.entry_id, e.name,
+          COALESCE(
+            (SELECT group_concat(value, ' ') FROM json_each(e.aliases_json)),
+            ''
+          ),
+          e.summary, e.body
+        FROM lore_entries e;
+      `);
+    }
+    if (rebuildSummaryFts) {
+      this.#db.exec(
+        "INSERT INTO story_summaries_fts(story_summaries_fts) VALUES ('rebuild')",
+      );
+    }
+  }
+
+  #ensureV3Schema(): void {
+    this.#db.exec(`
+      CREATE TABLE IF NOT EXISTS ai_credentials (
+        id TEXT PRIMARY KEY NOT NULL,
+        provider TEXT NOT NULL CHECK (provider IN ('gemini','openrouter','custom')),
+        base_url TEXT,
+        CHECK (
+          (provider = 'custom' AND base_url IS NOT NULL) OR
+          (provider <> 'custom' AND base_url IS NULL)
+        )
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS ai_profiles (
+        id TEXT PRIMARY KEY NOT NULL,
+        name TEXT NOT NULL,
+        credential_id TEXT NOT NULL REFERENCES ai_credentials(id),
+        model TEXT NOT NULL,
+        system_prompt TEXT NOT NULL,
+        revision INTEGER NOT NULL CHECK (revision > 0),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS session_ai_bindings (
+        session_id TEXT PRIMARY KEY NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        profile_id TEXT NOT NULL REFERENCES ai_profiles(id),
+        credential_id TEXT NOT NULL REFERENCES ai_credentials(id)
+      ) STRICT;
+    `);
+  }
+
+  #ensureAiRequestProviderCheck(): void {
+    const table = this.#db
+      .prepare(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'ai_requests'",
+      )
+      .get() as SqlRow | undefined;
+    if (!table || String(table.sql).includes("'custom'")) return;
+    this.#db.exec(`
+      ALTER TABLE ai_requests RENAME TO ai_requests_schema_v2;
+      DROP INDEX IF EXISTS ai_usage_by_session;
+      DROP INDEX IF EXISTS ai_usage_by_run;
+      DROP INDEX IF EXISTS ai_attempt_once;
+      CREATE TABLE ai_requests (
+        id TEXT PRIMARY KEY NOT NULL,
+        session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
+        request_id TEXT,
+        kind TEXT NOT NULL CHECK (kind IN ('turn','opening','choices','connection_test')),
+        attempt INTEGER NOT NULL CHECK (attempt > 0),
+        provider TEXT NOT NULL CHECK (provider IN ('gemini','openrouter','custom')),
+        model TEXT NOT NULL,
+        input_tokens INTEGER CHECK (input_tokens IS NULL OR input_tokens >= 0),
+        output_tokens INTEGER CHECK (output_tokens IS NULL OR output_tokens >= 0),
+        total_tokens INTEGER CHECK (total_tokens IS NULL OR total_tokens >= 0),
+        cached_input_tokens INTEGER CHECK (cached_input_tokens IS NULL OR cached_input_tokens >= 0),
+        reasoning_tokens INTEGER CHECK (reasoning_tokens IS NULL OR reasoning_tokens >= 0),
+        status TEXT NOT NULL CHECK (status IN ('running','succeeded','failed','unknown')),
+        latency_ms INTEGER CHECK (latency_ms IS NULL OR latency_ms >= 0),
+        finish_reason TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+      INSERT INTO ai_requests (
+        id, session_id, request_id, kind, attempt, provider, model,
+        input_tokens, output_tokens, total_tokens, cached_input_tokens,
+        reasoning_tokens, status, latency_ms, finish_reason, created_at, updated_at
+      )
+      SELECT
+        id, session_id, request_id, kind, attempt, provider, model,
+        input_tokens, output_tokens, total_tokens, cached_input_tokens,
+        reasoning_tokens, status, latency_ms, finish_reason, created_at, updated_at
+      FROM ai_requests_schema_v2;
+      DROP TABLE ai_requests_schema_v2;
+      CREATE INDEX IF NOT EXISTS ai_usage_by_session
+        ON ai_requests(session_id, created_at);
+      CREATE INDEX IF NOT EXISTS ai_usage_by_run
+        ON ai_requests(session_id, request_id, attempt);
+      CREATE UNIQUE INDEX IF NOT EXISTS ai_attempt_once
+        ON ai_requests(session_id, request_id, kind, attempt)
+        WHERE request_id IS NOT NULL;
+    `);
+  }
+
   #migrate(): void {
     const version = Number(
       (this.#db.prepare("PRAGMA user_version").get() as SqlRow).user_version,
@@ -1060,238 +1514,35 @@ export class GameDatabase {
         "SCHEMA_VERSION",
       );
     }
-    if (version === SCHEMA_VERSION) return;
-    if (version === 0) {
-      this.#transaction(() => {
-        this.#db.exec(`
-          CREATE TABLE games (
-            id TEXT PRIMARY KEY NOT NULL,
-            definition_json TEXT NOT NULL CHECK (json_valid(definition_json)),
-            revision INTEGER NOT NULL CHECK (revision > 0),
-            updated_at TEXT NOT NULL
-          ) STRICT;
-          CREATE TABLE sessions (
-            id TEXT PRIMARY KEY NOT NULL,
-            game_id TEXT NOT NULL REFERENCES games(id) ON DELETE RESTRICT,
-            definition_snapshot_json TEXT NOT NULL CHECK (json_valid(definition_snapshot_json)),
-            state_json TEXT NOT NULL CHECK (json_valid(state_json)),
-            ai_json TEXT NOT NULL CHECK (json_valid(ai_json)),
-            next_sequence INTEGER NOT NULL CHECK (next_sequence >= 0),
-            revision INTEGER NOT NULL CHECK (revision > 0),
-            updated_at TEXT NOT NULL
-          ) STRICT;
-          CREATE INDEX sessions_by_game ON sessions(game_id, updated_at DESC);
-          CREATE TABLE messages (
-            id TEXT PRIMARY KEY NOT NULL,
-            session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-            turn_id TEXT NOT NULL,
-            sequence INTEGER NOT NULL CHECK (sequence >= 0),
-            role TEXT NOT NULL CHECK (role IN ('PLAYER','NPC','NARRATOR','SYSTEM_EVENT')),
-            speaker_id TEXT,
-            content TEXT NOT NULL,
-            check_json TEXT CHECK (check_json IS NULL OR json_valid(check_json)),
-            created_at TEXT NOT NULL,
-            UNIQUE (session_id, sequence)
-          ) STRICT;
-          CREATE INDEX messages_page ON messages(session_id, sequence);
-          CREATE VIRTUAL TABLE messages_fts USING fts5(
-            content, content='messages', content_rowid='rowid',
-            tokenize='unicode61 remove_diacritics 2'
-          );
-          CREATE TRIGGER messages_ai AFTER INSERT ON messages BEGIN
-            INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
-          END;
-          CREATE TRIGGER messages_ad AFTER DELETE ON messages BEGIN
-            INSERT INTO messages_fts(messages_fts, rowid, content)
-            VALUES ('delete', old.rowid, old.content);
-          END;
-          CREATE TRIGGER messages_au AFTER UPDATE OF content ON messages BEGIN
-            INSERT INTO messages_fts(messages_fts, rowid, content)
-            VALUES ('delete', old.rowid, old.content);
-            INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
-          END;
-          CREATE TABLE turns (
-            session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-            request_id TEXT NOT NULL,
-            input_hash TEXT NOT NULL,
-            expected_revision INTEGER NOT NULL CHECK (expected_revision > 0),
-            kind TEXT NOT NULL CHECK (kind IN ('turn','opening','choices','item_use')),
-            status TEXT NOT NULL CHECK (status IN ('running','committed','failed','interrupted')),
-            result_json TEXT CHECK (result_json IS NULL OR json_valid(result_json)),
-            error_json TEXT CHECK (error_json IS NULL OR json_valid(error_json)),
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            PRIMARY KEY (session_id, request_id)
-          ) STRICT;
-          CREATE UNIQUE INDEX one_running_turn_per_session ON turns(session_id) WHERE status = 'running';
-          CREATE TABLE ai_requests (
-            id TEXT PRIMARY KEY NOT NULL,
-            session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
-            request_id TEXT,
-            kind TEXT NOT NULL CHECK (kind IN ('turn','opening','choices','connection_test')),
-            attempt INTEGER NOT NULL CHECK (attempt > 0),
-            provider TEXT NOT NULL CHECK (provider IN ('gemini','openrouter')),
-            model TEXT NOT NULL,
-            input_tokens INTEGER CHECK (input_tokens IS NULL OR input_tokens >= 0),
-            output_tokens INTEGER CHECK (output_tokens IS NULL OR output_tokens >= 0),
-            total_tokens INTEGER CHECK (total_tokens IS NULL OR total_tokens >= 0),
-            cached_input_tokens INTEGER CHECK (cached_input_tokens IS NULL OR cached_input_tokens >= 0),
-            reasoning_tokens INTEGER CHECK (reasoning_tokens IS NULL OR reasoning_tokens >= 0),
-            status TEXT NOT NULL CHECK (status IN ('running','succeeded','failed','unknown')),
-            latency_ms INTEGER CHECK (latency_ms IS NULL OR latency_ms >= 0),
-            finish_reason TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-          ) STRICT;
-          CREATE INDEX ai_usage_by_session ON ai_requests(session_id, created_at);
-          CREATE INDEX ai_usage_by_run ON ai_requests(session_id, request_id, attempt);
-          CREATE UNIQUE INDEX ai_attempt_once ON ai_requests(session_id, request_id, kind, attempt)
-            WHERE request_id IS NOT NULL;
-          CREATE TABLE migrations (
-            fingerprint TEXT PRIMARY KEY NOT NULL,
-            counts_json TEXT NOT NULL CHECK (json_valid(counts_json)),
-            ids_json TEXT NOT NULL CHECK (json_valid(ids_json)),
-            receipt_json TEXT NOT NULL CHECK (json_valid(receipt_json)),
-            created_at TEXT NOT NULL
-          ) STRICT;
-          PRAGMA user_version = 1;
-        `);
-      });
-      this.#migrate();
-      return;
-    }
-    if (version !== 1) {
+    if (
+      version !== 0 &&
+      version !== 1 &&
+      version !== 2 &&
+      version !== SCHEMA_VERSION
+    ) {
       throw new DatabaseError(
         `Database schema ${version} tidak didukung.`,
         "SCHEMA_VERSION",
       );
     }
+    const missingTables =
+      version === 0 ? [] : this.#missingSchemaTables(version);
     this.#transaction(() => {
-      this.#db.exec(`
-        ALTER TABLE sessions ADD COLUMN world_map_json TEXT
-          CHECK (world_map_json IS NULL OR json_valid(world_map_json));
-        ALTER TABLE sessions ADD COLUMN lore_refs_json TEXT
-          CHECK (lore_refs_json IS NULL OR json_valid(lore_refs_json));
-        ALTER TABLE messages ADD COLUMN visibility TEXT
-          CHECK (visibility IS NULL OR visibility IN ('public','private'));
-        ALTER TABLE messages ADD COLUMN known_by_json TEXT
-          CHECK (known_by_json IS NULL OR json_valid(known_by_json));
-
-        CREATE TABLE lore_packs (
-          pack_id TEXT NOT NULL,
-          pack_version INTEGER NOT NULL CHECK (pack_version > 0),
-          name TEXT NOT NULL,
-          description TEXT,
-          entry_count INTEGER NOT NULL CHECK (entry_count >= 0),
-          link_count INTEGER NOT NULL CHECK (link_count >= 0),
-          digest TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          PRIMARY KEY (pack_id, pack_version)
-        ) STRICT;
-        CREATE TABLE lore_entries (
-          pack_id TEXT NOT NULL,
-          pack_version INTEGER NOT NULL,
-          entry_id TEXT NOT NULL,
-          kind TEXT NOT NULL,
-          name TEXT NOT NULL,
-          aliases_json TEXT NOT NULL CHECK (json_valid(aliases_json)),
-          parent_id TEXT,
-          summary TEXT NOT NULL,
-          body TEXT NOT NULL,
-          tags_json TEXT NOT NULL CHECK (json_valid(tags_json)),
-          visibility TEXT NOT NULL CHECK (visibility IN ('public','narrator','discovery')),
-          metadata_json TEXT NOT NULL CHECK (json_valid(metadata_json)),
-          provenance_json TEXT NOT NULL CHECK (json_valid(provenance_json)),
-          PRIMARY KEY (pack_id, pack_version, entry_id),
-          FOREIGN KEY (pack_id, pack_version) REFERENCES lore_packs(pack_id, pack_version)
-            ON DELETE CASCADE,
-          FOREIGN KEY (pack_id, pack_version, parent_id)
-            REFERENCES lore_entries(pack_id, pack_version, entry_id)
-            DEFERRABLE INITIALLY DEFERRED
-        ) STRICT;
-        CREATE INDEX lore_entries_by_parent
-          ON lore_entries(pack_id, pack_version, parent_id, entry_id);
-        CREATE INDEX lore_entries_by_kind
-          ON lore_entries(pack_id, pack_version, kind, visibility, entry_id);
-        CREATE TABLE lore_links (
-          pack_id TEXT NOT NULL,
-          pack_version INTEGER NOT NULL,
-          from_id TEXT NOT NULL,
-          to_id TEXT NOT NULL,
-          relation TEXT NOT NULL,
-          PRIMARY KEY (pack_id, pack_version, from_id, to_id, relation),
-          FOREIGN KEY (pack_id, pack_version) REFERENCES lore_packs(pack_id, pack_version)
-            ON DELETE CASCADE,
-          FOREIGN KEY (pack_id, pack_version, from_id)
-            REFERENCES lore_entries(pack_id, pack_version, entry_id)
-            ON DELETE CASCADE,
-          FOREIGN KEY (pack_id, pack_version, to_id)
-            REFERENCES lore_entries(pack_id, pack_version, entry_id)
-            ON DELETE CASCADE
-        ) STRICT;
-        CREATE INDEX lore_links_by_target
-          ON lore_links(pack_id, pack_version, to_id, relation, from_id);
-        CREATE VIRTUAL TABLE lore_entries_fts USING fts5(
-          pack_id UNINDEXED, pack_version UNINDEXED, entry_id UNINDEXED,
-          name, aliases, summary, body,
-          tokenize='unicode61 remove_diacritics 2'
-        );
-
-        CREATE TABLE context_telemetry (
-          session_id TEXT NOT NULL,
-          request_id TEXT NOT NULL,
-          context_chars INTEGER NOT NULL CHECK (context_chars >= 0),
-          approximate_tokens INTEGER NOT NULL CHECK (approximate_tokens >= 0),
-          token_estimate_method TEXT NOT NULL,
-          sections_json TEXT NOT NULL CHECK (json_valid(sections_json)),
-          selected_lore_ids_json TEXT NOT NULL CHECK (json_valid(selected_lore_ids_json)),
-          omissions_json TEXT NOT NULL CHECK (json_valid(omissions_json)),
-          tool_calls INTEGER NOT NULL CHECK (tool_calls >= 0),
-          repairs INTEGER NOT NULL CHECK (repairs >= 0),
-          updated_at TEXT NOT NULL,
-          PRIMARY KEY (session_id, request_id),
-          FOREIGN KEY (session_id, request_id) REFERENCES turns(session_id, request_id)
-            ON DELETE CASCADE
-        ) STRICT;
-
-        CREATE TABLE story_summaries (
-          session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-          from_sequence INTEGER NOT NULL CHECK (from_sequence >= 0),
-          to_sequence INTEGER NOT NULL CHECK (to_sequence >= from_sequence),
-          summary TEXT NOT NULL,
-          source_digest TEXT NOT NULL,
-          visibility TEXT NOT NULL CHECK (visibility IN ('public','private')),
-          known_by_json TEXT NOT NULL CHECK (json_valid(known_by_json)),
-          created_at TEXT NOT NULL,
-          UNIQUE (session_id, from_sequence, to_sequence, visibility, known_by_json, source_digest)
-        ) STRICT;
-        CREATE INDEX story_summaries_by_session
-          ON story_summaries(session_id, to_sequence DESC);
-        CREATE INDEX story_summaries_by_scope
-          ON story_summaries(session_id, visibility, to_sequence DESC);
-        CREATE VIRTUAL TABLE story_summaries_fts USING fts5(
-          summary, content='story_summaries', content_rowid='rowid',
-          tokenize='unicode61 remove_diacritics 2'
-        );
-        CREATE TRIGGER story_summaries_ai AFTER INSERT ON story_summaries BEGIN
-          INSERT INTO story_summaries_fts(rowid, summary) VALUES (new.rowid, new.summary);
-        END;
-        CREATE TRIGGER story_summaries_ad AFTER DELETE ON story_summaries BEGIN
-          INSERT INTO story_summaries_fts(story_summaries_fts, rowid, summary)
-          VALUES ('delete', old.rowid, old.summary);
-        END;
-        CREATE TRIGGER story_summaries_au AFTER UPDATE OF summary ON story_summaries BEGIN
-          INSERT INTO story_summaries_fts(story_summaries_fts, rowid, summary)
-          VALUES ('delete', old.rowid, old.summary);
-          INSERT INTO story_summaries_fts(rowid, summary) VALUES (new.rowid, new.summary);
-        END;
-        CREATE TABLE story_summary_cursors (
-          session_id TEXT PRIMARY KEY NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-          next_sequence INTEGER NOT NULL CHECK (next_sequence >= 0)
-        ) STRICT;
-        PRAGMA user_version = 2;
-      `);
+      this.#ensureCoreSchema();
+      this.#ensureV2Columns();
+      this.#ensureV2Schema();
+      this.#ensureV3Schema();
+      this.#ensureAiRequestProviderCheck();
+      if (version !== SCHEMA_VERSION) {
+        this.#db.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`);
+      }
     });
+    if (missingTables.length > 0) {
+      console.warn(
+        "[fworld] SQLite recreated missing tables; deleted rows are not restored. Restore a backup to recover them; derived search indexes are rebuilt.",
+        { tables: missingTables },
+      );
+    }
   }
   #scheduleSummaryMaintenance(delay = 0): void {
     if (this.#closed) return;
@@ -2842,6 +3093,18 @@ export class GameDatabase {
   ): number {
     const id = definition.id;
     this.#checkExpected(Number(row.revision), expectedRevision, "Game");
+    const originalDefinition = this.#gameFromRow(row);
+    const parentNpcIds = new Set(originalDefinition.npcs.map((npc) => npc.id));
+    const parentIds = new Set([
+      PLAYER_ID,
+      definition.id,
+      ...definition.attributes.map((entry) => entry.id),
+      ...definition.resources.map((entry) => entry.id),
+      ...definition.relationships.map((entry) => entry.id),
+      ...definition.items.map((entry) => entry.id),
+      ...definition.npcs.map((entry) => entry.id),
+      ...(definition.worldMap?.locations.map((entry) => entry.id) ?? []),
+    ]);
     const sessionRows = this.#db
       .prepare("SELECT * FROM sessions WHERE game_id = ? ORDER BY id")
       .all(id) as SqlRow[];
@@ -2858,10 +3121,7 @@ export class GameDatabase {
           "Game memiliki session dengan run yang sedang berjalan.",
         );
       }
-      const errors = validateDefinitionUpdate(
-        this.#gameFromRow(row),
-        definition,
-      );
+      const errors = validateDefinitionUpdate(originalDefinition, definition);
       if (errors.length) throw new ValidationError(errors.join(" "));
     }
     const result = this.#db
@@ -2873,7 +3133,17 @@ export class GameDatabase {
       throw new ConflictError("Game revision berubah.");
     for (const sessionRow of sessionRows) {
       const current = this.#sessionFromRow(sessionRow);
+      const runtimeNpcs = current.definitionSnapshot.npcs.filter(
+        (npc) => !parentNpcIds.has(npc.id),
+      );
+      const collision = runtimeNpcs.find((npc) => parentIds.has(npc.id));
+      if (collision) {
+        throw new ValidationError(
+          `Game edit collides with session NPC "${collision.id}".`,
+        );
+      }
       const snapshot = structuredClone(definition);
+      snapshot.npcs.push(...structuredClone(runtimeNpcs));
       if (current.definitionSnapshot.worldMap === undefined) {
         delete snapshot.worldMap;
       } else {
@@ -2925,15 +3195,301 @@ export class GameDatabase {
       this.#checkExpected(Number(row.revision), expectedRevision, "Game");
       if (
         this.#db
-          .prepare("SELECT 1 AS found FROM sessions WHERE game_id = ? LIMIT 1")
+          .prepare(
+            `SELECT 1 AS found FROM turns t JOIN sessions s ON s.id = t.session_id
+             WHERE s.game_id = ? AND t.status = 'running' LIMIT 1`,
+          )
           .get(id)
       ) {
-        throw new ConflictError("Game masih memiliki session.");
+        throw new ConflictError(
+          "Game memiliki session dengan run yang sedang berjalan.",
+          "RUN_IN_PROGRESS",
+        );
       }
+      this.#db.prepare("DELETE FROM sessions WHERE game_id = ?").run(id);
       this.#db
         .prepare("DELETE FROM games WHERE id = ? AND revision = ?")
         .run(id, expectedRevision);
     });
+  }
+
+  #credential(id: string): {
+    provider: AiConfig["provider"];
+    baseURL?: string;
+  } {
+    const row = this.#db
+      .prepare("SELECT * FROM ai_credentials WHERE id = ?")
+      .get(id) as SqlRow | undefined;
+    if (!row) throw new CorruptDatabaseError("Credential AI tidak ditemukan.");
+    const provider = String(row.provider);
+    if (
+      provider !== "gemini" &&
+      provider !== "openrouter" &&
+      provider !== "custom"
+    ) {
+      throw new CorruptDatabaseError("Provider credential AI rusak.");
+    }
+    let baseURL: string | undefined;
+    if (row.base_url !== null) {
+      try {
+        baseURL = normalizeCustomBaseURL(row.base_url);
+      } catch {
+        throw new CorruptDatabaseError("Base URL credential AI rusak.");
+      }
+    }
+    if (provider === "custom" && baseURL === undefined) {
+      throw new CorruptDatabaseError("Credential custom tanpa Base URL.");
+    }
+    if (provider !== "custom" && baseURL !== undefined) {
+      throw new CorruptDatabaseError("Credential non-custom memuat Base URL.");
+    }
+    return { provider, ...(baseURL === undefined ? {} : { baseURL }) };
+  }
+
+  #profileFromRow(row: SqlRow): StoredAiProfile {
+    const credential = this.#credential(String(row.credential_id));
+    let input: AiProfileInput;
+    try {
+      input = normalizeAiProfileInput({
+        name: row.name,
+        provider: credential.provider,
+        model: row.model,
+        systemPrompt: row.system_prompt,
+        ...(credential.baseURL === undefined
+          ? {}
+          : { baseURL: credential.baseURL }),
+      });
+    } catch (error) {
+      throw new CorruptDatabaseError(
+        `Profil AI rusak: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    if (!Number.isSafeInteger(row.revision) || Number(row.revision) < 1) {
+      throw new CorruptDatabaseError("Revision profil AI rusak.");
+    }
+    return {
+      ...input,
+      id: String(row.id),
+      revision: Number(row.revision),
+      credentialId: String(row.credential_id),
+    };
+  }
+
+  #profileInput(raw: unknown): AiProfileInput {
+    try {
+      return normalizeAiProfileInput(raw);
+    } catch (error) {
+      throw new ValidationError(
+        error instanceof Error ? error.message : "Profil AI tidak valid.",
+      );
+    }
+  }
+
+  #profileSnapshot(profileId: string): AiProfileSnapshot {
+    assertId(profileId, "profile.id");
+    const row = this.#db
+      .prepare("SELECT * FROM ai_profiles WHERE id = ?")
+      .get(profileId) as SqlRow | undefined;
+    if (!row) throw new NotFoundError("Profil AI tidak ditemukan.");
+    const profile = this.#profileFromRow(row);
+    return {
+      ai: {
+        provider: profile.provider,
+        model: profile.model,
+        systemPrompt: profile.systemPrompt,
+      },
+      profileId: profile.id,
+      credentialId: profile.credentialId,
+    };
+  }
+
+  #setSessionAiBinding(
+    sessionId: string,
+    profileId: string,
+    credentialId: string,
+  ): void {
+    this.#db
+      .prepare(
+        `INSERT INTO session_ai_bindings(session_id, profile_id, credential_id)
+         VALUES (?, ?, ?)
+         ON CONFLICT(session_id) DO UPDATE SET
+           profile_id = excluded.profile_id,
+           credential_id = excluded.credential_id`,
+      )
+      .run(sessionId, profileId, credentialId);
+  }
+
+  listAiProfiles(): StoredAiProfile[] {
+    this.#assertOpen();
+    const rows = this.#db
+      .prepare("SELECT * FROM ai_profiles ORDER BY name COLLATE NOCASE, id")
+      .all() as SqlRow[];
+    return rows.map((row) => this.#profileFromRow(row));
+  }
+
+  getAiProfile(id: string): StoredAiProfile | undefined {
+    assertId(id, "profile.id");
+    this.#assertOpen();
+    const row = this.#db
+      .prepare("SELECT * FROM ai_profiles WHERE id = ?")
+      .get(id) as SqlRow | undefined;
+    return row ? this.#profileFromRow(row) : undefined;
+  }
+
+  createAiProfile(raw: unknown): StoredAiProfile {
+    const input = this.#profileInput(raw);
+    const id = randomUUID();
+    const credentialId = randomUUID();
+    const timestamp = now();
+    this.#transaction(() => {
+      this.#db
+        .prepare(
+          "INSERT INTO ai_credentials(id, provider, base_url) VALUES (?, ?, ?)",
+        )
+        .run(
+          credentialId,
+          input.provider,
+          input.provider === "custom" ? input.baseURL : null,
+        );
+      this.#db
+        .prepare(
+          `INSERT INTO ai_profiles(
+             id, name, credential_id, model, system_prompt, revision,
+             created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
+        )
+        .run(
+          id,
+          input.name,
+          credentialId,
+          input.model,
+          input.systemPrompt,
+          timestamp,
+          timestamp,
+        );
+    });
+    return { ...input, id, revision: 1, credentialId };
+  }
+
+  updateAiProfile(
+    id: string,
+    raw: unknown,
+    expectedRevision: number,
+  ): StoredAiProfile {
+    assertId(id, "profile.id");
+    assertRevision(expectedRevision);
+    const input = this.#profileInput(raw);
+    let updated!: StoredAiProfile;
+    this.#transaction(() => {
+      const row = this.#db
+        .prepare("SELECT * FROM ai_profiles WHERE id = ?")
+        .get(id) as SqlRow | undefined;
+      if (!row) throw new NotFoundError("Profil AI tidak ditemukan.");
+      this.#checkExpected(Number(row.revision), expectedRevision, "Profil AI");
+      const currentCredential = this.#credential(String(row.credential_id));
+      const identityChanged =
+        currentCredential.provider !== input.provider ||
+        (input.provider === "custom" &&
+          currentCredential.baseURL !== input.baseURL);
+      let credentialId = String(row.credential_id);
+      if (identityChanged) {
+        credentialId = randomUUID();
+        this.#db
+          .prepare(
+            "INSERT INTO ai_credentials(id, provider, base_url) VALUES (?, ?, ?)",
+          )
+          .run(
+            credentialId,
+            input.provider,
+            input.provider === "custom" ? input.baseURL : null,
+          );
+      }
+      const result = this.#db
+        .prepare(
+          `UPDATE ai_profiles SET name = ?, credential_id = ?, model = ?,
+             system_prompt = ?, revision = revision + 1, updated_at = ?
+           WHERE id = ? AND revision = ?`,
+        )
+        .run(
+          input.name,
+          credentialId,
+          input.model,
+          input.systemPrompt,
+          now(),
+          id,
+          expectedRevision,
+        );
+      if (Number(result.changes) !== 1) {
+        throw new ConflictError("Profil AI revision berubah.");
+      }
+      updated = {
+        ...input,
+        id,
+        revision: expectedRevision + 1,
+        credentialId,
+      };
+    });
+    return updated;
+  }
+
+  getSessionAiBinding(sessionId: string): StoredAiBinding | undefined {
+    assertId(sessionId, "session.id");
+    this.#assertOpen();
+    const row = this.#db
+      .prepare(
+        "SELECT profile_id, credential_id FROM session_ai_bindings WHERE session_id = ?",
+      )
+      .get(sessionId) as SqlRow | undefined;
+    if (!row) return undefined;
+    const profileId = String(row.profile_id);
+    if (
+      !this.#db
+        .prepare("SELECT 1 AS found FROM ai_profiles WHERE id = ?")
+        .get(profileId)
+    ) {
+      throw new CorruptDatabaseError(
+        "Binding profil AI menunjuk profil hilang.",
+      );
+    }
+    const credential = this.#credential(String(row.credential_id));
+    return {
+      profileId,
+      credentialId: String(row.credential_id),
+      provider: credential.provider,
+      ...(credential.baseURL === undefined
+        ? {}
+        : { baseURL: credential.baseURL }),
+    };
+  }
+
+  #validateAiMetadata(): void {
+    const credentials = this.#db
+      .prepare("SELECT id FROM ai_credentials")
+      .all() as SqlRow[];
+    for (const row of credentials) this.#credential(String(row.id));
+    for (const profile of this.listAiProfiles()) void profile;
+    const sessions = this.#db
+      .prepare("SELECT id, ai_json FROM sessions")
+      .all() as SqlRow[];
+    for (const row of sessions) {
+      const id = String(row.id);
+      const binding = this.getSessionAiBinding(id);
+      if (!binding) continue;
+      const ai = normalizeAi(parseJson(row.ai_json as string, "Session AI"));
+      if (ai.provider !== binding.provider) {
+        throw new CorruptDatabaseError(
+          "Binding AI sesi tidak cocok dengan snapshot.",
+        );
+      }
+    }
+  }
+
+  applySessionAiProfile(
+    sessionId: string,
+    profileId: string,
+    expectedRevision: number,
+  ): StoredSession {
+    return this.updateSession(sessionId, { profileId }, expectedRevision);
   }
 
   startSessionForDefinition(
@@ -2944,7 +3500,20 @@ export class GameDatabase {
     const definition = validateDefinitionDocument(input.definition, now());
     const playability = validatePlayability(definition);
     if (playability.length) throw new ValidationError(playability.join(" "));
-    const ai = normalizeAi(input.ai);
+    const hasProfile = input.profileId !== undefined;
+    const hasAi = input.ai !== undefined;
+    if (hasProfile === hasAi) {
+      throw new ValidationError(
+        "Session start harus memakai tepat salah satu ai atau profileId.",
+      );
+    }
+    let ai: AiConfig | undefined;
+    if (hasAi) {
+      ai = normalizeAi(input.ai);
+      if (ai.provider === "custom") {
+        throw new ValidationError("Pilih profil AI untuk provider custom.");
+      }
+    }
     const lorebookRefs =
       definition.lorebookRefs === undefined
         ? undefined
@@ -2959,6 +3528,10 @@ export class GameDatabase {
     let gameRevision = 1;
     let session!: GameSession;
     this.#transaction(() => {
+      const snapshot =
+        input.profileId === undefined
+          ? undefined
+          : this.#profileSnapshot(input.profileId);
       const existing = this.#getGameRow(definition.id);
       if (existing) {
         if (input.expectedGameRevision === undefined) {
@@ -2983,13 +3556,20 @@ export class GameDatabase {
         gameId: definition.id,
         definitionSnapshot: structuredClone(definition),
         state: buildInitialState(definition, worldMap),
-        ai,
+        ai: snapshot ? snapshot.ai : ai!,
         nextSequence: 0,
         updatedAt: now(),
         ...(worldMap === undefined ? {} : { worldMap }),
         ...(lorebookRefs === undefined ? {} : { lorebookRefs }),
       };
       this.#insertSession(session);
+      if (snapshot) {
+        this.#setSessionAiBinding(
+          session.id,
+          snapshot.profileId,
+          snapshot.credentialId,
+        );
+      }
     });
     return {
       game: { value: structuredClone(definition), revision: gameRevision },
@@ -3029,11 +3609,17 @@ export class GameDatabase {
     if (
       !isObject(patch) ||
       Object.keys(patch).some(
-        (key) => !["ai", "definitionSnapshot", "state"].includes(key),
+        (key) =>
+          !["ai", "definitionSnapshot", "state", "profileId"].includes(key),
       ) ||
       Object.keys(patch).length === 0
     ) {
       throw new ValidationError("Session update kosong.");
+    }
+    if (patch.ai !== undefined && patch.profileId !== undefined) {
+      throw new ValidationError(
+        "Session update tidak boleh menggabungkan ai dan profileId.",
+      );
     }
     this.#assertOpen();
     let updated!: GameSession;
@@ -3082,7 +3668,30 @@ export class GameDatabase {
         patch.state === undefined
           ? stored.state
           : (JSON.parse(jsonText(patch.state)) as SessionState);
-      const ai = patch.ai === undefined ? stored.ai : normalizeAi(patch.ai);
+      let ai: AiConfig;
+      let snapshot: AiProfileSnapshot | undefined;
+      let clearBinding = false;
+      if (patch.profileId !== undefined) {
+        if (
+          typeof patch.profileId !== "string" ||
+          !patch.profileId.trim() ||
+          patch.profileId.length > 256
+        ) {
+          throw new ValidationError("profileId tidak valid.");
+        }
+        snapshot = this.#profileSnapshot(patch.profileId);
+        ai = snapshot.ai;
+      } else if (patch.ai !== undefined) {
+        ai = normalizeAi(patch.ai);
+        const binding = this.getSessionAiBinding(id);
+        if (binding) {
+          if (ai.provider !== binding.provider) clearBinding = true;
+        } else if (ai.provider === "custom") {
+          throw new ValidationError("Pilih profil AI untuk provider custom.");
+        }
+      } else {
+        ai = stored.ai;
+      }
       updated = {
         id,
         gameId: stored.gameId,
@@ -3099,7 +3708,7 @@ export class GameDatabase {
           : { lorebookRefs: structuredClone(stored.lorebookRefs) }),
       };
       this.#validateSessionState(updated);
-      this.#db
+      const result = this.#db
         .prepare(
           `UPDATE sessions SET definition_snapshot_json = ?, state_json = ?, ai_json = ?,
            revision = revision + 1, updated_at = ? WHERE id = ? AND revision = ?`,
@@ -3112,6 +3721,20 @@ export class GameDatabase {
           id,
           expectedRevision,
         );
+      if (Number(result.changes) !== 1) {
+        throw new ConflictError("Session revision berubah.");
+      }
+      if (snapshot) {
+        this.#setSessionAiBinding(
+          id,
+          snapshot.profileId,
+          snapshot.credentialId,
+        );
+      } else if (clearBinding) {
+        this.#db
+          .prepare("DELETE FROM session_ai_bindings WHERE session_id = ?")
+          .run(id);
+      }
     });
     return { ...updated, revision: expectedRevision + 1 };
   }
@@ -3404,6 +4027,9 @@ export class GameDatabase {
     assertId(requestId, "requestId");
     assertNoDangerousKeys(commit.result);
     assertNoDangerousKeys(commit.state);
+    if (commit.definitionSnapshot !== undefined) {
+      assertNoDangerousKeys(commit.definitionSnapshot);
+    }
     const resultJson = jsonText(commit.result);
     const state = JSON.parse(jsonText(commit.state)) as SessionState;
     let session!: StoredSession;
@@ -3441,7 +4067,14 @@ export class GameDatabase {
       if (!Array.isArray(commit.messages)) {
         throw new ValidationError("messages harus array.");
       }
-      const messages = validateMessages(current, commit.messages);
+      const definitionSnapshot =
+        commit.definitionSnapshot === undefined
+          ? current.definitionSnapshot
+          : validateDefinitionDocument(commit.definitionSnapshot);
+      const messages = validateMessages(
+        { ...current, definitionSnapshot },
+        commit.messages,
+      );
       let next = current.nextSequence;
       for (const message of messages) {
         if (message.sessionId !== sessionId || message.sequence !== next++) {
@@ -3454,28 +4087,26 @@ export class GameDatabase {
         throw new ValidationError("Run commit harus menambahkan message.");
       }
       const updated: GameSession = {
-        id: current.id,
-        gameId: current.gameId,
-        definitionSnapshot: current.definitionSnapshot,
+        ...sessionValue(current),
+        definitionSnapshot,
         state,
-        ai: current.ai,
         nextSequence: next,
         updatedAt: now(),
-        ...(current.worldMap === undefined
-          ? {}
-          : { worldMap: current.worldMap }),
-        ...(current.lorebookRefs === undefined
-          ? {}
-          : { lorebookRefs: current.lorebookRefs }),
       };
       const allMessages = [...this.#messages(sessionId), ...messages];
       validateSessionDocument(updated, allMessages);
+      const snapshotJson =
+        commit.definitionSnapshot === undefined
+          ? null
+          : jsonText(definitionSnapshot);
       this.#db
         .prepare(
-          `UPDATE sessions SET state_json = ?, next_sequence = ?, revision = revision + 1,
+          `UPDATE sessions SET definition_snapshot_json = COALESCE(?, definition_snapshot_json),
+           state_json = ?, next_sequence = ?, revision = revision + 1,
            updated_at = ? WHERE id = ? AND revision = ?`,
         )
         .run(
+          snapshotJson,
           jsonText(state),
           next,
           updated.updatedAt,
@@ -3775,7 +4406,9 @@ export class GameDatabase {
   ): { approximateTokens: number; method: string } {
     assertTokenCount(chars, "chars");
     if (
-      (provider !== "gemini" && provider !== "openrouter") ||
+      (provider !== "gemini" &&
+        provider !== "openrouter" &&
+        provider !== "custom") ||
       typeof model !== "string" ||
       !model.trim() ||
       model.length > 256
@@ -4539,7 +5172,7 @@ export class GameDatabase {
       const version = Number(
         (source.prepare("PRAGMA user_version").get() as SqlRow).user_version,
       );
-      if (version !== 1 && version !== SCHEMA_VERSION) {
+      if (version !== 1 && version !== 2 && version !== SCHEMA_VERSION) {
         throw new DatabaseError(
           "File backup bukan database Fworld yang didukung.",
           "SCHEMA_VERSION",
@@ -4567,6 +5200,7 @@ export class GameDatabase {
         if (staged.#db.prepare("PRAGMA foreign_key_check").all().length) {
           throw new CorruptDatabaseError("Backup melanggar foreign key.");
         }
+        staged.#validateAiMetadata();
         for (const game of staged.listGames()) {
           const refs = parseLoreRefs(game.lorebookRefs ?? []);
           if (refs.length) staged.validateLoreBindings(refs, game);

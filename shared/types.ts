@@ -1,4 +1,4 @@
-export type ProviderId = "gemini" | "openrouter";
+export type ProviderId = "gemini" | "openrouter" | "custom";
 
 export const PLAYER_ID = "player";
 
@@ -67,6 +67,17 @@ export type ItemEffect =
   | { type: "REVEAL_FACT"; factId: string; npcId: string }
   | { type: "SET_FLAG"; target: string; value: boolean }
   | { type: "NPC_PRESENCE"; npcId: string; present: boolean };
+export type RegisterNpcEffect = {
+  type: "REGISTER_NPC";
+  id: string;
+  name: string;
+  description?: string;
+  personality: string[];
+  role?: string;
+  goals: string[];
+};
+
+export type TurnEffect = ItemEffect | RegisterNpcEffect;
 
 export interface ItemDefinition {
   id: string;
@@ -229,7 +240,10 @@ export interface WorldMap {
   flags?: Record<string, boolean>;
 }
 
-export type NpcPresence = Record<string, "present" | "absent">;
+export type NpcPresenceValue =
+  "present" | "absent" | { locationId: string; present?: boolean };
+
+export type NpcPresence = Record<string, NpcPresenceValue>;
 
 export interface StorySummary {
   sessionId: string;
@@ -327,6 +341,7 @@ export interface SessionState {
 export interface AiConfig {
   provider: ProviderId;
   model: string;
+  systemPrompt?: string;
 }
 
 export interface GameSession {
@@ -396,5 +411,5 @@ export interface GameTemplateBundle {
   version: number;
   exportedAt: string;
   game: Omit<GameDefinition, "id" | "updatedAt">;
-  ai?: AiConfig;
+  ai?: Pick<AiConfig, "provider" | "model">;
 }

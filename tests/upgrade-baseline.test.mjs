@@ -231,18 +231,22 @@ test("backend run baselines preserve state and retries", async (t) => {
     );
     assert.deepEqual(afterTurn.state.world, beforeTurn.state.world);
     const historyAfterTurn = database.getHistory(sessionId);
-    assert.deepEqual(visibleHistory(historyAfterTurn), [
+    const turnHistory = visibleHistory(historyAfterTurn);
+    assert.deepEqual(turnHistory.slice(0, 3), [
       { sequence: 0, role: "NARRATOR", content: openingNarrative },
       { sequence: 1, role: "PLAYER", content: fixture.actions[0] },
       { sequence: 2, role: "NARRATOR", content: turnNarrative },
-      {
-        sequence: 3,
-        role: "SYSTEM_EVENT",
-        content:
-          `Sumber daya Coin berubah dari 30 menjadi 37 | ` +
-          `Fakta baru dicatat: "${factText}"`,
-      },
     ]);
+    assert.deepEqual(
+      turnHistory.slice(3).map(({ sequence, role }) => ({ sequence, role })),
+      [{ sequence: 3, role: "SYSTEM_EVENT" }],
+    );
+    assert.ok(
+      turnHistory[3].content.includes(
+        "Sumber daya Coin berubah dari 30 menjadi 37",
+      ),
+    );
+    assert.equal(turnHistory[3].content.includes(factText), false);
 
     await new Promise((resolve) => setImmediate(resolve));
     database.close();
