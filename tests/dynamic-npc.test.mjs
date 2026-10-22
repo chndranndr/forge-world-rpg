@@ -406,6 +406,9 @@ test("a zero-NPC session registers, reuses, scopes, persists, exports, and prese
     ),
   );
   assert.equal(db.getNpcDetails(sessionId, "stranger-1").relationship.trust, 5);
+  const sessionBeforeParentEdit = db.getSession(sessionId);
+  const historyBeforeParentEdit = db.getHistory(sessionId);
+  const detailsBeforeParentEdit = db.getNpcDetails(sessionId, "stranger-1");
 
   const parent = db.getGame(game.id);
   const edit = structuredClone(parent);
@@ -423,18 +426,18 @@ test("a zero-NPC session registers, reuses, scopes, persists, exports, and prese
     updatedParent.npcs.map((npc) => npc.id),
     ["template-guard"],
   );
+  assert.deepEqual(db.getSession(sessionId), sessionBeforeParentEdit);
+  assert.deepEqual(db.getHistory(sessionId), historyBeforeParentEdit);
   assert.deepEqual(
-    new Set(
-      db.getSession(sessionId).definitionSnapshot.npcs.map((npc) => npc.id),
-    ),
-    new Set(["template-guard", "stranger-1"]),
+    db.getNpcDetails(sessionId, "stranger-1"),
+    detailsBeforeParentEdit,
   );
+
   assert.deepEqual(
     db.getGame(game.id).npcs.map((npc) => npc.id),
     ["template-guard"],
   );
 
-  const beforeCollision = db.getSession(sessionId);
   const collision = structuredClone(updatedParent);
   collision.npcs.push({
     id: "stranger-1",
@@ -444,12 +447,22 @@ test("a zero-NPC session registers, reuses, scopes, persists, exports, and prese
     privateKnowledge: [],
     initialRelationships: {},
   });
-  assert.throws(
-    () => db.updateGame(game.id, collision, updatedParent.revision),
-    databaseApi.ValidationError,
+  const collisionUpdate = db.updateGame(
+    game.id,
+    collision,
+    updatedParent.revision,
   );
-  assert.equal(db.getGame(game.id).revision, updatedParent.revision);
-  assert.deepEqual(db.getSession(sessionId), beforeCollision);
+  assert.equal(collisionUpdate.revision, updatedParent.revision + 1);
+  assert.deepEqual(
+    db.getGame(game.id).npcs.map((npc) => npc.id),
+    ["template-guard", "stranger-1"],
+  );
+  assert.deepEqual(db.getSession(sessionId), sessionBeforeParentEdit);
+  assert.deepEqual(db.getHistory(sessionId), historyBeforeParentEdit);
+  assert.deepEqual(
+    db.getNpcDetails(sessionId, "stranger-1"),
+    detailsBeforeParentEdit,
+  );
 
   db = fixture.reopen();
   const reloaded = db.getSession(sessionId);
@@ -458,9 +471,23 @@ test("a zero-NPC session registers, reuses, scopes, persists, exports, and prese
       .name,
     "Lina",
   );
+  assert.deepEqual(
+    reloaded.definitionSnapshot.npcs.map((npc) => npc.id),
+    ["stranger-1"],
+  );
+
   assert.equal(db.getNpcDetails(sessionId, "stranger-1").relationship.trust, 5);
   const bundle = db.exportSave(sessionId);
   assert.ok(bundle.game.npcs.some((npc) => npc.id === "stranger-1"));
+  assert.equal(
+    bundle.game.npcs.find((npc) => npc.id === "stranger-1").name,
+    "Lina",
+  );
+  assert.equal(
+    bundle.game.npcs.some((npc) => npc.name === "Conflicting Template NPC"),
+    false,
+  );
+
   const imported = db.importSave(bundle);
   const importedSession = db.getSession(imported.sessionId);
   assert.ok(

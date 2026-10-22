@@ -1,14 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 import { useItem as applyItem } from "../shared/engine.js";
 import type { Message, SessionState } from "../shared/types.js";
-import { resolveMovement } from "../shared/world.js";
-import {
-  NarratorContextError,
-  NarratorResponseError,
-  narratorParticipants,
-  runNarrator,
-  selectPrincipalNpc,
-} from "./agent.js";
+import { runNarrator } from "./agent.js";
+import { NarratorContextError, narratorParticipants } from "./agent/context.js";
+import { ContextCacheError } from "./agent/gemini-cache.js";
+import type { GeminiContextCache } from "./agent/gemini-cache.js";
+import { loadNarratorKnowledge } from "./agent/knowledge.js";
+import { NarratorResponseError } from "./agent/runtime.js";
 import type { GameDatabase, RunKind, RunRecord, StoredSession } from "./db.js";
 
 type NarratorKind = "turn" | "opening" | "choices";
@@ -47,6 +45,9 @@ function errorForStorage(error: unknown): { code: string; message: string } {
   }
   if (error instanceof NarratorContextError) {
     return { code: "CONTEXT_TOO_LARGE", message: error.message };
+  }
+  if (error instanceof ContextCacheError) {
+    return { code: "CONTEXT_CACHE_UNAVAILABLE", message: error.message };
   }
   if (
     error instanceof Error &&
@@ -128,6 +129,7 @@ export function startSessionRun(
     work: Work;
     providerKey?: string;
     providerBaseURL?: string;
+    contextCache?: GeminiContextCache;
   },
 ): RunRecord {
   const kind = input.work.kind;
@@ -173,6 +175,7 @@ async function runStarted(
     work: Work;
     providerKey?: string;
     providerBaseURL?: string;
+    contextCache?: GeminiContextCache;
   },
   started: RunRecord,
 ): Promise<void> {
@@ -197,58 +200,18 @@ async function runStarted(
 
     const kind: NarratorKind = input.work.kind;
     const playerAction = input.work.kind === "turn" ? input.work.input : "";
-    const worldMap = db.getWorldMap(session);
-    const movement =
-      kind === "turn"
-        ? resolveMovement(worldMap, session.state.world, playerAction)
-        : undefined;
-    const principalNpcId =
-      kind === "turn"
-        ? selectPrincipalNpc(session, playerAction, worldMap)
-        : undefined;
-    const history = db.getRecentHistory(session.id, 24, principalNpcId);
-    const loreRefs =
-      session.lorebookRefs ?? session.definitionSnapshot.lorebookRefs ?? [];
-    const locationId =
-      movement?.kind === "allowed"
-        ? movement.toId
-        : session.state.world.locationId;
-    const discoveredLoreIds = session.state.world.discoveredLoreIds ?? [];
-    const asksHistory =
-      /\b(?:history|historical|past|sejarah|masa lalu|latar belakang)\b/iu.test(
-        playerAction,
-      );
-    const loreOptions = {
-      ...(worldMap && locationId ? { locationId } : {}),
-      ...(kind === "turn" && playerAction ? { query: playerAction } : {}),
-      discoveredLoreIds,
-      limit: kind === "turn" ? 18 : 10,
-    };
-    const retrievedLore = loreRefs.length
-      ? kind === "turn" && worldMap
-        ? db.retrieveLoreForTurn(loreRefs, loreOptions)
-        : db.retrieveLore(loreRefs, { ...loreOptions, narrator: true })
-      : [];
-    const loreEntries = retrievedLore.filter(
-      (entry) =>
-        (asksHistory || entry.kind !== "history") &&
-        (entry.visibility !== "discovery" ||
-          discoveredLoreIds.includes(entry.id) ||
-          !entry.metadata.actorId ||
-          entry.metadata.actorId === principalNpcId),
-    );
-    const storySummaries =
-      kind === "opening"
-        ? []
-        : db.getStorySummaries(session.id, {
-            ...(principalNpcId ? { npcId: principalNpcId } : {}),
-            ...(kind === "turn" && playerAction ? { query: playerAction } : {}),
-            limit: 8,
-          });
+    const knowledge = loadNarratorKnowledge({
+      db,
+      session,
+      kind,
+      playerAction,
+    });
+    const worldMap = knowledge.worldMap;
+    const movement = knowledge.movement;
     const attempts = new Map<number, string>();
     const outcome = await runNarrator({
       session,
-      history,
+      history: knowledge.history,
       kind,
       playerAction,
       providerKey: input.providerKey ?? "",
@@ -257,23 +220,26 @@ async function runStarted(
         : { providerBaseURL: input.providerBaseURL }),
       ...(worldMap ? { worldMap } : {}),
       ...(movement ? { movement } : {}),
-      lore: loreEntries,
-      storySummaries,
+      lore: knowledge.lore,
+      storySummaries: knowledge.storySummaries,
       effectContext: {
         ...(worldMap ? { worldMap } : {}),
-        loreEntries,
+        loreEntries: knowledge.lore,
         playerAction,
       },
+      ...(input.contextCache
+        ? {
+            contextCache: {
+              client: input.contextCache,
+              databaseScope: db,
+            },
+          }
+        : {}),
       estimateTokens: (chars, provider, model) =>
         db.estimateTokens(chars, provider, model),
       onContext: (telemetry) =>
         db.saveContextTelemetry(session.id, input.requestId, telemetry),
-      searchMemory: async (query, options) => {
-        options.signal.throwIfAborted();
-        return db
-          .searchMemory(session.id, query, options.npcId)
-          .map(({ excerpt, ...hit }) => ({ ...hit, text: excerpt }));
-      },
+      searchMemory: knowledge.searchMemory,
       onAttemptStart: async (event) => {
         const record = db.startAiRequest({
           sessionId: session.id,
@@ -291,8 +257,15 @@ async function runStarted(
         attempts.delete(event.step);
         db.finishAiRequest(id, {
           status: event.status === "succeeded" ? "succeeded" : "failed",
-          usage: event.usage ?? undefined,
+          usage: event.usage
+            ? {
+                ...event.usage,
+                cachedInputTokens: event.cachedInputTokens,
+                reasoningTokens: event.reasoningTokens,
+              }
+            : undefined,
           latencyMs: event.latencyMs,
+          finishReason: event.finishReason,
         });
       },
     });

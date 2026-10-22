@@ -130,7 +130,24 @@ test("startSessionForDefinition creates a draft or revises an existing game atom
   assert.equal(initial.session.value.definitionSnapshot.id, "game-1");
   assert.equal(db.listGames().length, 1);
 
+  const firstState = initial.session.value.state;
+  const changedState = {
+    ...firstState,
+    world: { ...firstState.world, scene: "Saved before template edit." },
+  };
+  commit(
+    db,
+    initial.session.value,
+    "before-template-edit",
+    [message("session-1", 0, "Original session history.")],
+    {},
+    changedState,
+  );
+  const firstSessionBeforeDraftUpdate = db.getSession("session-1");
+  const firstHistoryBeforeDraftUpdate = db.getHistory("session-1");
+
   const edited = definition();
+
   edited.title = "Lantern Cafe at Dawn";
   const second = db.startSessionForDefinition({
     definition: edited,
@@ -142,11 +159,8 @@ test("startSessionForDefinition creates a draft or revises an existing game atom
   assert.equal(second.game.value.title, edited.title);
   assert.equal(second.game.revision, 2);
   assert.equal(second.session.value.definitionSnapshot.title, edited.title);
-  assert.equal(
-    db.getSession("session-1").definitionSnapshot.title,
-    edited.title,
-  );
-  assert.equal(db.getSession("session-1").revision, 2);
+  assert.deepEqual(db.getSession("session-1"), firstSessionBeforeDraftUpdate);
+  assert.deepEqual(db.getHistory("session-1"), firstHistoryBeforeDraftUpdate);
 
   assert.throws(
     () =>
@@ -181,19 +195,24 @@ test("startSessionForDefinition creates a draft or revises an existing game atom
   assert.equal(db.getGame("game-1").revision, 2);
   assert.equal(db.getGame("game-1").title, edited.title);
   assert.equal(db.listSessions("game-1").length, 2);
+  assert.deepEqual(db.getSession("session-1"), firstSessionBeforeDraftUpdate);
+  assert.deepEqual(db.getHistory("session-1"), firstHistoryBeforeDraftUpdate);
 });
 
 test("game and session updates enforce expected revisions", (t) => {
   const { db } = withDb(t);
   const created = start(db);
   const next = definition();
+  const sessionBeforeGameUpdate = db.getSession(created.session.value.id);
+
   next.title = "Updated title";
   const updated = db.updateGame("game-1", next, 1);
   assert.equal(updated.revision, 2);
   assert.throws(() => db.updateGame("game-1", next, 1), api.ConflictError);
 
   const session = db.getSession(created.session.value.id);
-  assert.equal(session.definitionSnapshot.title, next.title);
+  assert.deepEqual(session, sessionBeforeGameUpdate);
+
   const changed = db.updateSession(
     session.id,
     { ai: { provider: "openrouter", model: "m" } },
@@ -207,9 +226,10 @@ test("game and session updates enforce expected revisions", (t) => {
   );
 });
 
-test("game update refreshes every session atomically and refuses active runs", (t) => {
+test("game update leaves sessions unchanged and refuses active runs", (t) => {
   const { db } = withDb(t);
   const session = start(db).session.value;
+
   db.startRun({
     sessionId: session.id,
     requestId: "active",
@@ -244,9 +264,17 @@ test("game update refreshes every session atomically and refuses active runs", (
   const updated = db.updateGame("game-1", edited, 1);
   const after = db.getSession(session.id);
   assert.equal(updated.revision, 2);
-  assert.equal(after.revision, before.revision + 1);
-  assert.equal(after.definitionSnapshot.title, edited.title);
-  assert.deepEqual(after.state, before.state);
+  assert.deepEqual(after, before);
+  assert.deepEqual(db.getHistory(session.id), beforeHistory);
+
+  const future = db.startSavedSession({
+    gameId: "game-1",
+    expectedGameRevision: updated.revision,
+    ai,
+    sessionId: "future-session",
+  });
+  assert.equal(future.definitionSnapshot.title, edited.title);
+  assert.deepEqual(db.getSession(session.id), before);
   assert.deepEqual(db.getHistory(session.id), beforeHistory);
 });
 
@@ -911,4 +939,213 @@ test("AI profile snapshots stay stable across edits and rebinds keep identity", 
     db.getSessionAiBinding("custom-session-2").baseURL,
     "https://api.example.com/v2",
   );
+});
+test("saved-world starts preserve stored definitions and metadata commits during a run", (t) => {
+  const { db } = withDb(t);
+  const created = db.createGame(definition("saved-start-game"));
+  const first = db.startSavedSession({
+    gameId: created.id,
+    expectedGameRevision: created.revision,
+    name: "  First story  ",
+    ai,
+    sessionId: "saved-first",
+  });
+  assert.equal(first.name, "First story");
+  assert.equal(first.pinned, false);
+  const olderBefore = db.getSession(first.id);
+
+  const edited = definition("saved-start-game");
+  edited.title = "Saved title";
+  const saved = db.updateGame(created.id, edited, created.revision);
+  assert.deepEqual(db.getSession(first.id), olderBefore);
+  const second = db.startSavedSession({
+    gameId: created.id,
+    expectedGameRevision: saved.revision,
+    name: "Second story",
+    ai,
+    sessionId: "saved-second",
+  });
+  assert.equal(db.getGame(created.id).title, "Saved title");
+  assert.deepEqual(db.getSession(first.id), olderBefore);
+  assert.equal(second.definitionSnapshot.title, "Saved title");
+
+  const sessionCount = db.listSessions(created.id).length;
+  assert.throws(
+    () =>
+      db.startSavedSession({
+        gameId: created.id,
+        expectedGameRevision: 1,
+        ai,
+      }),
+    api.ConflictError,
+  );
+  assert.throws(
+    () =>
+      db.startSavedSession({
+        gameId: created.id,
+        expectedGameRevision: saved.revision,
+        ai: { provider: "custom", model: "custom-model" },
+      }),
+    api.ValidationError,
+  );
+  assert.throws(
+    () =>
+      db.startSavedSession({
+        gameId: created.id,
+        expectedGameRevision: saved.revision,
+        profileId: "missing-profile",
+      }),
+    api.NotFoundError,
+  );
+  const unplayable = definition("unplayable-saved-game");
+  unplayable.player.name = "";
+  const draft = db.createGame(unplayable);
+  assert.throws(
+    () =>
+      db.startSavedSession({
+        gameId: draft.id,
+        expectedGameRevision: draft.revision,
+        ai,
+      }),
+    api.ValidationError,
+  );
+  assert.equal(db.listSessions(created.id).length, sessionCount);
+  assert.equal(db.listSessions(draft.id).length, 0);
+  assert.equal(db.getGame(created.id).revision, saved.revision);
+
+  const before = db.getSession(second.id);
+  db.startRun({
+    sessionId: second.id,
+    requestId: "metadata-during-run",
+    inputHash: "metadata",
+    expectedRevision: before.revision,
+  });
+  const metadata = db.updateSessionMetadata(second.id, {
+    name: "  Renamed during run  ",
+    pinned: true,
+  });
+  assert.equal(metadata.name, "Renamed during run");
+  assert.equal(metadata.pinned, true);
+  const pinOnly = db.updateSessionMetadata(second.id, { pinned: true });
+  assert.equal(pinOnly.name, "Renamed during run");
+  assert.equal(pinOnly.revision, before.revision);
+  assert.equal(pinOnly.updatedAt, before.updatedAt);
+  assert.throws(
+    () => db.updateSessionMetadata(second.id, { name: 42 }),
+    api.ValidationError,
+  );
+  assert.throws(
+    () => db.updateSessionMetadata(second.id, { name: " ".repeat(300) }),
+    api.ValidationError,
+  );
+  assert.throws(
+    () => db.updateSessionMetadata(second.id, { name: "x".repeat(257) }),
+    api.ValidationError,
+  );
+  assert.equal(metadata.revision, before.revision);
+  assert.equal(metadata.updatedAt, before.updatedAt);
+  const committed = db.commitRun(second.id, "metadata-during-run", {
+    state: before.state,
+    messages: [message(second.id, 0, "The scene continues.")],
+    result: { ok: true },
+  });
+  assert.equal(committed.session.name, "Renamed during run");
+  assert.equal(committed.session.pinned, true);
+  assert.equal(committed.session.revision, before.revision + 1);
+  const exported = db.exportSave(second.id);
+  assert.equal(exported.session.name, "Renamed during run");
+  assert.equal(exported.session.pinned, true);
+  const copiedIds = db.importSave(exported);
+  const copied = db.getSession(copiedIds.sessionId);
+  assert.notEqual(copied.id, second.id);
+  assert.equal(copied.name, "Renamed during run");
+  assert.equal(copied.pinned, true);
+  assert.throws(
+    () => db.updateSessionMetadata(second.id, {}),
+    api.ValidationError,
+  );
+  assert.throws(
+    () => db.updateSessionMetadata(second.id, { pinned: "yes" }),
+    api.ValidationError,
+  );
+  const cleared = db.updateSessionMetadata(second.id, { name: null });
+  assert.equal(cleared.name, undefined);
+  assert.equal(cleared.pinned, true);
+});
+
+test("session deletion checks revision and running state, then cascades all session data", (t) => {
+  const { db, databasePath } = withDb(t);
+  const game = db.createGame(definition("delete-session-game"));
+  const profile = db.createAiProfile({
+    name: "Delete test profile",
+    provider: "gemini",
+    model: "gemini-test",
+    systemPrompt: "A test prompt.",
+  });
+  const session = db.startSavedSession({
+    gameId: game.id,
+    expectedGameRevision: game.revision,
+    profileId: profile.id,
+    sessionId: "delete-session",
+  });
+  db.startRun({
+    sessionId: session.id,
+    requestId: "history-run",
+    inputHash: "history",
+    expectedRevision: session.revision,
+  });
+  db.commitRun(session.id, "history-run", {
+    state: session.state,
+    messages: [message(session.id, 0, "Delete cascade needle.")],
+    result: { ok: true },
+  });
+  db.saveContextTelemetry(session.id, "history-run", {
+    contextChars: 10,
+    approximateTokens: 3,
+    tokenEstimateMethod: "test",
+    sections: {},
+    selectedLoreIds: [],
+    omissions: [],
+    toolCalls: 0,
+    repairs: 0,
+  });
+  const revision = db.getSession(session.id).revision;
+  db.startRun({
+    sessionId: session.id,
+    requestId: "active-run",
+    inputHash: "active",
+    expectedRevision: revision,
+  });
+  assert.throws(
+    () => db.deleteSession(session.id, revision - 1),
+    api.ConflictError,
+  );
+  assert.throws(
+    () => db.deleteSession(session.id, revision),
+    (error) => error.code === "RUN_IN_PROGRESS",
+  );
+  assert.ok(db.getSession(session.id));
+  assert.ok(db.getSessionAiBinding(session.id));
+  db.failRun(session.id, "active-run", { code: "CANCELLED" });
+
+  db.deleteSession(session.id, revision);
+  assert.equal(db.getSession(session.id), undefined);
+  assert.equal(db.getSessionAiBinding(session.id), undefined);
+  assert.equal(db.getContextTelemetry(session.id, "history-run"), undefined);
+  const raw = new DatabaseSync(databasePath, { readOnly: true });
+  assert.equal(
+    raw
+      .prepare("SELECT COUNT(*) AS count FROM turns WHERE session_id = ?")
+      .get(session.id).count,
+    0,
+  );
+  assert.equal(
+    raw
+      .prepare(
+        "SELECT COUNT(*) AS count FROM messages_fts WHERE messages_fts MATCH 'needle'",
+      )
+      .get().count,
+    0,
+  );
+  raw.close();
 });

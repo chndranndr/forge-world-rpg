@@ -8,6 +8,7 @@ import {
   LorebookValidationError,
   MAX_LOREBOOK_BYTES,
 } from "../shared/lore.js";
+import { exportTemplate, parseTemplate } from "../shared/template.js";
 import { parseWorldMap, resolveLocation } from "../shared/world.js";
 import {
   createExportBundle,
@@ -21,6 +22,10 @@ import {
 import {
   EXPORT_FORMAT,
   EXPORT_VERSION,
+  type AgentTrace,
+  type AgentTraceCacheReason,
+  type AgentTraceEvent,
+  type AgentTraceFinishReason,
   type AiConfig,
   PLAYER_ID,
   type ContextTelemetry,
@@ -40,6 +45,7 @@ import {
   type StorySummary,
   type WorldLocation,
   type WorldMap,
+  type GameTemplateBundle,
 } from "../shared/types.js";
 import { normalizeNarratorSystemPrompt } from "../shared/narrator-prompt.js";
 import {
@@ -50,7 +56,7 @@ import {
 
 export { ImportError } from "../shared/validation.js";
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 5;
 const DOCUMENT_LIMIT = 2 * 1024 * 1024;
 const TRANSFER_LIMIT = 32 * 1024 * 1024;
 const ID_LIMIT = 256;
@@ -123,6 +129,28 @@ export interface StartSessionForDefinitionInput {
   sessionId?: string;
   ai?: unknown;
   profileId?: string;
+  name?: unknown;
+}
+export interface StartSavedSessionInput {
+  gameId: string;
+  expectedGameRevision: number;
+  name?: unknown;
+  ai?: unknown;
+  profileId?: unknown;
+  sessionId?: string;
+}
+export interface SessionMetadataPatch {
+  name?: unknown;
+  pinned?: unknown;
+}
+export interface SessionSummaryMetrics {
+  turnCount: number;
+  excerpt: string | null;
+}
+export interface SavedTemplateRecord {
+  id: string;
+  title: string;
+  createdAt: string;
 }
 export type StoredAiProfile = AiProfileInput & {
   id: string;
@@ -287,6 +315,16 @@ function jsonText(value: unknown, limit = DOCUMENT_LIMIT): string {
   }
   return text;
 }
+function normalizeSessionName(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new ValidationError("Session name harus string.");
+  }
+  const name = value.trim();
+  if (!name || name.length > 256) {
+    throw new ValidationError("Session name harus sepanjang 1–256 karakter.");
+  }
+  return name;
+}
 
 function parseJson<T>(text: string, label: string, limit = DOCUMENT_LIMIT): T {
   if (Buffer.byteLength(text, "utf8") > limit) {
@@ -312,6 +350,42 @@ function canonicalJson(value: unknown): string {
   const text = JSON.stringify(value);
   if (text === undefined) throw new ValidationError("Nilai JSON tidak valid.");
   return text;
+}
+function validateStoredTemplate(raw: unknown): GameTemplateBundle {
+  if (
+    !isObject(raw) ||
+    Object.keys(raw).some(
+      (key) => !["format", "version", "exportedAt", "game"].includes(key),
+    ) ||
+    raw.format !== "fworld-template" ||
+    raw.version !== 1 ||
+    typeof raw.exportedAt !== "string" ||
+    !raw.exportedAt ||
+    !isObject(raw.game)
+  ) {
+    throw new CorruptDatabaseError(
+      "Saved template memiliki bentuk tidak valid.",
+    );
+  }
+  let game: GameTemplateBundle["game"];
+  try {
+    game = parseTemplate(raw).draft;
+  } catch (error) {
+    throw new CorruptDatabaseError(
+      `Saved template tidak valid: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (canonicalJson(raw.game) !== canonicalJson(game)) {
+    throw new CorruptDatabaseError(
+      "Saved template berisi field game yang tidak didukung.",
+    );
+  }
+  return {
+    format: "fworld-template",
+    version: 1,
+    exportedAt: raw.exportedAt,
+    game,
+  };
 }
 const LORE_KINDS: Record<LoreKind, true> = {
   world: true,
@@ -390,6 +464,162 @@ function sameLoreRefs(left: LorebookRef[], right: LorebookRef[]): boolean {
   return canonicalJson(key(left)) === canonicalJson(key(right));
 }
 
+const TRACE_FINISH_REASONS: Record<string, true> = {
+  stop: true,
+  length: true,
+  "content-filter": true,
+  "tool-calls": true,
+  error: true,
+  other: true,
+};
+
+const TRACE_CACHE_REASONS: Record<string, true> = {
+  disabled: true,
+  unsupported_provider: true,
+  unsupported_model: true,
+  repair: true,
+  provider_rejected: true,
+  capacity: true,
+  busy: true,
+};
+
+const TRACE_EVENT_FIELDS: Record<string, string[]> = {
+  model: ["kind", "elapsedMs", "attempt", "phase", "status", "finishReason"],
+  tool: ["kind", "elapsedMs", "name", "status", "resultChars"],
+  validation: ["kind", "elapsedMs", "status"],
+  repair: ["kind", "elapsedMs"],
+  cache: ["kind", "elapsedMs", "operation", "status", "reason", "tokenCount"],
+};
+
+function credentialLike(value: string): boolean {
+  return /^(?:sk-(?:or-v1-|proj-)?[A-Za-z0-9_-]{16,}|AIza[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-|eyJ[A-Za-z0-9_-]{20,}\.)/i.test(
+    value,
+  );
+}
+
+function traceCount(value: unknown, label: string, max = 10_000_000): number {
+  if (
+    !Number.isSafeInteger(value) ||
+    Number(value) < 0 ||
+    Number(value) > max
+  ) {
+    throw new ValidationError(`${label} tidak valid.`);
+  }
+  return Number(value);
+}
+
+function validateAgentTrace(raw: unknown): AgentTrace | undefined {
+  if (
+    !isObject(raw) ||
+    Object.keys(raw).some((key) => !["events", "dropped"].includes(key)) ||
+    !Object.hasOwn(raw, "events") ||
+    !Object.hasOwn(raw, "dropped") ||
+    !Array.isArray(raw.events) ||
+    raw.events.length > 128
+  ) {
+    throw new ValidationError("Context trace tidak valid.");
+  }
+  const dropped = traceCount(raw.dropped, "trace.dropped", 1_000_000);
+  const events: AgentTraceEvent[] = [];
+  for (const rawEvent of raw.events) {
+    if (!isObject(rawEvent) || typeof rawEvent.kind !== "string") {
+      throw new ValidationError("Context trace event tidak valid.");
+    }
+    const fields = TRACE_EVENT_FIELDS[rawEvent.kind];
+    if (
+      !fields ||
+      Object.keys(rawEvent).some((key) => !fields.includes(key)) ||
+      fields.some((key) => !Object.hasOwn(rawEvent, key))
+    ) {
+      throw new ValidationError("Context trace event tidak valid.");
+    }
+    const elapsedMs = traceCount(
+      rawEvent.elapsedMs,
+      "trace.elapsedMs",
+      86_400_000,
+    );
+    if (rawEvent.kind === "model") {
+      const attempt = traceCount(rawEvent.attempt, "trace.attempt", 1_000_000);
+      if (
+        attempt < 1 ||
+        (rawEvent.phase !== "initial" && rawEvent.phase !== "repair") ||
+        (rawEvent.status !== "started" &&
+          rawEvent.status !== "succeeded" &&
+          rawEvent.status !== "failed") ||
+        (rawEvent.finishReason !== null &&
+          (typeof rawEvent.finishReason !== "string" ||
+            !Object.hasOwn(TRACE_FINISH_REASONS, rawEvent.finishReason)))
+      ) {
+        throw new ValidationError("Context trace event tidak valid.");
+      }
+      events.push({
+        kind: "model",
+        elapsedMs,
+        attempt,
+        phase: rawEvent.phase,
+        status: rawEvent.status,
+        finishReason: rawEvent.finishReason as AgentTraceFinishReason | null,
+      });
+    } else if (rawEvent.kind === "tool") {
+      if (
+        typeof rawEvent.name !== "string" ||
+        !/^[A-Za-z0-9_.:-]{1,64}$/.test(rawEvent.name) ||
+        credentialLike(rawEvent.name) ||
+        (rawEvent.status !== "succeeded" && rawEvent.status !== "failed")
+      ) {
+        throw new ValidationError("Context trace event tidak valid.");
+      }
+      events.push({
+        kind: "tool",
+        elapsedMs,
+        name: rawEvent.name,
+        status: rawEvent.status,
+        resultChars:
+          rawEvent.resultChars === null
+            ? null
+            : traceCount(rawEvent.resultChars, "trace.resultChars"),
+      });
+    } else if (rawEvent.kind === "validation") {
+      if (rawEvent.status !== "accepted" && rawEvent.status !== "rejected") {
+        throw new ValidationError("Context trace event tidak valid.");
+      }
+      events.push({
+        kind: "validation",
+        elapsedMs,
+        status: rawEvent.status,
+      });
+    } else if (rawEvent.kind === "repair") {
+      events.push({ kind: "repair", elapsedMs });
+    } else {
+      if (
+        (rawEvent.operation !== "create" &&
+          rawEvent.operation !== "reuse" &&
+          rawEvent.operation !== "bypass" &&
+          rawEvent.operation !== "invalidate") ||
+        (rawEvent.status !== "succeeded" && rawEvent.status !== "failed") ||
+        (rawEvent.reason !== null &&
+          (typeof rawEvent.reason !== "string" ||
+            !Object.hasOwn(TRACE_CACHE_REASONS, rawEvent.reason)))
+      ) {
+        throw new ValidationError("Context trace event tidak valid.");
+      }
+      events.push({
+        kind: "cache",
+        elapsedMs,
+        operation: rawEvent.operation,
+        status: rawEvent.status,
+        reason: rawEvent.reason as AgentTraceCacheReason | null,
+        tokenCount:
+          rawEvent.tokenCount === null
+            ? null
+            : traceCount(rawEvent.tokenCount, "trace.tokenCount"),
+      });
+    }
+  }
+  if (events.length === 0 && dropped === 0) return undefined;
+  return { events, dropped };
+}
+
 function validateContextTelemetry(raw: unknown): ContextTelemetry {
   const keys = [
     "contextChars",
@@ -403,7 +633,7 @@ function validateContextTelemetry(raw: unknown): ContextTelemetry {
   ];
   if (
     !isObject(raw) ||
-    Object.keys(raw).some((key) => !keys.includes(key)) ||
+    Object.keys(raw).some((key) => !keys.includes(key) && key !== "trace") ||
     keys.some((key) => !Object.hasOwn(raw, key))
   ) {
     throw new ValidationError(
@@ -420,10 +650,6 @@ function validateContextTelemetry(raw: unknown): ContextTelemetry {
     }
     return Number(value);
   };
-  const credentialLike = (value: string): boolean =>
-    /^(?:sk-(?:or-v1-|proj-)?[A-Za-z0-9_-]{16,}|AIza[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-|eyJ[A-Za-z0-9_-]{20,}\.)/i.test(
-      value,
-    );
   if (
     typeof raw.tokenEstimateMethod !== "string" ||
     !/^[A-Za-z0-9_./:-]{1,64}$/.test(raw.tokenEstimateMethod) ||
@@ -468,6 +694,9 @@ function validateContextTelemetry(raw: unknown): ContextTelemetry {
       return item;
     });
   };
+  const trace = Object.hasOwn(raw, "trace")
+    ? validateAgentTrace(raw.trace)
+    : undefined;
   return {
     contextChars: count(raw.contextChars, "contextChars"),
     approximateTokens: count(raw.approximateTokens, "approximateTokens"),
@@ -477,6 +706,7 @@ function validateContextTelemetry(raw: unknown): ContextTelemetry {
     omissions: safeList(raw.omissions, "omissions"),
     toolCalls: count(raw.toolCalls, "toolCalls", 1_000_000),
     repairs: count(raw.repairs, "repairs", 1_000_000),
+    ...(trace ? { trace } : {}),
   };
 }
 
@@ -1134,6 +1364,7 @@ export class GameDatabase {
     if (version >= 3) {
       names.push("ai_credentials", "ai_profiles", "session_ai_bindings");
     }
+    if (version >= 5) names.push("saved_templates");
     return names.filter((name) => !existing.has(name));
   }
 
@@ -1160,7 +1391,9 @@ export class GameDatabase {
         ai_json TEXT NOT NULL CHECK (json_valid(ai_json)),
         next_sequence INTEGER NOT NULL CHECK (next_sequence >= 0),
         revision INTEGER NOT NULL CHECK (revision > 0),
-        updated_at TEXT NOT NULL
+        updated_at TEXT NOT NULL,
+        name TEXT,
+        pinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0,1))
       ) STRICT;
       CREATE INDEX IF NOT EXISTS sessions_by_game
         ON sessions(game_id, updated_at DESC);
@@ -1360,6 +1593,7 @@ export class GameDatabase {
         omissions_json TEXT NOT NULL CHECK (json_valid(omissions_json)),
         tool_calls INTEGER NOT NULL CHECK (tool_calls >= 0),
         repairs INTEGER NOT NULL CHECK (repairs >= 0),
+        trace_json TEXT NOT NULL DEFAULT '{"events":[],"dropped":0}' CHECK (json_valid(trace_json)),
         updated_at TEXT NOT NULL,
         PRIMARY KEY (session_id, request_id),
         FOREIGN KEY (session_id, request_id)
@@ -1452,6 +1686,35 @@ export class GameDatabase {
     `);
   }
 
+  #ensureV4Schema(): void {
+    const columns = this.#db
+      .prepare("PRAGMA table_info(context_telemetry)")
+      .all();
+    if (!columns.some((column) => column.name === "trace_json")) {
+      this.#db.exec(
+        `ALTER TABLE context_telemetry ADD COLUMN trace_json TEXT NOT NULL DEFAULT '{"events":[],"dropped":0}' CHECK (json_valid(trace_json))`,
+      );
+    }
+  }
+  #ensureV5Schema(): void {
+    const columns = this.#db.prepare("PRAGMA table_info(sessions)").all();
+    if (!columns.some((column) => column.name === "name")) {
+      this.#db.exec("ALTER TABLE sessions ADD COLUMN name TEXT");
+    }
+    if (!columns.some((column) => column.name === "pinned")) {
+      this.#db.exec(
+        "ALTER TABLE sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0,1))",
+      );
+    }
+    this.#db.exec(`
+      CREATE TABLE IF NOT EXISTS saved_templates (
+        id TEXT PRIMARY KEY NOT NULL,
+        bundle_json TEXT NOT NULL CHECK (json_valid(bundle_json)),
+        created_at TEXT NOT NULL
+      ) STRICT;
+    `);
+  }
+
   #ensureAiRequestProviderCheck(): void {
     const table = this.#db
       .prepare(
@@ -1518,6 +1781,8 @@ export class GameDatabase {
       version !== 0 &&
       version !== 1 &&
       version !== 2 &&
+      version !== 3 &&
+      version !== 4 &&
       version !== SCHEMA_VERSION
     ) {
       throw new DatabaseError(
@@ -1532,6 +1797,8 @@ export class GameDatabase {
       this.#ensureV2Columns();
       this.#ensureV2Schema();
       this.#ensureV3Schema();
+      this.#ensureV4Schema();
+      this.#ensureV5Schema();
       this.#ensureAiRequestProviderCheck();
       if (version !== SCHEMA_VERSION) {
         this.#db.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`);
@@ -1680,6 +1947,21 @@ export class GameDatabase {
       nextSequence: Number(row.next_sequence),
       updatedAt: String(row.updated_at),
     };
+    const pinned = Number(row.pinned);
+    if (pinned !== 0 && pinned !== 1) {
+      throw new CorruptDatabaseError("Session pinned rusak.");
+    }
+    if (row.name !== null) {
+      if (typeof row.name !== "string") {
+        throw new CorruptDatabaseError("Session name rusak.");
+      }
+      try {
+        session.name = normalizeSessionName(row.name);
+      } catch {
+        throw new CorruptDatabaseError("Session name rusak.");
+      }
+    }
+    session.pinned = pinned === 1;
     try {
       if (row.world_map_json !== null) {
         session.worldMap = parseWorldMap(
@@ -1822,8 +2104,9 @@ export class GameDatabase {
       .prepare(
         `INSERT INTO sessions(
            id, game_id, definition_snapshot_json, state_json, ai_json,
-           next_sequence, revision, updated_at, world_map_json, lore_refs_json
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           next_sequence, revision, updated_at, world_map_json, lore_refs_json,
+           name, pinned
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         session.id,
@@ -1838,6 +2121,8 @@ export class GameDatabase {
         session.lorebookRefs === undefined
           ? null
           : jsonText(session.lorebookRefs),
+        session.name ?? null,
+        session.pinned === true ? 1 : 0,
       );
   }
 
@@ -3094,21 +3379,10 @@ export class GameDatabase {
     const id = definition.id;
     this.#checkExpected(Number(row.revision), expectedRevision, "Game");
     const originalDefinition = this.#gameFromRow(row);
-    const parentNpcIds = new Set(originalDefinition.npcs.map((npc) => npc.id));
-    const parentIds = new Set([
-      PLAYER_ID,
-      definition.id,
-      ...definition.attributes.map((entry) => entry.id),
-      ...definition.resources.map((entry) => entry.id),
-      ...definition.relationships.map((entry) => entry.id),
-      ...definition.items.map((entry) => entry.id),
-      ...definition.npcs.map((entry) => entry.id),
-      ...(definition.worldMap?.locations.map((entry) => entry.id) ?? []),
-    ]);
-    const sessionRows = this.#db
-      .prepare("SELECT * FROM sessions WHERE game_id = ? ORDER BY id")
-      .all(id) as SqlRow[];
-    if (sessionRows.length) {
+    const hasSessions = this.#db
+      .prepare("SELECT 1 AS found FROM sessions WHERE game_id = ? LIMIT 1")
+      .get(id);
+    if (hasSessions) {
       if (
         this.#db
           .prepare(
@@ -3131,58 +3405,6 @@ export class GameDatabase {
       .run(jsonText(definition), definition.updatedAt, id, expectedRevision);
     if (Number(result.changes) !== 1)
       throw new ConflictError("Game revision berubah.");
-    for (const sessionRow of sessionRows) {
-      const current = this.#sessionFromRow(sessionRow);
-      const runtimeNpcs = current.definitionSnapshot.npcs.filter(
-        (npc) => !parentNpcIds.has(npc.id),
-      );
-      const collision = runtimeNpcs.find((npc) => parentIds.has(npc.id));
-      if (collision) {
-        throw new ValidationError(
-          `Game edit collides with session NPC "${collision.id}".`,
-        );
-      }
-      const snapshot = structuredClone(definition);
-      snapshot.npcs.push(...structuredClone(runtimeNpcs));
-      if (current.definitionSnapshot.worldMap === undefined) {
-        delete snapshot.worldMap;
-      } else {
-        snapshot.worldMap = structuredClone(
-          current.definitionSnapshot.worldMap,
-        );
-      }
-      if (current.definitionSnapshot.startingLocationId === undefined) {
-        delete snapshot.startingLocationId;
-      } else {
-        snapshot.startingLocationId =
-          current.definitionSnapshot.startingLocationId;
-      }
-      if (current.lorebookRefs === undefined) {
-        delete snapshot.lorebookRefs;
-      } else {
-        snapshot.lorebookRefs = structuredClone(current.lorebookRefs);
-      }
-      const updated: GameSession = {
-        ...sessionValue(current),
-        definitionSnapshot: snapshot,
-        updatedAt: definition.updatedAt,
-      };
-      validateSessionDocument(updated, this.#messages(updated.id));
-      const sessionResult = this.#db
-        .prepare(
-          `UPDATE sessions SET definition_snapshot_json = ?, revision = revision + 1,
-           updated_at = ? WHERE id = ? AND revision = ?`,
-        )
-        .run(
-          jsonText(updated.definitionSnapshot),
-          updated.updatedAt,
-          updated.id,
-          current.revision,
-        );
-      if (Number(sessionResult.changes) !== 1) {
-        throw new ConflictError(`Session ${updated.id} revision berubah.`);
-      }
-    }
     return expectedRevision + 1;
   }
 
@@ -3211,6 +3433,81 @@ export class GameDatabase {
         .prepare("DELETE FROM games WHERE id = ? AND revision = ?")
         .run(id, expectedRevision);
     });
+  }
+  duplicateGame(id: string, expectedRevision: number): StoredGame {
+    assertId(id, "game.id");
+    assertRevision(expectedRevision);
+    let duplicate!: GameDefinition;
+    this.#transaction(() => {
+      const row = this.#getGameRow(id);
+      if (!row) throw new NotFoundError("Game tidak ditemukan.");
+      const original = this.#gameFromRow(row);
+      this.#checkExpected(original.revision, expectedRevision, "Game");
+      duplicate = validateDefinitionDocument({
+        ...gameValue(original),
+        id: randomUUID(),
+        title: `${original.title} — salinan`,
+        updatedAt: now(),
+      });
+      this.validateLoreBindings(duplicate.lorebookRefs ?? [], duplicate);
+      this.#insertGame(duplicate);
+    });
+    return { ...duplicate, revision: 1 };
+  }
+
+  saveTemplate(
+    gameId: string,
+    expectedGameRevision: number,
+  ): SavedTemplateRecord {
+    assertId(gameId, "gameId");
+    assertRevision(expectedGameRevision);
+    return this.#transaction(() => {
+      const row = this.#getGameRow(gameId);
+      if (!row) throw new NotFoundError("Game tidak ditemukan.");
+      const game = this.#gameFromRow(row);
+      this.#checkExpected(game.revision, expectedGameRevision, "Game");
+      const bundle = exportTemplate(gameValue(game));
+      const id = randomUUID();
+      const createdAt = now();
+      this.#db
+        .prepare(
+          "INSERT INTO saved_templates(id, bundle_json, created_at) VALUES (?, ?, ?)",
+        )
+        .run(id, jsonText(bundle), createdAt);
+      return { id, title: bundle.game.title, createdAt };
+    });
+  }
+
+  listTemplates(): SavedTemplateRecord[] {
+    this.#assertOpen();
+    const rows = this.#db
+      .prepare(
+        "SELECT id, bundle_json, created_at FROM saved_templates ORDER BY created_at DESC, id",
+      )
+      .all() as SqlRow[];
+    return rows.map((row) => {
+      assertId(String(row.id), "template.id");
+      const bundle = validateStoredTemplate(
+        parseJson(row.bundle_json as string, "Saved template"),
+      );
+      const createdAt = String(row.created_at);
+      if (!createdAt)
+        throw new CorruptDatabaseError("Saved template timestamp rusak.");
+      return { id: String(row.id), title: bundle.game.title, createdAt };
+    });
+  }
+
+  getTemplate(id: string): GameTemplateBundle | undefined {
+    assertId(id, "template.id");
+    this.#assertOpen();
+    const row = this.#db
+      .prepare("SELECT bundle_json FROM saved_templates WHERE id = ?")
+      .get(id) as SqlRow | undefined;
+    return row
+      ? validateStoredTemplate(
+          parseJson(row.bundle_json as string, "Saved template"),
+        )
+      : undefined;
   }
 
   #credential(id: string): {
@@ -3497,6 +3794,8 @@ export class GameDatabase {
   ): SessionStartResult {
     if (!isObject(input))
       throw new ValidationError("Session start harus object.");
+    const name =
+      input.name === undefined ? undefined : normalizeSessionName(input.name);
     const definition = validateDefinitionDocument(input.definition, now());
     const playability = validatePlayability(definition);
     if (playability.length) throw new ValidationError(playability.join(" "));
@@ -3559,6 +3858,8 @@ export class GameDatabase {
         ai: snapshot ? snapshot.ai : ai!,
         nextSequence: 0,
         updatedAt: now(),
+        ...(name === undefined ? {} : { name }),
+        pinned: false,
         ...(worldMap === undefined ? {} : { worldMap }),
         ...(lorebookRefs === undefined ? {} : { lorebookRefs }),
       };
@@ -3580,6 +3881,88 @@ export class GameDatabase {
   startSession(input: StartSessionForDefinitionInput): SessionStartResult {
     return this.startSessionForDefinition(input);
   }
+  startSavedSession(input: StartSavedSessionInput): StoredSession {
+    if (
+      !isObject(input) ||
+      Object.keys(input).some(
+        (key) =>
+          ![
+            "gameId",
+            "expectedGameRevision",
+            "name",
+            "ai",
+            "profileId",
+            "sessionId",
+          ].includes(key),
+      )
+    ) {
+      throw new ValidationError("Saved session start tidak valid.");
+    }
+    assertId(input.gameId, "gameId");
+    assertRevision(input.expectedGameRevision);
+    const name =
+      input.name === undefined ? undefined : normalizeSessionName(input.name);
+    const hasProfile = input.profileId !== undefined;
+    const hasAi = input.ai !== undefined;
+    if (hasProfile === hasAi) {
+      throw new ValidationError(
+        "Session start harus memakai tepat salah satu ai atau profileId.",
+      );
+    }
+    let ai: AiConfig | undefined;
+    if (hasAi) {
+      ai = normalizeAi(input.ai);
+      if (ai.provider === "custom") {
+        throw new ValidationError("Pilih profil AI untuk provider custom.");
+      }
+    }
+    const sessionId = input.sessionId ?? randomUUID();
+    assertId(sessionId, "session.id");
+    let session!: GameSession;
+    this.#transaction(() => {
+      const row = this.#getGameRow(input.gameId);
+      if (!row) throw new NotFoundError("Game tidak ditemukan.");
+      const game = this.#gameFromRow(row);
+      this.#checkExpected(game.revision, input.expectedGameRevision, "Game");
+      const playability = validatePlayability(game);
+      if (playability.length) throw new ValidationError(playability.join(" "));
+      let snapshot: AiProfileSnapshot | undefined;
+      if (input.profileId !== undefined) {
+        const profileId = input.profileId;
+        assertId(profileId, "profileId");
+        snapshot = this.#profileSnapshot(profileId);
+      }
+      const lorebookRefs =
+        game.lorebookRefs === undefined
+          ? undefined
+          : parseLoreRefs(game.lorebookRefs);
+      this.validateLoreBindings(lorebookRefs ?? [], game);
+      const worldMap = this.getWorldMap(game);
+      session = {
+        id: sessionId,
+        gameId: game.id,
+        definitionSnapshot: structuredClone(gameValue(game)),
+        state: buildInitialState(game, worldMap),
+        ai: snapshot ? snapshot.ai : ai!,
+        nextSequence: 0,
+        updatedAt: now(),
+        ...(name === undefined ? {} : { name }),
+        pinned: false,
+        ...(worldMap === undefined ? {} : { worldMap }),
+        ...(lorebookRefs === undefined ? {} : { lorebookRefs }),
+      };
+      this.#validateSessionState(session);
+      this.#insertSession(session);
+      if (snapshot) {
+        this.#setSessionAiBinding(
+          session.id,
+          snapshot.profileId,
+          snapshot.credentialId,
+        );
+      }
+    });
+    return { ...session, revision: 1 };
+  }
 
   getSession(id: string): StoredSession | undefined {
     assertId(id, "session.id");
@@ -3597,6 +3980,78 @@ export class GameDatabase {
       )
       .all(gameId) as SqlRow[];
     return rows.map((row) => this.#sessionFromRow(row));
+  }
+  updateSessionMetadata(
+    id: string,
+    patch: SessionMetadataPatch,
+  ): StoredSession {
+    assertId(id, "session.id");
+    if (
+      !isObject(patch) ||
+      Object.keys(patch).some((key) => !["name", "pinned"].includes(key)) ||
+      !Object.keys(patch).some((key) => patch[key] !== undefined)
+    ) {
+      throw new ValidationError(
+        "Session metadata update kosong atau tidak valid.",
+      );
+    }
+    const name =
+      patch.name === undefined
+        ? undefined
+        : patch.name === null
+          ? null
+          : normalizeSessionName(patch.name);
+    if (patch.pinned !== undefined && typeof patch.pinned !== "boolean") {
+      throw new ValidationError("Session pinned harus boolean.");
+    }
+    this.#transaction(() => {
+      const row = this.#getSessionRow(id);
+      if (!row) throw new NotFoundError("Session tidak ditemukan.");
+      const current = this.#sessionFromRow(row);
+      this.#db
+        .prepare("UPDATE sessions SET name = ?, pinned = ? WHERE id = ?")
+        .run(
+          name === undefined ? (current.name ?? null) : name,
+          patch.pinned === undefined
+            ? current.pinned
+              ? 1
+              : 0
+            : patch.pinned
+              ? 1
+              : 0,
+          id,
+        );
+    });
+    return this.getSession(id)!;
+  }
+
+  sessionSummary(id: string): SessionSummaryMetrics {
+    assertId(id, "session.id");
+    this.#assertOpen();
+    if (!this.#getSessionRow(id)) {
+      throw new NotFoundError("Session tidak ditemukan.");
+    }
+    const count = this.#db
+      .prepare(
+        `SELECT COUNT(DISTINCT m.turn_id) AS turn_count FROM messages m
+         WHERE m.session_id = ? AND m.role IN ('PLAYER','SYSTEM_EVENT')
+         AND ${MESSAGE_AUDIENCE_SCOPE}`,
+      )
+      .get(id, PLAYER_ID, PLAYER_ID) as SqlRow;
+    const narrator = this.#db
+      .prepare(
+        `SELECT m.content FROM messages m
+         WHERE m.session_id = ? AND m.role = 'NARRATOR'
+         AND ${MESSAGE_AUDIENCE_SCOPE}
+         ORDER BY m.sequence DESC LIMIT 1`,
+      )
+      .get(id, PLAYER_ID, PLAYER_ID) as SqlRow | undefined;
+    const excerpt =
+      narrator === undefined ? "" : truncateUtf8(String(narrator.content), 240);
+    return {
+      turnCount: Number(count.turn_count),
+      excerpt: excerpt || null,
+    };
   }
 
   updateSession(
@@ -3700,6 +4155,8 @@ export class GameDatabase {
         ai,
         nextSequence: stored.nextSequence,
         updatedAt: now(),
+        ...(stored.name === undefined ? {} : { name: stored.name }),
+        pinned: stored.pinned,
         ...(stored.worldMap === undefined
           ? {}
           : { worldMap: structuredClone(stored.worldMap) }),
@@ -4332,6 +4789,11 @@ export class GameDatabase {
           ),
           toolCalls: old.tool_calls,
           repairs: old.repairs,
+          ...(old.trace_json === undefined
+            ? {}
+            : {
+                trace: parseJson(old.trace_json as string, "Context trace"),
+              }),
         });
         if (canonicalJson(previous) !== canonicalJson(telemetry)) {
           throw new ConflictError(
@@ -4345,8 +4807,8 @@ export class GameDatabase {
           `INSERT INTO context_telemetry(
              session_id, request_id, context_chars, approximate_tokens,
              token_estimate_method, sections_json, selected_lore_ids_json,
-             omissions_json, tool_calls, repairs, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             omissions_json, tool_calls, repairs, trace_json, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           sessionId,
@@ -4359,6 +4821,7 @@ export class GameDatabase {
           jsonText(telemetry.omissions),
           telemetry.toolCalls,
           telemetry.repairs,
+          jsonText(telemetry.trace ?? { events: [], dropped: 0 }),
           now(),
         );
     });
@@ -4391,6 +4854,11 @@ export class GameDatabase {
         omissions: parseJson(row.omissions_json as string, "Context omissions"),
         toolCalls: row.tool_calls,
         repairs: row.repairs,
+        ...(row.trace_json === undefined
+          ? {}
+          : {
+              trace: parseJson(row.trace_json as string, "Context trace"),
+            }),
       });
     } catch (error) {
       throw new CorruptDatabaseError(
@@ -4960,7 +5428,7 @@ export class GameDatabase {
         rawSession,
         messagesBySession.get(id)!,
       );
-      sessionById.set(id, session);
+      sessionById.set(id, { ...session, pinned: session.pinned ?? false });
     }
     const normalized = {
       games: [...gameById.values()].sort((a, b) => a.id.localeCompare(b.id)),
@@ -5172,7 +5640,13 @@ export class GameDatabase {
       const version = Number(
         (source.prepare("PRAGMA user_version").get() as SqlRow).user_version,
       );
-      if (version !== 1 && version !== 2 && version !== SCHEMA_VERSION) {
+      if (
+        version !== 1 &&
+        version !== 2 &&
+        version !== 3 &&
+        version !== 4 &&
+        version !== SCHEMA_VERSION
+      ) {
         throw new DatabaseError(
           "File backup bukan database Fworld yang didukung.",
           "SCHEMA_VERSION",
@@ -5201,6 +5675,7 @@ export class GameDatabase {
           throw new CorruptDatabaseError("Backup melanggar foreign key.");
         }
         staged.#validateAiMetadata();
+        staged.listTemplates();
         for (const game of staged.listGames()) {
           const refs = parseLoreRefs(game.lorebookRefs ?? []);
           if (refs.length) staged.validateLoreBindings(refs, game);

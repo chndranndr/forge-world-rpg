@@ -19,6 +19,44 @@
       ],
       "verify": ["npm.cmd run doctor", "npm.cmd run build"]
     },
+    "interface_shell": {
+      "status": "implemented",
+      "artifacts": [
+        "src/styles.css",
+        "src/App.tsx",
+        "src/components/NavigationRail.tsx",
+        "src/components/GameLibrary.tsx",
+        "src/components/SessionView.tsx",
+        "src/components/FieldNotesPanel.tsx",
+        "src/components/SettingsPanel.tsx",
+        "src/components/SettingsPrimitives.tsx",
+        "src/components/ConfirmDialog.tsx",
+        "src/components/GameEditor.tsx",
+        "src/library.ts",
+        "src/session-view-model.ts",
+        "src/assets/leather.svg",
+        "src/assets/fonts/",
+        "src/assets/covers/coast.svg",
+        "src/assets/covers/lantern.svg",
+        "src/assets/covers/archive.svg",
+        "src/assets/covers/desert.svg",
+        "src/assets/covers/mountain.svg",
+        "src/assets/covers/rain.svg",
+        "scripts/ui-check.mjs",
+        "tests/library.test.mjs",
+        "tests/startup.test.mjs",
+        "tests/session-view-model.test.mjs",
+        "tests/settings-primitives.test.mjs",
+        "tests/confirm-dialog.test.mjs",
+        "tests/covers.test.mjs"
+      ],
+      "verify": [
+        "npm.cmd run doctor (203/203 tests; client/server typecheck, format, and builds passed on 2026-10-22)",
+        "npm.cmd run ui:check (six root screens × nine widths; 54 screen/viewport samples, zero horizontal overflow or runtime exceptions; only nine blank-editor screenshots persisted)",
+        "historical headless Edge review at 360x800, 390x844, 820x1180, 1024x768, 1440x900, 1920x1080 on real SQLite data; superseded by the nine-width ui:check entry above",
+        "flows: library search/filter/empty state, world menu edit/export/delete, rail session navigation, field-notes drawer open and Escape close, session tabs, text-size preference (22px narration), settings and editor paper surfaces"
+      ]
+    },
     "ai_connection": {
       "status": "partial",
       "artifacts": [
@@ -59,6 +97,29 @@
         "npm.cmd test: profile CRUD/validation/key rotation/409 conflict/persistence-failure via HTTP; snapshot isolation, binding retention and provider-switch release in SQLite; schema-2 to 3 migration with ledger/profile/binding and backup/restore staging; save JSON and template exclude credentials; legacy custom transport rejected without fetch",
         "local fixture: real @ai-sdk/openai-compatible adapter performed tool call + tool result + forced repair against a loopback Chat Completions fixture with stable URL/model/auth; redirect and 401 fail without partial gameplay commit; keyless custom sends no Authorization; no fallback to global keys",
         "browser on canonical origin with isolated backend/fixtures: created two custom profiles (different endpoints/models) with separate keys, saved default profile, reload retained profiles/default with empty key field, one session opened and committed tool-continuation turn, profile model edit did not change the session until Terapkan profil, rotated key used by the next run, exports/localStorage contained no keys"
+      ]
+    },
+    "agent_framework": {
+      "status": "implemented",
+      "artifacts": [
+        "server/agent.ts",
+        "server/agent/context.ts",
+        "server/agent/knowledge.ts",
+        "server/agent/harness.ts",
+        "server/agent/runtime.ts",
+        "server/agent/gemini-cache.ts",
+        "server/turn.ts",
+        "server/db.ts",
+        "server/main.ts",
+        "shared/types.ts",
+        "tests/agent-framework.test.mjs",
+        "scripts/framework-verify.mjs",
+        "package.json"
+      ],
+      "verify": [
+        "npm.cmd run doctor (typecheck, format, 179 tests, client/server builds)",
+        "npm.cmd run eval: isolated upgrade HTTP fixture plus deterministic Google protocol fixture; cache create/reuse/bypass counts, per-call cache-read/reasoning/finish-reason usage, bounded traces, duplicate request suppression, read-only choices, and failed-run rollback",
+        "tests/agent-framework.test.mjs: stable/dynamic partition privacy, cache identity isolation, expiry safety window, capacity/busy/negative caching, real @ai-sdk/google tool continuation with thought signatures, forced repair with exact check, cache failure modes, abort/observer rejection, and trace bounds"
       ]
     },
     "persistence": {
@@ -160,7 +221,8 @@
       "verify": [
         "npm.cmd run check",
         "npm.cmd test",
-        "npm.cmd run doctor (130/130 tests; typecheck, format, and builds passed on 2026-10-13)"
+        "npm.cmd run doctor (historical: 130/130 tests; typecheck, format, and builds passed on 2026-10-13)",
+        "npm.cmd run doctor (203/203 tests; client/server typecheck, format, and builds passed on 2026-10-22)"
       ]
     },
     "repository_commands": {
@@ -247,7 +309,7 @@
     "format": "npm run format:check",
     "check": "npm run check",
     "test": "npm test",
-    "eval": null,
+    "eval": "npm run eval",
     "doctor": "npm run doctor",
     "gc": null
   },
@@ -259,11 +321,21 @@
     },
     {
       "capability": "live_ai_and_browser_acceptance",
-      "reason": "The latest Gemini opening failed with unknown usage. A verbose OpenRouter suggested travel response and retry hit output truncation, while concise travel passed. A/B/C, viewport, and broader browser recovery acceptance remain pending.",
-      "next_step": "Diagnose the current Gemini failure, rerun its opening and movement, then complete A/B/C, viewport, and browser restore acceptance."
+      "reason": "The latest Gemini opening failed with unknown usage. A verbose OpenRouter suggested travel response and retry hit output truncation, while concise travel passed. A/B/C and broader browser recovery acceptance remain pending.",
+      "next_step": "Diagnose the current Gemini failure, rerun its opening and movement, then complete A/B/C and browser restore acceptance."
     }
   ],
   "evidence_gaps": [
+    {
+      "capability": "agent_framework",
+      "gap": "Gemini explicit cache creation, TTL expiry, provider minimum-size rejection, and cache-write billing were exercised only against a deterministic offline Google protocol fixture. No live Gemini cachedContents request or paid generation was made, and natural-language quality was not measured.",
+      "next_step": "With explicit paid-request authorization, set FWORLD_GEMINI_CONTEXT_CACHE=explicit and run one opening plus two turns on a real Gemini 2.5/3 model; record provider-reported cachedContentTokenCount, expireTime, and actual billing metadata."
+    },
+    {
+      "capability": "interface_shell",
+      "gap": "The app bundles Newsreader, Public Sans, IBM Plex Mono, six local 3:2 SVG covers, and a leather texture. Exact original design-token CSS and texture source files are not included; current tokens live in `src/styles.css` and texture in `src/assets/leather.svg`.",
+      "next_step": "If authoritative token CSS or texture source files become available, compare them with the current styles at the existing responsive screen matrix."
+    },
     {
       "capability": "ai_profiles",
       "gap": "Custom OpenAI-compatible turns were verified end-to-end only against loopback HTTP fixtures. No real cloud custom endpoint, vendor model, or paid request was exercised.",
@@ -281,8 +353,8 @@
     },
     {
       "capability": "turn_flow",
-      "gap": "The isolated browser imported and pinned lore, created and started a mapped game, opened with OpenRouter, and committed concise travel to loc:morroc. The player world endpoint returned Morroc and local NPCs Piri, Nima, and Sava. One verbose suggested action and its retry failed at the output limit. Choices, item use, multi-tab, A/B/C, and viewport acceptance remain open.",
-      "next_step": "Verify choices, item use, multi-tab, A/B/C, and viewport behavior; retain the failed verbose-action result as a provider reliability gap."
+      "gap": "The isolated browser imported and pinned lore, created and started a mapped game, opened with OpenRouter, and committed concise travel to loc:morroc. The player world endpoint returned Morroc and local NPCs Piri, Nima, and Sava. One verbose suggested action and its retry failed at the output limit. Choices, item use, multi-tab, and A/B/C remain open; the six-screen responsive matrix passes at nine widths.",
+      "next_step": "Verify choices, item use, multi-tab, and A/B/C; retain the failed verbose-action result as a provider reliability gap."
     }
   ]
 }

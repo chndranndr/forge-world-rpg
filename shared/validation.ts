@@ -23,6 +23,19 @@ function isString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
+function validateOptionalTextFields(
+  value: unknown,
+  fields: readonly string[],
+  label: string,
+): string[] {
+  if (!isObject(value)) return [];
+  return fields.flatMap((field) =>
+    value[field] !== undefined && typeof value[field] !== "string"
+      ? [`${label}.${field} harus string.`]
+      : [],
+  );
+}
+
 const DANGEROUS_KEYS: ReadonlySet<string> = new Set([
   "__proto__",
   "constructor",
@@ -55,6 +68,49 @@ const EFFECT_OPERATIONS: Record<string, true> = {
   SUBTRACT: true,
   SET: true,
 };
+
+const AGE_RATINGS: Record<string, true> = {
+  "all-ages": true,
+  "teen-13-plus": true,
+  "adult-18-plus": true,
+};
+const RELATIONSHIP_STANCES: Record<string, true> = {
+  friendly: true,
+  neutral: true,
+  wary: true,
+  hostile: true,
+};
+const NARRATOR_STYLES: Record<string, true> = {
+  "cinematic-second-person": true,
+  "literary-third-person": true,
+  "concise-second-person": true,
+};
+const SCENARIO_TEMPOS: Record<string, true> = {
+  slow: true,
+  medium: true,
+  fast: true,
+};
+const TURN_LENGTHS: Record<string, true> = {
+  short: true,
+  medium: true,
+  long: true,
+};
+const POINTS_OF_VIEW: Record<string, true> = {
+  "second-person": true,
+  "limited-third-person": true,
+};
+const PLAYER_PRONOUNS: Record<string, true> = {
+  neutral: true,
+  masculine: true,
+  feminine: true,
+};
+
+function hasAllowedValue(
+  value: unknown,
+  allowed: Record<string, true>,
+): boolean {
+  return typeof value === "string" && Object.hasOwn(allowed, value);
+}
 const MAX_LOREBOOK_REFS = 8;
 const SAFE_REFERENCE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const SAFE_LORE_ID =
@@ -141,16 +197,59 @@ export function validateDefinition(game: GameDefinition): string[] {
   if (typeof game.title !== "string") {
     errors.push("Game harus memiliki title string.");
   }
+  if (
+    game.ageRating !== undefined &&
+    !hasAllowedValue(game.ageRating, AGE_RATINGS)
+  ) {
+    errors.push("ageRating tidak dikenal.");
+  }
+  if (
+    game.relationshipParties !== undefined &&
+    !Array.isArray(game.relationshipParties)
+  ) {
+    errors.push("relationshipParties harus array.");
+  }
   if (isObject(game.scenario)) {
     if (typeof game.scenario.setting !== "string")
       errors.push("scenario.setting harus string.");
     if (typeof game.scenario.startingSituation !== "string")
       errors.push("scenario.startingSituation harus string.");
+    errors.push(
+      ...validateOptionalTextFields(
+        game.scenario,
+        ["trigger", "contentLimits"],
+        "scenario",
+      ),
+    );
+    for (const [field, value, allowed] of [
+      ["narratorStyle", game.scenario.narratorStyle, NARRATOR_STYLES],
+      ["tempo", game.scenario.tempo, SCENARIO_TEMPOS],
+      ["turnLength", game.scenario.turnLength, TURN_LENGTHS],
+      ["pointOfView", game.scenario.pointOfView, POINTS_OF_VIEW],
+    ] as const) {
+      if (value !== undefined && !hasAllowedValue(value, allowed)) {
+        errors.push(`scenario.${field} tidak dikenal.`);
+      }
+    }
   } else {
     errors.push("Game harus memiliki scenario object.");
   }
   if (!isObject(game.player)) {
     errors.push("Game harus memiliki player object.");
+  } else {
+    errors.push(
+      ...validateOptionalTextFields(
+        game.player,
+        ["role", "age", "goal", "fear"],
+        "player",
+      ),
+    );
+    if (
+      game.player.pronoun !== undefined &&
+      !hasAllowedValue(game.player.pronoun, PLAYER_PRONOUNS)
+    ) {
+      errors.push("player.pronoun tidak dikenal.");
+    }
   }
   for (const section of [
     "attributes",
@@ -185,6 +284,56 @@ export function validateDefinition(game: GameDefinition): string[] {
     });
     return seen;
   };
+  if (game.relationshipParties !== undefined) {
+    const partyIds = new Set<string>();
+    const partyNames = new Set<string>();
+    game.relationshipParties.forEach((party, index) => {
+      if (!isObject(party)) {
+        errors.push(`relationshipParties[${index}] harus object.`);
+        return;
+      }
+      if (typeof party.id !== "string" || !party.id.trim()) {
+        errors.push(`relationshipParties[${index}].id kosong.`);
+      } else if (partyIds.has(party.id)) {
+        errors.push(`relationshipParties[${index}].id duplikat: ${party.id}.`);
+      } else {
+        partyIds.add(party.id);
+      }
+      if (typeof party.name !== "string" || !party.name.trim()) {
+        errors.push(
+          `relationshipParties[${index}].name harus string tidak kosong.`,
+        );
+      } else {
+        const normalizedName = party.name
+          .normalize("NFKC")
+          .trim()
+          .replace(/\s+/gu, " ")
+          .toLowerCase();
+        if (partyNames.has(normalizedName)) {
+          errors.push(`relationshipParties[${index}].name duplikat.`);
+        } else {
+          partyNames.add(normalizedName);
+        }
+      }
+      if (typeof party.type !== "string" || !party.type.trim()) {
+        errors.push(
+          `relationshipParties[${index}].type harus string tidak kosong.`,
+        );
+      }
+      if (!hasAllowedValue(party.initialStance, RELATIONSHIP_STANCES)) {
+        errors.push(
+          `relationshipParties[${index}].initialStance tidak dikenal.`,
+        );
+      }
+      errors.push(
+        ...validateOptionalTextFields(
+          party,
+          ["secret"],
+          `relationshipParties[${index}]`,
+        ),
+      );
+    });
+  }
   const attributeIds = unique(
     game.attributes.map((a) => a.id),
     "attributes",
@@ -522,6 +671,9 @@ export function validateDefinition(game: GameDefinition): string[] {
     }
   }
   for (const npc of game.npcs) {
+    errors.push(
+      ...validateOptionalTextFields(npc, ["voice"], `npcs "${npc.id}"`),
+    );
     if (typeof npc.name !== "string")
       errors.push(`npcs "${npc.id}": name harus string.`);
     for (const field of ["personality", "goals", "privateKnowledge"] as const) {
@@ -586,6 +738,13 @@ export function validateDefinition(game: GameDefinition): string[] {
         `startingInventory[${index}]: item tidak bisa ditumpuk; quantity harus 1.`,
       );
     }
+    errors.push(
+      ...validateOptionalTextFields(
+        entry,
+        ["owner", "place"],
+        `startingInventory[${index}]`,
+      ),
+    );
   });
   return errors;
 }
@@ -647,9 +806,11 @@ const GAME_FIELDS = [
   "genre",
   "tone",
   "language",
+  "ageRating",
   "scenario",
   "attributes",
   "resources",
+  "relationshipParties",
   "relationships",
   "items",
   "player",
@@ -668,6 +829,12 @@ const SCENARIO_FIELDS = [
   "tone",
   "genre",
   "additionalContext",
+  "trigger",
+  "narratorStyle",
+  "tempo",
+  "turnLength",
+  "pointOfView",
+  "contentLimits",
 ] as const;
 
 const ATTRIBUTE_FIELDS = [
@@ -713,6 +880,11 @@ const PLAYER_FIELDS = [
   "background",
   "personality",
   "notes",
+  "role",
+  "pronoun",
+  "age",
+  "goal",
+  "fear",
 ] as const;
 
 const NPC_FIELDS = [
@@ -720,13 +892,19 @@ const NPC_FIELDS = [
   "name",
   "description",
   "background",
+  "voice",
   "role",
   "personality",
   "goals",
   "privateKnowledge",
 ] as const;
 
-const INVENTORY_ENTRY_FIELDS = ["itemId", "quantity"] as const;
+const INVENTORY_ENTRY_FIELDS = [
+  "itemId",
+  "quantity",
+  "owner",
+  "place",
+] as const;
 
 const EFFECT_FIELDS_BY_TYPE: Record<string, readonly string[]> = {
   ATTRIBUTE_CHANGE: ["type", "target", "operation", "value"],
@@ -825,6 +1003,13 @@ export function pickGameDefinition(raw: unknown): GameDefinition {
   if ("lorebookRefs" in raw) {
     game.lorebookRefs = pickLorebookRefs(raw.lorebookRefs);
   }
+  if (Array.isArray(raw.relationshipParties)) {
+    game.relationshipParties = raw.relationshipParties.map((party) =>
+      isObject(party)
+        ? pickFields(party, ["id", "name", "type", "initialStance", "secret"])
+        : party,
+    );
+  }
   if (isObject(raw.scenario)) {
     game.scenario = pickFields(raw.scenario, SCENARIO_FIELDS);
   }
@@ -912,6 +1097,8 @@ function pickSessionState(raw: unknown): SessionState {
     inventory: state.inventory.map((entry) => ({
       itemId: entry.itemId,
       quantity: entry.quantity,
+      ...(entry.owner === undefined ? {} : { owner: entry.owner }),
+      ...(entry.place === undefined ? {} : { place: entry.place }),
     })),
     relationships: state.relationships.map((rel) => ({
       npcId: rel.npcId,
@@ -964,6 +1151,20 @@ function collectSessionProblems(
   messages: Message[],
 ): string[] {
   const problems: string[] = [];
+  if (
+    session.name !== undefined &&
+    (typeof session.name !== "string" ||
+      !session.name.trim() ||
+      session.name !== session.name.trim() ||
+      session.name.length > 256)
+  ) {
+    problems.push(
+      "Session name harus string trimmed sepanjang 1–256 karakter.",
+    );
+  }
+  if (session.pinned !== undefined && typeof session.pinned !== "boolean") {
+    problems.push("Session pinned harus boolean.");
+  }
   if (
     canonicalJson(pickGameDefinition(session.definitionSnapshot)) !==
     canonicalJson(game)
@@ -1039,16 +1240,33 @@ function collectSessionProblems(
     problems.push("state.inventory harus array.");
   } else {
     state.inventory.forEach((entry, index) => {
+      if (!isObject(entry) || typeof entry.itemId !== "string") {
+        problems.push(
+          `state.inventory[${index}] harus memiliki itemId string.`,
+        );
+        return;
+      }
       const item = itemById.get(entry.itemId);
       if (!item) {
         problems.push(`state.inventory[${index}] item tidak dikenal.`);
-      } else if (!Number.isInteger(entry.quantity) || entry.quantity < 1) {
+      } else if (
+        typeof entry.quantity !== "number" ||
+        !Number.isInteger(entry.quantity) ||
+        entry.quantity < 1
+      ) {
         problems.push(`state.inventory[${index}] quantity harus integer >= 1.`);
       } else if (!item.stackable && entry.quantity !== 1) {
         problems.push(
           `state.inventory[${index}] item tidak bisa ditumpuk; quantity harus 1.`,
         );
       }
+      problems.push(
+        ...validateOptionalTextFields(
+          entry,
+          ["owner", "place"],
+          `state.inventory[${index}]`,
+        ),
+      );
     });
   }
   if (!Array.isArray(state.relationships)) {
@@ -1615,6 +1833,8 @@ export function createExportBundle(
       },
       nextSequence: session.nextSequence,
       updatedAt: session.updatedAt,
+      ...(session.name === undefined ? {} : { name: session.name }),
+      ...(session.pinned === undefined ? {} : { pinned: session.pinned }),
       ...(session.worldMap === undefined
         ? {}
         : { worldMap: structuredClone(session.worldMap) }),
@@ -1713,6 +1933,12 @@ export function validateExportBundle(raw: unknown): {
       },
       nextSequence: bundle.session.nextSequence,
       updatedAt: bundle.session.updatedAt,
+      ...(bundle.session.name === undefined
+        ? {}
+        : { name: bundle.session.name }),
+      ...(bundle.session.pinned === undefined
+        ? {}
+        : { pinned: bundle.session.pinned }),
       ...(bundle.session.worldMap === undefined
         ? {}
         : { worldMap: structuredClone(bundle.session.worldMap) }),

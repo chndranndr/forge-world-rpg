@@ -48,9 +48,14 @@ import {
   type RunRecord,
   type StoredAiProfile,
   type StoredSession,
+  type SessionMetadataPatch,
 } from "./db.js";
 import { getSessionRun, startSessionRun } from "./turn.js";
 import { createCustomModel } from "./custom-provider.js";
+import {
+  GeminiContextCache,
+  type ContextCacheMode,
+} from "./agent/gemini-cache.js";
 
 const JSON_LIMIT = 2 * 1024 * 1024;
 const LOREBOOK_IMPORT_ENVELOPE_BYTES =
@@ -105,6 +110,7 @@ interface HttpOptions {
   staticRoot?: string;
   backupDirectory?: string;
   envFilePath?: string;
+  contextCacheMode?: ContextCacheMode;
 }
 
 export interface StartServerOptions {
@@ -124,6 +130,20 @@ class HttpError extends Error {
   ) {
     super(message);
   }
+}
+
+function resolveContextCacheMode(
+  explicit?: ContextCacheMode,
+): ContextCacheMode {
+  if (explicit) return explicit;
+  const raw = process.env.FWORLD_GEMINI_CONTEXT_CACHE;
+  if (raw === undefined || raw === "") return "off";
+  if (raw === "off" || raw === "explicit") return raw;
+  throw new HttpError(
+    "FWORLD_GEMINI_CONTEXT_CACHE harus off atau explicit.",
+    500,
+    "CONTEXT_CACHE_MODE_INVALID",
+  );
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -246,11 +266,18 @@ function publicSession(value: unknown): Record<string, unknown> {
     !world ||
     !Array.isArray(definition.npcs) ||
     !Array.isArray(definition.items) ||
+    !Array.isArray(state.inventory) ||
     !Array.isArray(state.facts)
   ) {
     throw new CorruptDatabaseError(
       "Session tidak valid untuk proyeksi pemain.",
     );
+  }
+  if (
+    (value.name !== undefined && typeof value.name !== "string") ||
+    (value.pinned !== undefined && typeof value.pinned !== "boolean")
+  ) {
+    throw new CorruptDatabaseError("Session metadata tidak valid.");
   }
   const npcs = definition.npcs.map((npc) => {
     if (!isObject(npc))
@@ -276,9 +303,31 @@ function publicSession(value: unknown): Record<string, unknown> {
     const { knownBy: _knownBy, revealableTo: _revealableTo, ...visible } = fact;
     return [visible];
   });
+  const relationshipParties = Array.isArray(definition.relationshipParties)
+    ? definition.relationshipParties.map((party) => {
+        if (!isObject(party)) {
+          throw new CorruptDatabaseError(
+            "Kelompok relasi session tidak valid.",
+          );
+        }
+        const { secret: _secret, ...visible } = party;
+        return visible;
+      })
+    : undefined;
   const safeDefinition = {
     id: definition.id,
     title: definition.title,
+    ...(definition.description === undefined
+      ? {}
+      : { description: definition.description }),
+    ...(definition.tone === undefined ? {} : { tone: definition.tone }),
+    ...(definition.language === undefined
+      ? {}
+      : { language: definition.language }),
+    ...(definition.ageRating === undefined
+      ? {}
+      : { ageRating: definition.ageRating }),
+    ...(relationshipParties === undefined ? {} : { relationshipParties }),
     ...(definition.genre === undefined ? {} : { genre: definition.genre }),
     attributes: definition.attributes,
     resources: definition.resources,
@@ -305,7 +354,31 @@ function publicSession(value: unknown): Record<string, unknown> {
     state: {
       attributes: state.attributes,
       resources: state.resources,
-      inventory: state.inventory,
+      inventory: state.inventory.map((entry: unknown) => {
+        if (
+          !isObject(entry) ||
+          typeof entry.itemId !== "string" ||
+          typeof entry.quantity !== "number"
+        ) {
+          throw new CorruptDatabaseError("Inventory session tidak valid.");
+        }
+        const owner = entry.owner;
+        const place = entry.place;
+        if (
+          (owner !== undefined && typeof owner !== "string") ||
+          (place !== undefined && typeof place !== "string")
+        ) {
+          throw new CorruptDatabaseError(
+            "Metadata inventory session tidak valid.",
+          );
+        }
+        return {
+          itemId: entry.itemId,
+          quantity: entry.quantity,
+          ...(owner === undefined ? {} : { owner }),
+          ...(place === undefined ? {} : { place }),
+        };
+      }),
       facts,
       world: safeWorld,
     },
@@ -315,6 +388,8 @@ function publicSession(value: unknown): Record<string, unknown> {
       systemPrompt: aiSystemPrompt,
     },
     nextSequence: value.nextSequence,
+    ...(value.name === undefined ? {} : { name: value.name }),
+    ...(value.pinned === undefined ? {} : { pinned: value.pinned }),
     updatedAt: value.updatedAt,
     ...(value.lorebookRefs === undefined
       ? {}
@@ -1161,6 +1236,9 @@ export function createHttpServer(
   const staticRoot = options.staticRoot
     ? resolve(options.staticRoot)
     : undefined;
+  const contextCache = new GeminiContextCache({
+    mode: resolveContextCacheMode(options.contextCacheMode),
+  });
 
   return createHttpServerNative((request, response) => {
     void (async () => {
@@ -1224,7 +1302,7 @@ export function createHttpServer(
           if (pathname === "/api/health" && method === "GET") {
             jsonResponse(response, 200, {
               status: "ok",
-              schemaVersion: 3,
+              schemaVersion: 5,
               nodeVersion: process.versions.node,
             });
             return;
@@ -1368,11 +1446,13 @@ export function createHttpServer(
             return;
           }
           if (pathname === "/api/sessions/start" && method === "POST") {
-            const input = objectBody(
-              body,
-              ["definition", "expectedGameRevision", "ai", "profileId"],
-              ["definition"],
-            );
+            const input = objectBody(body, [
+              "definition",
+              "expectedGameRevision",
+              "ai",
+              "profileId",
+              "name",
+            ]);
             const hasAi = input.ai !== undefined;
             const hasProfile = input.profileId !== undefined;
             if (hasAi === hasProfile) {
@@ -1404,6 +1484,7 @@ export function createHttpServer(
                     profileId: requiredString(input.profileId, "profileId"),
                   }
                 : { ai: input.ai }),
+              ...(input.name === undefined ? {} : { name: input.name }),
             });
             jsonResponse(response, 201, {
               ...started,
@@ -1416,6 +1497,37 @@ export function createHttpServer(
           }
           if (pathname === "/api/saves" && method === "POST") {
             jsonResponse(response, 201, db.importSave(body));
+            return;
+          }
+          if (pathname === "/api/templates" && method === "POST") {
+            const input = objectBody(
+              body,
+              ["gameId", "expectedGameRevision"],
+              ["gameId", "expectedGameRevision"],
+            );
+            jsonResponse(
+              response,
+              201,
+              db.saveTemplate(
+                requiredString(input.gameId, "gameId"),
+                requiredRevision(input.expectedGameRevision),
+              ),
+            );
+            return;
+          }
+          if (pathname === "/api/templates" && method === "GET") {
+            strictQuery(url, []);
+            jsonResponse(response, 200, db.listTemplates());
+            return;
+          }
+          const templateMatch = pathname.match(/^\/api\/templates\/([^/]+)$/);
+          if (templateMatch && method === "GET") {
+            strictQuery(url, []);
+            const template = db.getTemplate(
+              requiredId(templateMatch[1], "templateId"),
+            );
+            if (!template) throw new NotFoundError("Template tidak ditemukan.");
+            jsonResponse(response, 200, template);
             return;
           }
           if (pathname === "/api/ai/profiles" && method === "GET") {
@@ -1692,7 +1804,7 @@ export function createHttpServer(
           }
 
           const gameMatch = pathname.match(
-            /^\/api\/games\/([^/]+)(?:\/(sessions|template))?$/,
+            /^\/api\/games\/([^/]+)(?:\/(sessions|template|duplicate))?$/,
           );
           if (gameMatch) {
             const id = requiredId(gameMatch[1], "gameId");
@@ -1706,7 +1818,66 @@ export function createHttpServer(
                 db.listSessions(id).map((session) => ({
                   value: publicSession(session),
                   revision: session.revision,
+                  ...db.sessionSummary(session.id),
                 })),
+              );
+              return;
+            }
+            if (sub === "sessions" && method === "POST") {
+              const input = objectBody(
+                body,
+                ["expectedGameRevision", "name", "profileId", "ai"],
+                ["expectedGameRevision"],
+              );
+              const hasAi = input.ai !== undefined;
+              const hasProfile = input.profileId !== undefined;
+              if (hasAi === hasProfile) {
+                throw new ValidationError(
+                  "Session start harus memakai tepat salah satu ai atau profileId.",
+                );
+              }
+              let ai: AiConfig | undefined;
+              if (hasAi) {
+                ai = parseAi(input.ai);
+                if (ai.provider === "custom") {
+                  throw new HttpError(
+                    "Pilih profil AI untuk provider custom.",
+                    400,
+                    "AI_PROFILE_REQUIRED",
+                  );
+                }
+              }
+              const session = db.startSavedSession({
+                gameId: id,
+                expectedGameRevision: requiredRevision(
+                  input.expectedGameRevision,
+                ),
+                ...(input.name === undefined ? {} : { name: input.name }),
+                ...(hasProfile
+                  ? { profileId: requiredString(input.profileId, "profileId") }
+                  : { ai }),
+              });
+              jsonResponse(response, 201, {
+                value: publicSession(session),
+                revision: session.revision,
+              });
+              return;
+            }
+            if (sub === "duplicate" && method === "POST") {
+              const input = objectBody(
+                body,
+                ["expectedRevision"],
+                ["expectedRevision"],
+              );
+              jsonResponse(
+                response,
+                201,
+                versioned(
+                  db.duplicateGame(
+                    id,
+                    requiredRevision(input.expectedRevision),
+                  ),
+                ),
               );
               return;
             }
@@ -1793,6 +1964,30 @@ export function createHttpServer(
               jsonResponse(response, 200, {
                 value: publicSession(session),
                 revision: session.revision,
+                ...db.sessionSummary(id),
+              });
+              return;
+            }
+            if (!action && method === "DELETE") {
+              const input = objectBody(
+                body,
+                ["expectedRevision"],
+                ["expectedRevision"],
+              );
+              db.deleteSession(id, requiredRevision(input.expectedRevision));
+              response.writeHead(204);
+              response.end();
+              return;
+            }
+            if (action === "metadata" && method === "PUT") {
+              const input = objectBody(body, ["name", "pinned"]);
+              const patch: SessionMetadataPatch = {};
+              if (Object.hasOwn(input, "name")) patch.name = input.name;
+              if (Object.hasOwn(input, "pinned")) patch.pinned = input.pinned;
+              const updated = db.updateSessionMetadata(id, patch);
+              jsonResponse(response, 200, {
+                value: publicSession(updated),
+                revision: updated.revision,
               });
               return;
             }
@@ -1930,6 +2125,7 @@ export function createHttpServer(
                     ...(providerConfig.baseURL === undefined
                       ? {}
                       : { providerBaseURL: providerConfig.baseURL }),
+                    contextCache,
                   }),
                 ),
               );
@@ -1960,6 +2156,7 @@ export function createHttpServer(
                     ...(providerConfig.baseURL === undefined
                       ? {}
                       : { providerBaseURL: providerConfig.baseURL }),
+                    contextCache,
                   }),
                 ),
               );
@@ -1989,6 +2186,7 @@ export function createHttpServer(
                     ...(providerConfig.baseURL === undefined
                       ? {}
                       : { providerBaseURL: providerConfig.baseURL }),
+                    contextCache,
                   }),
                 ),
               );

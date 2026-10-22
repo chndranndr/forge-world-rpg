@@ -24,6 +24,7 @@ interface AiProfilesPanelProps {
   loadError: string | null;
   onSaved: (profile: AiProfile) => void;
   reloadProfiles: () => Promise<AiProfile[]>;
+  defaultProfileId?: string;
 }
 
 interface ProfileDraft {
@@ -54,6 +55,7 @@ export default function AiProfilesPanel({
   loadError,
   onSaved,
   reloadProfiles,
+  defaultProfileId,
 }: AiProfilesPanelProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<ProfileDraft | null>(null);
@@ -98,17 +100,17 @@ export default function AiProfilesPanel({
     );
   }
 
-  function selectProfile(id: string | null): void {
+  function selectProfile(id: string): void {
     if (id === selectedId) return;
     if (!discardDraftIfNeeded()) return;
+    const profile = profiles.find((entry) => entry.id === id);
+    if (!profile) return;
     requestRef.current += 1;
     resetFeedback();
     setPasswordDraft("");
     setSelectedId(id);
-    const profile =
-      id === null ? undefined : profiles.find((entry) => entry.id === id);
-    setDraft(profile ? draftFrom(profile) : null);
-    setRevision(profile ? profile.revision : null);
+    setDraft(draftFrom(profile));
+    setRevision(profile.revision);
   }
 
   function startNewProfile(): void {
@@ -306,26 +308,31 @@ export default function AiProfilesPanel({
       {profiles.length === 0 && !draft && (
         <p className="hint">Belum ada profil AI.</p>
       )}
-      <div className="row">
-        <label>
-          Profil tersimpan
-          <select
-            value={selectedId ?? ""}
-            disabled={loadError !== null}
-            onChange={(event) =>
-              selectProfile(
-                event.target.value === "" ? null : event.target.value,
-              )
-            }
-          >
-            <option value="">Pilih profil…</option>
-            {profiles.map((profile) => (
-              <option key={profile.id} value={profile.id}>
-                {profile.name} · {PROVIDER_LABELS[profile.provider]}
-              </option>
-            ))}
-          </select>
-        </label>
+      <div className="profile-picker">
+        <div
+          className="profile-list"
+          role="group"
+          aria-label="Profil tersimpan"
+        >
+          {profiles.map((profile) => (
+            <button
+              key={profile.id}
+              type="button"
+              className="profile-list-item"
+              aria-pressed={selectedId === profile.id}
+              disabled={loadError !== null}
+              onClick={() => selectProfile(profile.id)}
+            >
+              <span className="profile-list-name">{profile.name}</span>
+              <span className="profile-list-meta">
+                {PROVIDER_LABELS[profile.provider]} · {profile.model}
+              </span>
+              {defaultProfileId === profile.id && (
+                <span className="profile-list-default">Default</span>
+              )}
+            </button>
+          ))}
+        </div>
         <button type="button" onClick={startNewProfile}>
           Buat profil
         </button>
@@ -391,7 +398,7 @@ export default function AiProfilesPanel({
             </label>
           )}
           <label>
-            Model ID
+            ID model
             <input
               type="text"
               maxLength={200}

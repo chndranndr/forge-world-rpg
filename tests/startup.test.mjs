@@ -23,9 +23,11 @@ test("frontend starts and renders app and narrative dialogue", async (t) => {
     assert.match(await entry.text(), /createRoot/);
     const { default: App } = await server.ssrLoadModule("/src/App.tsx");
     const markup = renderToStaticMarkup(createElement(App));
-    assert.match(markup, /<main>/);
-    assert.match(markup, /<h1 class="brand">.*Fworld<\/h1>/);
-    assert.match(markup, /class="bottom-nav"/);
+    assert.match(markup, /<main class="main">/);
+    assert.match(markup, /class="rail texture"/);
+    assert.match(markup, /<h1>Dunia untuk kembali\.<\/h1>/);
+    assert.match(markup, /<nav aria-label="Navigasi utama">/);
+    assert.match(markup, /Perpustakaan/);
     const { StoryMarkdown } = await server.ssrLoadModule(
       "/src/components/StoryMarkdown.tsx",
     );

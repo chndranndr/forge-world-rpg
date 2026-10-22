@@ -832,11 +832,30 @@ test("lorebook parser preserves curated summaries and rejects unsafe prose and b
 
 test("template and save serializers preserve map, pins, private visibility and v1/v2 manifests", () => {
   const noLoreGame = game();
+  noLoreGame.items = [
+    {
+      id: "coastal-map",
+      name: "Peta pantai",
+      stackable: false,
+      consumable: false,
+      effects: [],
+      tags: [],
+    },
+  ];
+  noLoreGame.startingInventory = [
+    {
+      itemId: "coastal-map",
+      quantity: 1,
+      owner: "Player",
+      place: "satchel",
+    },
+  ];
   const draft = template.parseTemplate(
     template.exportTemplate(noLoreGame),
   ).draft;
   assert.deepEqual(draft.worldMap, noLoreGame.worldMap);
   assert.equal(draft.startingLocationId, "loc:prontera");
+  assert.deepEqual(draft.startingInventory, noLoreGame.startingInventory);
   const refs = [{ packId: "ragnarok-original", version: 1 }];
   assert.deepEqual(
     template.parseTemplate(
@@ -878,6 +897,7 @@ test("template and save serializers preserve map, pins, private visibility and v
   const restoredV1 = validation.validateExportBundle(v1);
   assert.deepEqual(restoredV1.session.state.world, initialState.world);
   assert.deepEqual(restoredV1.session.worldMap, noLoreGame.worldMap);
+  assert.deepEqual(restoredV1.session.state.inventory, initialState.inventory);
   assert.equal(restoredV1.messages[0].visibility, "private");
   assert.deepEqual(restoredV1.messages[0].knownBy, ["player"]);
 

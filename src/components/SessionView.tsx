@@ -13,11 +13,12 @@ import {
   useItem,
   type PlayerItemEffect,
   type RunRecord,
-  type SessionRecord,
+  type SessionSummaryRecord,
   type SessionWorldView,
 } from "../api";
-import { storyIllustration } from "../illustrations";
 import { StoryMarkdown } from "./StoryMarkdown";
+import { latestSceneMessages, messageAuthor } from "../session-view-model";
+import FieldNotesPanel, { type FieldNoteCategory } from "./FieldNotesPanel";
 import { createUuid } from "../../shared/uuid";
 import type { Choice } from "../../shared/engine.js";
 import { type ItemDefinition, type Message } from "../types";
@@ -37,6 +38,11 @@ const StoryMessageBody = memo(function StoryMessageBody({
 interface SessionViewProps {
   sessionId: string;
   onBack: () => void;
+  onOpenSettings: () => void;
+  focusMode: boolean;
+  onFocusModeChange: (focusMode: boolean) => void;
+  textSize: "normal" | "large";
+  onTextSizeChange: (size: "normal" | "large") => void;
 }
 
 type RunKind = "opening" | "turn" | "choices" | "item";
@@ -147,30 +153,6 @@ function errorText(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-const ROLE_LABELS: Record<Message["role"], string> = {
-  PLAYER: "Pemain",
-  NARRATOR: "Narator",
-  NPC: "NPC",
-  SYSTEM_EVENT: "Sistem",
-};
-
-type Panel = "story" | "player" | "inventory" | "people" | "facts";
-
-const PANEL_LABELS: Record<Panel, string> = {
-  story: "Story",
-  player: "Player",
-  inventory: "Inventory",
-  people: "People",
-  facts: "Facts",
-};
-const PANEL_ICONS: Record<Panel, string> = {
-  story: "▤",
-  player: "♙",
-  inventory: "▣",
-  people: "♧",
-  facts: "≡",
-};
-
 function effectLabel(effect: PlayerItemEffect): string {
   switch (effect.type) {
     case "ATTRIBUTE_CHANGE":
@@ -188,8 +170,16 @@ function itemStatus(item: ItemDefinition, quantity: number): string {
   return item.consumable ? "Consumable" : "Permanent";
 }
 
-export default function SessionView({ sessionId, onBack }: SessionViewProps) {
-  const [record, setRecord] = useState<SessionRecord | null>(null);
+export default function SessionView({
+  sessionId,
+  onBack,
+  onOpenSettings,
+  focusMode,
+  onFocusModeChange,
+  textSize,
+  onTextSizeChange,
+}: SessionViewProps) {
+  const [record, setRecord] = useState<SessionSummaryRecord | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [worldView, setWorldView] = useState<SessionWorldView | null>(null);
   const [worldError, setWorldError] = useState<string | null>(null);
@@ -202,7 +192,11 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [panel, setPanel] = useState<Panel>("story");
+  const [notesCategory, setNotesCategory] =
+    useState<FieldNoteCategory>("player");
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [showChoices, setShowChoices] = useState(false);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [choices, setChoices] = useState<BoundChoices | null>(() =>
     readCachedChoices(sessionId),
   );
@@ -213,11 +207,43 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
   const [retryAction, setRetryAction] = useState<StoredRun | null>(null);
   const busyRef = useRef(false);
   const resumedRef = useRef(false);
-
+  const wasFocusModeRef = useRef(false);
   const errorRef = useRef<HTMLParagraphElement>(null);
+  const focusToggleRef = useRef<HTMLButtonElement>(null);
+  const focusExitRef = useRef<HTMLButtonElement>(null);
+  const overflowRef = useRef<HTMLDetailsElement>(null);
+  const storyRef = useRef<HTMLDivElement>(null);
+  const suggestionsRef = useRef<HTMLElement>(null);
+
   useEffect(() => {
     if (error) errorRef.current?.focus();
   }, [error]);
+  useEffect(() => {
+    if (!focusMode || notesOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onFocusModeChange(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [focusMode, notesOpen, onFocusModeChange]);
+  useEffect(() => {
+    if (focusMode && !wasFocusModeRef.current) focusExitRef.current?.focus();
+    if (!focusMode && wasFocusModeRef.current) focusToggleRef.current?.focus();
+    wasFocusModeRef.current = focusMode;
+  }, [focusMode]);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const update = () =>
+      setKeyboardOpen(viewport.height < window.innerHeight - 160);
+    update();
+    viewport.addEventListener("resize", update);
+    viewport.addEventListener("scroll", update);
+    return () => {
+      viewport.removeEventListener("resize", update);
+      viewport.removeEventListener("scroll", update);
+    };
+  }, []);
 
   function createRunRequestId(): string | null {
     try {
@@ -362,7 +388,7 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
       clearPendingRun(sessionId, stored);
       setPendingRun(null);
       setRetryAction(null);
-      let latest: SessionRecord | null = null;
+      let latest: SessionSummaryRecord | null = null;
       try {
         latest = await load();
       } catch (error) {
@@ -413,6 +439,7 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
           return false;
         }
         setChoices({ list: nextChoices, boundRevision });
+        setShowChoices(true);
         setSavedNote(
           nextChoices.length
             ? "Saran aksi diperbarui untuk revisi ini."
@@ -422,6 +449,7 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
         const nextChoices: unknown = run.result?.choices ?? [];
         if (isChoiceList(nextChoices)) {
           setChoices({ list: nextChoices, boundRevision: latest.revision });
+          setShowChoices(nextChoices.length > 0);
         } else {
           setChoices(null);
           setError(
@@ -471,7 +499,7 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
 
   if (!session || !record) {
     return (
-      <section className="card">
+      <section className="session-panel">
         <p role={loadError ? "alert" : "status"}>
           {loadError ?? (loading ? "Memuat sesi…" : "Session tidak ditemukan.")}
         </p>
@@ -481,7 +509,7 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
           </button>
         )}
         <button type="button" onClick={onBack}>
-          ← Library
+          ← Perpustakaan
         </button>
       </section>
     );
@@ -567,308 +595,219 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
       await executeRun(action, false);
     }
   }
+  function closeOverflow() {
+    if (overflowRef.current) overflowRef.current.open = false;
+  }
+
+  function openOverflow() {
+    if (!overflowRef.current) return;
+    overflowRef.current.open = true;
+    overflowRef.current.querySelector("summary")?.focus();
+  }
+
+  function scrollToStory() {
+    storyRef.current?.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+      block: "start",
+    });
+  }
+
+  function revealChoices() {
+    setShowChoices(true);
+    window.requestAnimationFrame(() =>
+      suggestionsRef.current?.scrollIntoView({
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+        block: "center",
+      }),
+    );
+  }
 
   const choicesAvailable =
     choices !== null && choices.boundRevision === record.revision;
   const activeChoices = choicesAvailable ? choices.list : [];
 
   const lastCheck = [...messages].reverse().find((message) => message.check);
-
-  return (
-    <div className="session-view">
-      <header className="session-page-heading">
-        <button type="button" className="session-library-link" onClick={onBack}>
-          ← Library
-        </button>
-        <h2>{panel === "story" ? def.title : PANEL_LABELS[panel]}</h2>
-        <p className="eyebrow">{panel === "story" ? "Story" : def.title}</p>
-      </header>
-
-      {error && (
-        <p className="error" role="alert" tabIndex={-1} ref={errorRef}>
-          {error}
-        </p>
-      )}
-
-      {panel === "story" && (
-        <div className="session-main">
-          <section className="story-cover" aria-label="Metadata cerita">
-            <img
-              className="cover"
-              src={storyIllustration(def)}
-              width={900}
-              height={320}
-              alt=""
-            />
-            <p className="hint">
-              Lokasi:{" "}
-              {worldView?.location?.name ??
-                state.world.location ??
-                "(belum ditentukan)"}{" "}
-              · Waktu: {state.world.time || "(belum ditentukan)"}
-            </p>
-            <p className="hint">Scene: {state.world.scene || "(belum ada)"}</p>
-            <p className="hint">
-              Turn committed:{" "}
-              {new Set(messages.map((message) => message.turnId)).size}
-            </p>
-          </section>
-
-          {messages.length === 0 && (
-            <section className="card">
-              <p>Belum ada scene. Buka scene awal terlebih dahulu.</p>
-              <button
-                type="button"
-                className="primary"
-                onClick={() => void handleOpening()}
-                disabled={busy}
-              >
-                {busy ? "Memuat scene…" : "Buka scene awal"}
-              </button>
-            </section>
-          )}
-
-          <section aria-label="History percakapan" className="message-list">
-            {nextBeforeSequence !== null && (
-              <button
-                type="button"
-                onClick={() => void loadOlderMessages()}
-                disabled={loadingOlder}
-              >
-                {loadingOlder ? "Memuat riwayat…" : "Muat riwayat sebelumnya"}
-              </button>
+  const turnCount = record.turnCount;
+  const { narration: latestNarrator, dialogue: latestNpc } =
+    latestSceneMessages(messages);
+  const latestTurnId = latestNarrator?.turnId ?? latestNpc?.turnId ?? null;
+  const latestMessages = latestTurnId
+    ? messages.filter((message) => message.turnId === latestTurnId)
+    : [];
+  const npcNames = Object.fromEntries(
+    def.npcs.map((npc) => [npc.id, npc.name]),
+  );
+  const locationLabel =
+    worldView?.location?.name ??
+    state.world.location ??
+    "Lokasi belum ditentukan";
+  const sessionTitle = def.title || "Sesi tanpa judul";
+  const noteSections = {
+    player: (
+      <section className="notes-category" aria-label="Profil pemain">
+        <div className="person-head">
+          <div className="avatar" aria-hidden="true">
+            {def.player.name.trim().slice(0, 1).toUpperCase() || "?"}
+          </div>
+          <div className="person-copy">
+            <h3>{def.player.name || "(tanpa nama)"}</h3>
+            {def.player.description && (
+              <p className="hint">{def.player.description}</p>
             )}
-            {messages.map((message) => (
-              <article
-                key={message.id}
-                className={`message message-${message.role}`}
-              >
-                <header>
-                  {ROLE_LABELS[message.role]}
-                  {message.speakerId ? ` (${message.speakerId})` : ""}
-                </header>
-                <StoryMessageBody message={message} />
-                {message.check && (
-                  <p className="check-badge">
-                    Check {message.check.attributeId}: skor{" "}
-                    {message.check.score}/{message.check.difficulty} —{" "}
-                    {message.check.outcome} ({message.check.mode})
-                  </p>
-                )}
-              </article>
-            ))}
-          </section>
-
-          {error && (pendingRun || retryAction) && !busy && (
-            <button type="button" onClick={() => void handleRetry()}>
-              {pendingRun ? "Periksa status run lagi" : "Coba lagi"}
-            </button>
-          )}
-          {savedNote && !busy && <p role="status">{savedNote}</p>}
-
-          {messages.length > 0 && (
-            <section className="card" aria-label="Saran aksi">
-              <h2>Saran aksi</h2>
-              <p className="hint">
-                Saran dibuat hanya saat diminta. Kamu juga bisa menulis tindakan
-                sendiri.
-              </p>
-              {choicesAvailable && activeChoices.length === 0 && (
-                <p className="hint">Belum ada saran aksi untuk revisi ini.</p>
-              )}
-              {!choicesAvailable && !busy && (
-                <p className="hint">
-                  Saran aksi belum diminta untuk revisi ini.
-                </p>
-              )}
-              <ul className="choices-list">
-                {activeChoices.map((choice) => (
-                  <li key={choice.id}>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() =>
-                        void sendAction(choice.label, choices?.boundRevision)
-                      }
-                    >
-                      {choice.label}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <button
-                type="button"
-                onClick={() => void startRun("choices", {})}
-                disabled={busy || pendingRun !== null}
-              >
-                {busy && pendingRun?.kind === "choices"
-                  ? "Meminta saran…"
-                  : "Sarankan aksi"}
-              </button>
-            </section>
-          )}
-
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void sendAction(input);
-            }}
-            className="chat-form composer"
-          >
-            <label>
-              Aksi bebas
-              <textarea
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                disabled={busy || messages.length === 0}
-                placeholder="Tulis tindakan atau dialog…"
-                rows={3}
-              />
-            </label>
-            <button
-              type="submit"
-              className="primary"
-              disabled={busy || messages.length === 0}
-            >
-              {busy ? "Memproses…" : "Kirim aksi"}
-            </button>
-          </form>
+          </div>
         </div>
-      )}
-
-      {panel === "player" && (
-        <section className="panel session-panel" aria-label="Profil pemain">
-          <div className="person-head">
-            <div className="avatar" aria-hidden="true">
-              {def.player.name.trim().slice(0, 1).toUpperCase() || "?"}
-            </div>
-            <div className="person-copy">
-              <h2>{def.player.name || "(tanpa nama)"}</h2>
-              {def.player.description && (
-                <p className="hint">{def.player.description}</p>
-              )}
-            </div>
-          </div>
-          {def.player.background && (
-            <p className="hint">Latar belakang: {def.player.background}</p>
-          )}
-          {def.player.personality && (
-            <p className="hint">Kepribadian: {def.player.personality}</p>
-          )}
-          {def.player.notes && (
-            <p className="hint">Catatan: {def.player.notes}</p>
-          )}
-
-          <h3>Atribut</h3>
-          {def.attributes.length === 0 && (
-            <p className="hint">Tidak ada atribut.</p>
-          )}
-          <div className="stat-list">
-            {def.attributes.map((attribute) => {
-              const value =
-                state.attributes[attribute.id] ?? attribute.defaultValue;
-              return (
-                <div key={attribute.id} className="stat-row">
-                  <div className="row">
-                    <span>{attribute.name}</span>
-                    <strong>
-                      {value} ({attribute.min}–{attribute.max})
-                    </strong>
-                  </div>
-                  <meter
-                    min={attribute.min}
-                    max={attribute.max}
-                    value={value}
-                    aria-label={`${attribute.name}: ${value} (${attribute.min}–${attribute.max})`}
-                  />
-                  {attribute.description && (
-                    <p className="hint">{attribute.description}</p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          <h3>Sumber daya</h3>
-          {def.resources.length === 0 && (
-            <p className="hint">Tidak ada sumber daya.</p>
-          )}
-          <div className="stat-list">
-            {def.resources.map((resource) => {
-              const value =
-                state.resources[resource.id] ?? resource.initialValue;
-              return (
-                <div key={resource.id} className="stat-row">
-                  <div className="row">
-                    <span>{resource.name}</span>
-                    <strong>
-                      {value}
-                      {resource.max !== undefined ? ` / ${resource.max}` : ""}
-                    </strong>
-                  </div>
-                  {resource.max !== undefined && (
-                    <meter
-                      min={resource.min}
-                      max={resource.max}
-                      value={value}
-                      aria-label={`${resource.name}: ${value} / ${resource.max}`}
-                    />
-                  )}
-                  {resource.description && (
-                    <p className="hint">{resource.description}</p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          <h3>Check terakhir</h3>
-          {lastCheck && lastCheck.check ? (
-            <p className="check-badge">
-              Check {lastCheck.check.attributeId}: skor {lastCheck.check.score}/
-              {lastCheck.check.difficulty} — {lastCheck.check.outcome} (
-              {lastCheck.check.mode})
-            </p>
-          ) : (
-            <p className="hint">Belum ada check.</p>
-          )}
-        </section>
-      )}
-
-      {panel === "inventory" && (
-        <section className="panel session-panel" aria-label="Inventaris">
-          <p className="hint">
-            {state.inventory.reduce(
-              (total, entry) => total + entry.quantity,
-              0,
-            )}{" "}
-            item dibawa
-          </p>
-          {state.inventory.length === 0 && (
-            <p className="hint">Inventaris kosong.</p>
-          )}
-          {state.inventory.map((entry) => {
-            const item = def.items.find(
-              (candidate) => candidate.id === entry.itemId,
-            );
-            if (!item) return null;
+        {def.player.background && (
+          <p className="hint">Latar belakang: {def.player.background}</p>
+        )}
+        {def.player.personality && (
+          <p className="hint">Kepribadian: {def.player.personality}</p>
+        )}
+        {def.player.notes && (
+          <p className="hint">Catatan: {def.player.notes}</p>
+        )}
+        <h3>Atribut</h3>
+        {def.attributes.length === 0 && (
+          <p className="hint">Tidak ada atribut.</p>
+        )}
+        <div className="stat-list">
+          {def.attributes.map((attribute) => {
+            const value =
+              state.attributes[attribute.id] ?? attribute.defaultValue;
             return (
-              <article key={entry.itemId} className="inventory-row">
+              <div key={attribute.id} className="stat-row">
                 <div className="row">
-                  <h3>
-                    {item.name} ×{entry.quantity}
-                  </h3>
-                  <span className="hint">
-                    {itemStatus(item, entry.quantity)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => void handleUseItem(entry.itemId)}
-                    disabled={busy}
-                  >
-                    Pakai
-                  </button>
+                  <span>{attribute.name}</span>
+                  <strong>
+                    {value} ({attribute.min}–{attribute.max})
+                  </strong>
                 </div>
+                <meter
+                  min={attribute.min}
+                  max={attribute.max}
+                  value={value}
+                  aria-label={`${attribute.name}: ${value} (${attribute.min}–${attribute.max})`}
+                />
+                {attribute.description && (
+                  <p className="hint">{attribute.description}</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <h3>Sumber daya</h3>
+        {def.resources.length === 0 && (
+          <p className="hint">Tidak ada sumber daya.</p>
+        )}
+        <div className="stat-list">
+          {def.resources.map((resource) => {
+            const value = state.resources[resource.id] ?? resource.initialValue;
+            return (
+              <div key={resource.id} className="stat-row">
+                <div className="row">
+                  <span>{resource.name}</span>
+                  <strong>
+                    {value}
+                    {resource.max !== undefined ? ` / ${resource.max}` : ""}
+                  </strong>
+                </div>
+                {resource.max !== undefined && (
+                  <meter
+                    min={resource.min}
+                    max={resource.max}
+                    value={value}
+                    aria-label={`${resource.name}: ${value} / ${resource.max}`}
+                  />
+                )}
+                {resource.description && (
+                  <p className="hint">{resource.description}</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <h3>Check terakhir</h3>
+        {lastCheck?.check ? (
+          <p className="check-badge">
+            Check {lastCheck.check.attributeId}: skor {lastCheck.check.score}/
+            {lastCheck.check.difficulty} — {lastCheck.check.outcome} (
+            {lastCheck.check.mode})
+          </p>
+        ) : (
+          <p className="hint">Belum ada check.</p>
+        )}
+      </section>
+    ),
+    people: (
+      <section className="notes-category" aria-label="Karakter sekitar">
+        <h3>Orang di sekitar</h3>
+        {(worldView?.people.length ?? 0) === 0 && (
+          <p className="hint">Tidak ada karakter yang hadir di lokasi ini.</p>
+        )}
+        {worldView?.people.map((person) => (
+          <article key={person.id} className="person-row">
+            <div className="person-head">
+              <div className="avatar" aria-hidden="true">
+                {person.name.trim().slice(0, 1).toUpperCase() || "?"}
+              </div>
+              <div className="person-copy">
+                <h3>{person.name}</h3>
+                {person.role && <p className="hint">Peran: {person.role}</p>}
+              </div>
+            </div>
+            {person.description && <p>{person.description}</p>}
+            {person.relationships.length > 0 && (
+              <div className="stat-list">
+                {person.relationships.map((relationship) => (
+                  <div key={relationship.id} className="stat-row">
+                    <div className="row">
+                      <span>{relationship.name}</span>
+                      <strong>
+                        {relationship.value} ({relationship.min}–
+                        {relationship.max})
+                      </strong>
+                    </div>
+                    <meter
+                      min={relationship.min}
+                      max={relationship.max}
+                      value={relationship.value}
+                      aria-label={`${relationship.name}: ${relationship.value} (${relationship.min}–${relationship.max})`}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </article>
+        ))}
+      </section>
+    ),
+    inventory: (
+      <section className="notes-category" aria-label="Inventaris">
+        <h3>Tas</h3>
+        <p className="hint">
+          {state.inventory.reduce((total, entry) => total + entry.quantity, 0)}{" "}
+          item dibawa
+        </p>
+        {state.inventory.length === 0 && (
+          <p className="hint">Inventaris kosong.</p>
+        )}
+        {state.inventory.map((entry) => {
+          const item = def.items.find(
+            (candidate) => candidate.id === entry.itemId,
+          );
+          if (!item) return null;
+          return (
+            <details key={entry.itemId} className="inventory-row">
+              <summary>
+                <span>
+                  {item.name} ×{entry.quantity}
+                </span>
+                <span className="hint">{itemStatus(item, entry.quantity)}</span>
+              </summary>
+              <div className="inventory-detail">
                 {item.description && <p>{item.description}</p>}
                 {item.tags.length > 0 && (
                   <p className="hint">Tag: {item.tags.join(", ")}</p>
@@ -880,201 +819,462 @@ export default function SessionView({ sessionId, onBack }: SessionViewProps) {
                     ))}
                   </ul>
                 )}
-              </article>
-            );
-          })}
-        </section>
-      )}
-
-      {panel === "people" && (
-        <section className="panel session-panel" aria-label="Karakter sekitar">
-          {worldError && (
-            <p className="error" role="alert">
-              {worldError}
-            </p>
-          )}
-          {(worldView?.people.length ?? 0) === 0 && (
-            <p className="hint">Tidak ada karakter yang hadir di lokasi ini.</p>
-          )}
-          {worldView?.people.map((person) => (
-            <article key={person.id} className="person-row">
-              <div className="person-head">
-                <div className="avatar" aria-hidden="true">
-                  {person.name.trim().slice(0, 1).toUpperCase() || "?"}
-                </div>
-                <div className="person-copy">
-                  <h3>{person.name}</h3>
-                  {person.role && <p className="hint">Peran: {person.role}</p>}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleUseItem(entry.itemId)}
+                  disabled={busy}
+                >
+                  Pakai
+                </button>
               </div>
-              {person.description && <p>{person.description}</p>}
-              {person.relationships.length > 0 && (
-                <div className="stat-list">
-                  {person.relationships.map((relationship) => (
-                    <div key={relationship.id} className="stat-row">
-                      <div className="row">
-                        <span>{relationship.name}</span>
-                        <strong>
-                          {relationship.value} ({relationship.min}–
-                          {relationship.max})
-                        </strong>
-                      </div>
-                      <meter
-                        min={relationship.min}
-                        max={relationship.max}
-                        value={relationship.value}
-                        aria-label={`${relationship.name}: ${relationship.value} (${relationship.min}–${relationship.max})`}
-                      />
+            </details>
+          );
+        })}
+      </section>
+    ),
+    facts: (
+      <section className="notes-category" aria-label="Dunia dan fakta">
+        <h3>Dunia</h3>
+        {worldError && (
+          <p className="error" role="alert">
+            {worldError}
+          </p>
+        )}
+        <dl className="world-details">
+          <div>
+            <dt>Lokasi</dt>
+            <dd>{locationLabel}</dd>
+          </div>
+          {worldView?.location?.summary && (
+            <div>
+              <dt>Deskripsi</dt>
+              <dd>{worldView.location.summary}</dd>
+            </div>
+          )}
+          <div>
+            <dt>Waktu</dt>
+            <dd>{state.world.time || "(belum ditentukan)"}</dd>
+          </div>
+          <div>
+            <dt>Scene</dt>
+            <dd>{state.world.scene || "(belum ada)"}</dd>
+          </div>
+        </dl>
+        <h3>Lokasi yang diketahui</h3>
+        {(worldView?.locations.length ?? 0) === 0 ? (
+          <p className="hint">Belum ada lokasi lain yang diketahui.</p>
+        ) : (
+          <ul className="fact-list">
+            {worldView?.locations.map((location) => (
+              <li key={location.id} className="fact-row">
+                <strong>{location.name}</strong>
+                {location.summary && <p className="hint">{location.summary}</p>}
+              </li>
+            ))}
+          </ul>
+        )}
+        <h3>Fakta yang diketahui pemain</h3>
+        {(worldView?.facts.length ?? 0) === 0 ? (
+          <p className="hint">Belum ada fakta.</p>
+        ) : (
+          <ul className="fact-list">
+            {worldView?.facts.map((fact) => (
+              <li key={fact.id} className="fact-row">
+                {fact.text}
+              </li>
+            ))}
+          </ul>
+        )}
+        <h3>Aktivitas di sekitar</h3>
+        {(worldView?.activities.length ?? 0) === 0 ? (
+          <p className="hint">Belum ada aktivitas yang relevan.</p>
+        ) : (
+          <ul className="fact-list">
+            {worldView?.activities.map((entry) => (
+              <li key={entry.id} className="fact-row">
+                <strong>{entry.name}</strong>
+                {entry.summary && <p>{entry.summary}</p>}
+              </li>
+            ))}
+          </ul>
+        )}
+        <h3>Penemuan</h3>
+        {(worldView?.discoveries.length ?? 0) === 0 ? (
+          <p className="hint">Belum ada penemuan.</p>
+        ) : (
+          <ul className="fact-list">
+            {worldView?.discoveries.map((entry) => (
+              <li key={entry.id} className="fact-row">
+                <strong>{entry.name}</strong>
+                {entry.summary && <p>{entry.summary}</p>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    ),
+  };
+
+  return (
+    <div className="session-view">
+      <header className="session-header">
+        <div className="session-header-main">
+          <button type="button" className="quiet session-back" onClick={onBack}>
+            Kembali
+          </button>
+          <div className="session-heading">
+            <h1>{sessionTitle}</h1>
+            <p>
+              {record.value.name ? `${record.value.name} · ` : ""}
+              {locationLabel}
+            </p>
+          </div>
+          <div className="session-header-actions">
+            <button
+              type="button"
+              className="quiet session-focus-toggle"
+              aria-pressed={focusMode}
+              onClick={() => onFocusModeChange(true)}
+            >
+              Mode fokus
+            </button>
+            <button
+              type="button"
+              className="quiet session-text-size"
+              aria-pressed={textSize === "large"}
+              onClick={() =>
+                onTextSizeChange(textSize === "large" ? "normal" : "large")
+              }
+            >
+              Teks {textSize === "large" ? "besar" : "normal"}
+            </button>
+            <button
+              type="button"
+              className="quiet session-notes-trigger"
+              onClick={() => setNotesOpen(true)}
+            >
+              Catatan
+            </button>
+            <details className="session-overflow" ref={overflowRef}>
+              <summary ref={focusToggleRef} aria-label="Menu sesi">
+                Lainnya
+              </summary>
+              <div className="session-overflow-content">
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeOverflow();
+                    onFocusModeChange(true);
+                  }}
+                >
+                  Mode fokus
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeOverflow();
+                    onOpenSettings();
+                  }}
+                >
+                  Pengaturan sesi
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeOverflow();
+                    void handleExport();
+                  }}
+                >
+                  Ekspor save
+                </button>
+                <label className="session-import">
+                  Impor save
+                  <input
+                    type="file"
+                    accept="application/json"
+                    className="visually-hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) void handleImport(file);
+                      event.target.value = "";
+                      closeOverflow();
+                    }}
+                  />
+                </label>
+              </div>
+            </details>
+          </div>
+        </div>
+        <button
+          ref={focusExitRef}
+          type="button"
+          className="quiet session-focus-exit"
+          onClick={() => onFocusModeChange(false)}
+        >
+          Keluar fokus
+        </button>
+      </header>
+
+      <div className="session-scene-strip" aria-label="Kondisi adegan">
+        <span>
+          {locationLabel} · {state.world.time || "Waktu belum ditentukan"}
+        </span>
+        <span>Giliran {turnCount}</span>
+      </div>
+
+      <div className="session-layout">
+        <main className="session-main">
+          <div className="session-story" ref={storyRef}>
+            <article className="scene">
+              {messages.length === 0 ? (
+                <>
+                  {state.world.scene ? (
+                    <div className="narration">
+                      <StoryMarkdown content={state.world.scene} />
                     </div>
-                  ))}
+                  ) : (
+                    <p className="session-empty-copy">
+                      Cerita dimulai saat kamu membuka adegan pertama.
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    className="primary"
+                    onClick={() => void handleOpening()}
+                    disabled={busy}
+                  >
+                    {busy ? "Memulai adegan…" : "Buka adegan pertama"}
+                  </button>
+                </>
+              ) : (
+                <div className="scene-messages">
+                  {latestMessages.map((message) => {
+                    if (message.role === "PLAYER") {
+                      return (
+                        <div
+                          key={message.id}
+                          className="scene-player"
+                          aria-label="Aksi pemain"
+                        >
+                          <span>KAMU</span>
+                          <p>{message.content}</p>
+                        </div>
+                      );
+                    }
+                    if (message.role === "NARRATOR") {
+                      return (
+                        <div key={message.id} className="narration">
+                          <StoryMarkdown content={message.content} />
+                        </div>
+                      );
+                    }
+                    if (message.role === "NPC") {
+                      return (
+                        <div key={message.id} className="dialogue">
+                          <span className="scene-speaker">
+                            {messageAuthor(message, npcNames)}
+                          </span>
+                          <StoryMarkdown content={message.content} />
+                        </div>
+                      );
+                    }
+                    return (
+                      <p key={message.id} className="scene-system">
+                        {message.content}
+                      </p>
+                    );
+                  })}
                 </div>
               )}
             </article>
-          ))}
-        </section>
-      )}
+          </div>
 
-      {panel === "facts" && (
-        <section className="panel session-panel" aria-label="Dunia dan fakta">
-          {worldError && (
-            <p className="error" role="alert">
-              {worldError}
+          {messages.length > 0 && (
+            <section
+              ref={suggestionsRef}
+              className="suggestions"
+              aria-label="Saran aksi"
+              hidden={!showChoices}
+            >
+              <h2>Pilihan aksi</h2>
+              {activeChoices.length > 0 ? (
+                <ol className="suggestion-list">
+                  {activeChoices.map((choice) => (
+                    <li key={choice.id}>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          void sendAction(choice.label, choices?.boundRevision)
+                        }
+                      >
+                        {choice.label}
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="meta">
+                  {choicesAvailable
+                    ? "Belum ada saran aksi untuk revisi ini."
+                    : "Saran aksi dibuat hanya saat diminta."}
+                </p>
+              )}
+              <div className="suggestion-actions">
+                <button
+                  type="button"
+                  onClick={() => void startRun("choices", {})}
+                  disabled={busy || pendingRun !== null}
+                >
+                  {busy && pendingRun?.kind === "choices"
+                    ? "Meminta saran…"
+                    : "Sarankan aksi"}
+                </button>
+              </div>
+            </section>
+          )}
+
+          {error && (
+            <div className="session-error" role="alert">
+              <p tabIndex={-1} ref={errorRef}>
+                {error}
+              </p>
+              {(pendingRun || retryAction) && !busy && (
+                <button type="button" onClick={() => void handleRetry()}>
+                  {pendingRun ? "Periksa status run lagi" : "Coba lagi"}
+                </button>
+              )}
+            </div>
+          )}
+          {savedNote && !busy && (
+            <p className="session-status" role="status">
+              {savedNote}
             </p>
           )}
-          <h2>Dunia</h2>
-          <dl className="world-details">
-            <div>
-              <dt>Lokasi</dt>
-              <dd>
-                {worldView?.location?.name ??
-                  state.world.location ??
-                  "(belum ditentukan)"}
-              </dd>
-            </div>
-            {worldView?.location?.summary && (
-              <div>
-                <dt>Deskripsi</dt>
-                <dd>{worldView.location.summary}</dd>
-              </div>
-            )}
-            <div>
-              <dt>Waktu</dt>
-              <dd>{state.world.time || "(belum ditentukan)"}</dd>
-            </div>
-            <div>
-              <dt>Scene</dt>
-              <dd>{state.world.scene || "(belum ada)"}</dd>
-            </div>
-          </dl>
+          {busy && (
+            <p className="session-busy" role="status">
+              Narator sedang menulis
+            </p>
+          )}
 
-          <h3>Lokasi yang diketahui</h3>
-          {(worldView?.locations.length ?? 0) === 0 ? (
-            <p className="hint">Belum ada lokasi lain yang diketahui.</p>
-          ) : (
-            <ul className="fact-list">
-              {worldView?.locations.map((location) => (
-                <li key={location.id} className="fact-row">
-                  <strong>{location.name}</strong>
-                  {location.summary && (
-                    <p className="hint">{location.summary}</p>
+          <form
+            className="composer"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void sendAction(input);
+            }}
+          >
+            <label className="sr" htmlFor="action-input">
+              Aksi bebas
+            </label>
+            <textarea
+              id="action-input"
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (
+                  event.key === "Enter" &&
+                  !event.shiftKey &&
+                  !event.nativeEvent.isComposing
+                ) {
+                  event.preventDefault();
+                  void sendAction(input);
+                }
+              }}
+              disabled={busy || messages.length === 0}
+              placeholder="Tulis aksi atau dialog"
+              rows={2}
+            />
+            <div className="composer-footer">
+              <p>Enter untuk kirim · Shift+Enter untuk baris baru</p>
+              {messages.length > 0 && (
+                <button
+                  type="button"
+                  className="quiet composer-choices-toggle"
+                  aria-expanded={showChoices}
+                  onClick={() => {
+                    if (showChoices) setShowChoices(false);
+                    else revealChoices();
+                  }}
+                >
+                  {showChoices ? "Sembunyikan pilihan" : "Pilihan aksi"}
+                </button>
+              )}
+              <button
+                type="submit"
+                className="primary"
+                disabled={busy || messages.length === 0 || !input.trim()}
+              >
+                Kirim
+              </button>
+            </div>
+          </form>
+
+          <details className="story-history">
+            <summary>Riwayat cerita</summary>
+            {nextBeforeSequence !== null && (
+              <button
+                type="button"
+                className="history-load-more"
+                onClick={() => void loadOlderMessages()}
+                disabled={loadingOlder}
+              >
+                {loadingOlder ? "Memuat riwayat…" : "Muat riwayat sebelumnya"}
+              </button>
+            )}
+            <ol className="message-list">
+              {messages.map((message) => (
+                <li
+                  key={message.id}
+                  className={`message message-${message.role}`}
+                >
+                  <header>
+                    #{message.sequence} {messageAuthor(message, npcNames)}
+                  </header>
+                  <StoryMessageBody message={message} />
+                  {message.check && (
+                    <p className="check-badge">
+                      Check {message.check.attributeId}: skor{" "}
+                      {message.check.score}/{message.check.difficulty} —{" "}
+                      {message.check.outcome} ({message.check.mode})
+                    </p>
                   )}
                 </li>
               ))}
-            </ul>
-          )}
+            </ol>
+          </details>
+        </main>
 
-          <h3>Fakta yang diketahui pemain</h3>
-          {(worldView?.facts.length ?? 0) === 0 ? (
-            <p className="hint">Belum ada fakta.</p>
-          ) : (
-            <ul className="fact-list">
-              {worldView?.facts.map((fact) => (
-                <li key={fact.id} className="fact-row">
-                  {fact.text}
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <h3>Aktivitas di sekitar</h3>
-          {(worldView?.activities.length ?? 0) === 0 ? (
-            <p className="hint">Belum ada aktivitas yang relevan.</p>
-          ) : (
-            <ul className="fact-list">
-              {worldView?.activities.map((entry) => (
-                <li key={entry.id} className="fact-row">
-                  <strong>{entry.name}</strong>
-                  {entry.summary && <p>{entry.summary}</p>}
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <h3>Penemuan</h3>
-          {(worldView?.discoveries.length ?? 0) === 0 ? (
-            <p className="hint">Belum ada penemuan.</p>
-          ) : (
-            <ul className="fact-list">
-              {worldView?.discoveries.map((entry) => (
-                <li key={entry.id} className="fact-row">
-                  <strong>{entry.name}</strong>
-                  {entry.summary && <p>{entry.summary}</p>}
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <h3>History lengkap</h3>
-          {messages.length === 0 && <p className="hint">Belum ada history.</p>}
-          <ol className="message-list">
-            {messages.map((message) => (
-              <li
-                key={message.id}
-                className={`message message-${message.role}`}
-              >
-                <header>
-                  #{message.sequence} {ROLE_LABELS[message.role]}
-                </header>
-                <StoryMessageBody message={message} />
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
-
-      <div className="row session-menu">
-        <button type="button" onClick={() => void handleExport()}>
-          Export save
-        </button>
-        <label className="button">
-          Import save
-          <input
-            type="file"
-            accept="application/json"
-            className="visually-hidden"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) void handleImport(file);
-              event.target.value = "";
-            }}
-          />
-        </label>
+        <FieldNotesPanel
+          open={notesOpen}
+          category={notesCategory}
+          onCategoryChange={setNotesCategory}
+          onClose={() => setNotesOpen(false)}
+          sections={noteSections}
+        />
       </div>
 
-      <nav className="bottom-nav session-panel-nav" aria-label="Panel sesi">
-        {(Object.keys(PANEL_LABELS) as Panel[]).map((name) => (
-          <button
-            key={name}
-            type="button"
-            aria-current={panel === name ? "page" : undefined}
-            onClick={() => setPanel(name)}
-          >
-            <span className="nav-icon" aria-hidden="true">
-              {PANEL_ICONS[name]}
-            </span>
-            {PANEL_LABELS[name]}
-          </button>
-        ))}
+      <nav
+        className={`session-dock${keyboardOpen ? " keyboard-open" : ""}`}
+        aria-label="Kontrol sesi"
+      >
+        <button type="button" aria-current="location" onClick={scrollToStory}>
+          Cerita
+        </button>
+        <button type="button" onClick={() => setNotesOpen(true)}>
+          Catatan
+        </button>
+        <button
+          type="button"
+          aria-expanded={showChoices}
+          disabled={messages.length === 0}
+          onClick={revealChoices}
+        >
+          Pilihan
+        </button>
+        <button type="button" onClick={openOverflow}>
+          Lainnya
+        </button>
       </nav>
     </div>
   );

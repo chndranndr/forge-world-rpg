@@ -45,6 +45,8 @@ export function buildInitialState(
   const inventory = game.startingInventory.map((entry) => ({
     itemId: entry.itemId,
     quantity: entry.quantity,
+    ...(entry.owner === undefined ? {} : { owner: entry.owner }),
+    ...(entry.place === undefined ? {} : { place: entry.place }),
   }));
   const relationships = game.npcs.map((npc) => {
     const values: Record<string, number> = {};

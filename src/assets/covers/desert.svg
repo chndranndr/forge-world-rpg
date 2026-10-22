@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="125 0 1350 900" role="img" aria-label="Jalan sunyi melintasi padang pasir menuju mesa">
+  <defs>
+    <linearGradient id="dsky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b9b6a2"/>
+      <stop offset=".45" stop-color="#e0c39a"/>
+      <stop offset=".78" stop-color="#efd9b6"/>
+      <stop offset="1" stop-color="#f3e3c6"/>
+    </linearGradient>
+    <linearGradient id="dune1" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#c79a68"/>
+      <stop offset="1" stop-color="#a46f46"/>
+    </linearGradient>
+    <linearGradient id="dune2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9e6c45"/>
+      <stop offset="1" stop-color="#71482f"/>
+    </linearGradient>
+    <linearGradient id="road" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5a4534"/>
+      <stop offset="1" stop-color="#2b211a"/>
+    </linearGradient>
+    <radialGradient id="sun" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#fff2cf" stop-opacity=".95"/>
+      <stop offset=".6" stop-color="#f8dca8" stop-opacity=".4"/>
+      <stop offset="1" stop-color="#f8dca8" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="blur"><feGaussianBlur stdDeviation="18"/></filter>
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="3" stitchTiles="stitch"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feComponentTransfer><feFuncA type="linear" slope=".12"/></feComponentTransfer>
+    </filter>
+  </defs>
+  <rect width="1600" height="900" fill="url(#dsky)"/>
+  <circle cx="1180" cy="300" r="170" fill="url(#sun)"/>
+  <path d="M0 520 L120 470 L230 492 L330 452 L470 500 L620 462 L760 500 L900 470 L1060 512 L1220 474 L1400 508 L1600 468 L1600 580 L0 580 Z" fill="#b58d68" opacity=".55" filter="url(#blur)"/>
+  <path d="M1020 512 L1120 388 L1200 420 L1240 390 L1320 512 Z" fill="#8a5d40" opacity=".8"/>
+  <path d="M1120 388 L1200 420 L1180 512 L1080 512 Z" fill="#6e452f" opacity=".8"/>
+  <path d="M0 566 q240 -48 470 -6 q260 46 520 -4 q300 -46 610 8 L1600 900 L0 900 Z" fill="url(#dune1)"/>
+  <path d="M0 700 q260 -74 520 -16 q270 60 540 2 q260 -54 540 18 L1600 900 L0 900 Z" fill="url(#dune2)"/>
+  <path d="M820 900 q-50 -150 30 -260 q40 -58 60 -88 l34 6 q-14 48 -26 96 q-22 100 18 246 Z" fill="url(#road)"/>
+  <g fill="none" stroke="#f1dfc0" stroke-width="4" opacity=".28">
+    <path d="M884 640 q-4 28 0 60"/><path d="M878 720 q-4 30 0 62"/>
+  </g>
+  <g stroke="#6d4b33" stroke-width="3" opacity=".55">
+    <path d="M1260 668 l6 42 M1260 690 l-16 -22 M1260 690 l16 -18"/>
+    <path d="M300 744 l5 30 M300 760 l-14 -16 M300 760 l14 -12"/>
+    <path d="M1420 782 l4 26 M1420 794 l-11 -12"/>
+  </g>
+  <ellipse cx="870" cy="560" rx="280" ry="14" fill="#f7e4c4" opacity=".2" filter="url(#blur)"/>
+  <rect width="1600" height="900" filter="url(#grain)" opacity=".5"/>
+  <rect x="125" width="1350" height="900" fill="none" stroke="#3b2a1e" stroke-width="42" opacity=".18"/>
+</svg>

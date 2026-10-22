@@ -40,6 +40,10 @@ export function exportTemplate(game: GameDefinition): GameTemplateBundle {
   if (picked.genre !== undefined) draft.genre = picked.genre;
   if (picked.tone !== undefined) draft.tone = picked.tone;
   if (picked.language !== undefined) draft.language = picked.language;
+  if (picked.ageRating !== undefined) draft.ageRating = picked.ageRating;
+  if (picked.relationshipParties !== undefined) {
+    draft.relationshipParties = picked.relationshipParties;
+  }
   const bundle: GameTemplateBundle = {
     format: TEMPLATE_FORMAT,
     version: TEMPLATE_VERSION,
@@ -119,6 +123,10 @@ export function parseTemplate(raw: unknown): {
   if (game.genre !== undefined) draft.genre = game.genre;
   if (game.tone !== undefined) draft.tone = game.tone;
   if (game.language !== undefined) draft.language = game.language;
+  if (game.ageRating !== undefined) draft.ageRating = game.ageRating;
+  if (game.relationshipParties !== undefined) {
+    draft.relationshipParties = game.relationshipParties;
+  }
 
   const aiRaw = candidate.ai as Record<string, unknown> | undefined;
   let ai: AiConfig | undefined;
@@ -142,4 +150,22 @@ export function parseTemplate(raw: unknown): {
   }
 
   return { draft, ai };
+}
+export function applyTemplateDraft(
+  current: GameDefinition,
+  template: TemplateDraft,
+): GameDefinition {
+  return {
+    ...current,
+    ...structuredClone(template),
+    description: template.description,
+    genre: template.genre,
+    tone: template.tone,
+    language: template.language,
+    ageRating: template.ageRating,
+    relationshipParties: template.relationshipParties,
+    worldMap: template.worldMap,
+    startingLocationId: template.startingLocationId,
+    lorebookRefs: template.lorebookRefs,
+  };
 }

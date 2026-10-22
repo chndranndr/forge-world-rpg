@@ -114,6 +114,35 @@ test("shared engine initializes RPG state without the database module", () => {
   });
 });
 
+test("starting inventory metadata survives stack additions without labeling new items", () => {
+  const game = makeGame();
+  game.startingInventory = [
+    { itemId: "potion", quantity: 2, owner: "Pemain", place: "tas kecil" },
+  ];
+  const state = sharedEngine.buildInitialState(game);
+  assert.deepEqual(state.inventory, [
+    { itemId: "potion", quantity: 2, owner: "Pemain", place: "tas kecil" },
+  ]);
+
+  const stacked = engine.applyEffects(game, state, [
+    { type: "ADD_ITEM", target: "potion", quantity: 1 },
+  ]);
+  assert.deepEqual(stacked.state.inventory[0], {
+    itemId: "potion",
+    quantity: 3,
+    owner: "Pemain",
+    place: "tas kecil",
+  });
+
+  const acquired = engine.applyEffects(game, stacked.state, [
+    { type: "ADD_ITEM", target: "empty", quantity: 1 },
+  ]);
+  assert.deepEqual(acquired.state.inventory[1], {
+    itemId: "empty",
+    quantity: 1,
+  });
+});
+
 test("valid batch applies all effects and returns summaries", () => {
   const game = makeGame();
   const state = makeState();

@@ -28,6 +28,13 @@ export interface RelationshipDefinition {
   max: number;
   defaultValue: number;
 }
+export interface RelationshipPartyDefinition {
+  id: string;
+  name: string;
+  type: string;
+  initialStance: "friendly" | "neutral" | "wary" | "hostile";
+  secret?: string;
+}
 
 export type EffectOperation = "ADD" | "SUBTRACT" | "SET";
 
@@ -96,6 +103,12 @@ export interface PlayerDefinition {
   background?: string;
   personality?: string;
   notes?: string;
+  role?: string;
+  pronoun?: "neutral" | "masculine" | "feminine";
+  age?: string;
+  goal?: string;
+  fear?: string;
+
   attributes: Record<string, number>;
   resources: Record<string, number>;
 }
@@ -107,6 +120,8 @@ export interface NpcDefinition {
   personality: string[];
   background?: string;
   role?: string;
+  voice?: string;
+
   goals: string[];
   privateKnowledge: string[];
   initialRelationships: Record<string, number>;
@@ -120,11 +135,22 @@ export interface Scenario {
   tone?: string;
   genre?: string;
   additionalContext?: string;
+  trigger?: string;
+  narratorStyle?:
+    | "cinematic-second-person"
+    | "literary-third-person"
+    | "concise-second-person";
+  tempo?: "slow" | "medium" | "fast";
+  turnLength?: "short" | "medium" | "long";
+  pointOfView?: "second-person" | "limited-third-person";
+  contentLimits?: string;
 }
 
 export interface StartingInventoryEntry {
   itemId: string;
   quantity: number;
+  owner?: string;
+  place?: string;
 }
 
 export interface LorebookRef {
@@ -271,6 +297,55 @@ export interface ContextTelemetry {
   omissions: string[];
   toolCalls: number;
   repairs: number;
+  trace?: AgentTrace;
+}
+
+export type AgentTraceFinishReason =
+  "stop" | "length" | "content-filter" | "tool-calls" | "error" | "other";
+
+export type AgentTraceCacheReason =
+  | "disabled"
+  | "unsupported_provider"
+  | "unsupported_model"
+  | "repair"
+  | "provider_rejected"
+  | "capacity"
+  | "busy";
+
+export type AgentTraceEvent =
+  | {
+      kind: "model";
+      elapsedMs: number;
+      attempt: number;
+      phase: "initial" | "repair";
+      status: "started" | "succeeded" | "failed";
+      finishReason: AgentTraceFinishReason | null;
+    }
+  | {
+      kind: "tool";
+      elapsedMs: number;
+      name: string;
+      status: "succeeded" | "failed";
+      resultChars: number | null;
+    }
+  | {
+      kind: "validation";
+      elapsedMs: number;
+      status: "accepted" | "rejected";
+    }
+  | { kind: "repair"; elapsedMs: number }
+  | {
+      kind: "cache";
+      elapsedMs: number;
+      operation: "create" | "reuse" | "bypass" | "invalidate";
+      status: "succeeded" | "failed";
+      reason: AgentTraceCacheReason | null;
+      tokenCount: number | null;
+    };
+
+export interface AgentTrace {
+  events: AgentTraceEvent[];
+  dropped: number;
 }
 
 export type MessageVisibility = "public" | "private";
@@ -282,9 +357,13 @@ export interface GameDefinition {
   genre?: string;
   tone?: string;
   language?: string;
+  ageRating?: "all-ages" | "teen-13-plus" | "adult-18-plus";
+
   scenario: Scenario;
   attributes: AttributeDefinition[];
   resources: ResourceDefinition[];
+  relationshipParties?: RelationshipPartyDefinition[];
+
   relationships: RelationshipDefinition[];
   items: ItemDefinition[];
   player: PlayerDefinition;
@@ -322,6 +401,8 @@ export interface Fact {
 export interface InventoryEntry {
   itemId: string;
   quantity: number;
+  owner?: string;
+  place?: string;
 }
 
 export interface RelationshipState {
@@ -352,6 +433,8 @@ export interface GameSession {
   ai: AiConfig;
   nextSequence: number;
   updatedAt: string;
+  name?: string;
+  pinned?: boolean;
   worldMap?: WorldMap;
   lorebookRefs?: LorebookRef[];
 }

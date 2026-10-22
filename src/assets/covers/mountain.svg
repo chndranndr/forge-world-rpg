@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="125 0 1350 900" role="img" aria-label="Lembah pegunungan berkabut dengan jalan setapak">
+  <defs>
+    <linearGradient id="msky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8fa0a4"/>
+      <stop offset=".5" stop-color="#c3c8c3"/>
+      <stop offset="1" stop-color="#e8e3d6"/>
+    </linearGradient>
+    <linearGradient id="far" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#697b80"/>
+      <stop offset="1" stop-color="#879497"/>
+    </linearGradient>
+    <linearGradient id="mid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#455a5b"/>
+      <stop offset="1" stop-color="#5d7170"/>
+    </linearGradient>
+    <linearGradient id="near" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#243a38"/>
+      <stop offset="1" stop-color="#142625"/>
+    </linearGradient>
+    <filter id="blur"><feGaussianBlur stdDeviation="24"/></filter>
+    <filter id="blur2"><feGaussianBlur stdDeviation="7"/></filter>
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="3" stitchTiles="stitch"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feComponentTransfer><feFuncA type="linear" slope=".13"/></feComponentTransfer>
+    </filter>
+  </defs>
+  <rect width="1600" height="900" fill="url(#msky)"/>
+  <circle cx="410" cy="240" r="120" fill="#f5efdd" opacity=".35" filter="url(#blur)"/>
+  <path d="M0 520 L180 360 L300 440 L460 300 L640 470 L800 360 L980 500 L1140 330 L1300 450 L1450 350 L1600 480 L1600 640 L0 640 Z" fill="url(#far)" opacity=".7"/>
+  <path d="M0 610 L170 470 L300 540 L470 410 L620 560 L790 470 L980 600 L1140 430 L1320 570 L1480 470 L1600 570 L1600 700 L0 700 Z" fill="url(#mid)"/>
+  <path d="M440 312 L470 410 L420 394 Z" fill="#dfe2da" opacity=".55"/>
+  <path d="M1110 342 L1140 430 L1090 412 Z" fill="#dfe2da" opacity=".5"/>
+  <path d="M760 376 L790 470 L742 452 Z" fill="#dfe2da" opacity=".4"/>
+  <ellipse cx="820" cy="590" rx="760" ry="90" fill="#d9ddd5" opacity=".28" filter="url(#blur)"/>
+  <path d="M0 720 q220 -70 430 -24 q220 48 420 -8 q260 -64 500 12 L1600 900 L0 900 Z" fill="url(#near)"/>
+  <path d="M690 900 q40 -120 120 -190 q70 -62 100 -104 l34 20 q-34 52 -86 116 q-60 74 -74 158 Z" fill="#5b5140" opacity=".75"/>
+  <g stroke="#7d8a83" stroke-width="3" opacity=".5" fill="none">
+    <path d="M60 760 q180 -46 360 -10"/><path d="M1180 746 q170 -34 360 12"/>
+  </g>
+  <g fill="#0d1d1b">
+    <path d="M170 900 L190 698 L214 698 L226 900 Z"/><path d="M300 900 L318 726 L342 726 L352 900 Z"/>
+    <path d="M1320 900 L1340 706 L1362 706 L1374 900 Z"/><path d="M1450 900 L1468 730 L1490 730 L1500 900 Z"/>
+  </g>
+  <ellipse cx="810" cy="720" rx="460" ry="40" fill="#cbd4cc" opacity=".18" filter="url(#blur2)"/>
+  <rect width="1600" height="900" filter="url(#grain)" opacity=".5"/>
+  <rect x="125" width="1350" height="900" fill="none" stroke="#14201f" stroke-width="42" opacity=".22"/>
+</svg>

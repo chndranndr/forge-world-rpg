@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { copyFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -43,6 +44,33 @@ function withDb(t, prefix = "fworld-upgrade-storage-") {
     databasePath,
     track: (instance) => instances.push(instance),
   };
+}
+
+function recordSimpleRun(db, sessionId, requestId) {
+  const session = db.getSession(sessionId);
+  db.startRun({
+    sessionId,
+    requestId,
+    inputHash: `hash-${requestId}`,
+    expectedRevision: session.revision,
+  });
+  const now = new Date().toISOString();
+  const message = {
+    id: randomUUID(),
+    sessionId,
+    turnId: randomUUID(),
+    sequence: session.nextSequence,
+    role: "NARRATOR",
+    content: "Committed.",
+    visibility: "private",
+    knownBy: ["player"],
+    createdAt: now,
+  };
+  db.commitRun(sessionId, requestId, {
+    state: session.state,
+    messages: [message],
+    result: { messages: [message] },
+  });
 }
 
 function definition(id = "upgrade-game") {
@@ -1388,7 +1416,7 @@ function createV2Database(path) {
   raw.close();
 }
 
-test("populated schema-2 data migrates to schema 3 and accepts custom ledger and bindings", (t) => {
+test("populated schema-2 data migrates to schema 5 and accepts custom ledger and bindings", (t) => {
   const directory = mkdtempSync(join(tmpdir(), "fworld-v2-upgrade-"));
   const databasePath = join(directory, "legacy-v2.sqlite");
   createV2Database(databasePath);
@@ -1404,11 +1432,16 @@ test("populated schema-2 data migrates to schema 3 and accepts custom ledger and
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
     .all()
     .map((row) => row.name);
+  const telemetryColumns = raw
+    .prepare("PRAGMA table_info(context_telemetry)")
+    .all()
+    .map((row) => row.name);
   raw.close();
-  assert.equal(version, 3);
+  assert.equal(version, 5);
   assert.ok(tableNames.includes("ai_credentials"));
   assert.ok(tableNames.includes("ai_profiles"));
   assert.ok(tableNames.includes("session_ai_bindings"));
+  assert.ok(telemetryColumns.includes("trace_json"));
 
   assert.equal(
     db.getHistory("legacy-v2-session")[0].content,
@@ -1533,6 +1566,298 @@ test("v2 backups migrate through staging and invalid bindings are rejected befor
   );
 });
 
+test("context telemetry keeps bounded traces, normalizes empty ones, and rejects unsafe shapes", (t) => {
+  const { db } = withDb(t, "fworld-trace-");
+  db.startSessionForDefinition({
+    definition: definition("trace-game"),
+    ai: { provider: "gemini", model: "gemini-test" },
+    sessionId: "trace-session",
+  });
+  for (const requestId of ["trace-1", "trace-2", "trace-3", "trace-4"]) {
+    recordSimpleRun(db, "trace-session", requestId);
+  }
+  const base = {
+    contextChars: 120,
+    approximateTokens: 30,
+    tokenEstimateMethod: "test",
+    sections: {},
+    selectedLoreIds: [],
+    omissions: [],
+    toolCalls: 0,
+    repairs: 0,
+  };
+  db.saveContextTelemetry("trace-session", "trace-1", base);
+  assert.equal(
+    Object.hasOwn(db.getContextTelemetry("trace-session", "trace-1"), "trace"),
+    false,
+  );
+
+  const traced = {
+    ...base,
+    trace: {
+      dropped: 2,
+      events: [
+        {
+          kind: "model",
+          elapsedMs: 1,
+          attempt: 1,
+          phase: "initial",
+          status: "started",
+          finishReason: null,
+        },
+        {
+          kind: "model",
+          elapsedMs: 2,
+          attempt: 1,
+          phase: "initial",
+          status: "succeeded",
+          finishReason: "stop",
+        },
+        {
+          kind: "tool",
+          elapsedMs: 3,
+          name: "search_memory",
+          status: "succeeded",
+          resultChars: 12,
+        },
+        { kind: "validation", elapsedMs: 4, status: "accepted" },
+        { kind: "repair", elapsedMs: 5 },
+        {
+          kind: "cache",
+          elapsedMs: 6,
+          operation: "bypass",
+          status: "succeeded",
+          reason: "disabled",
+          tokenCount: null,
+        },
+      ],
+    },
+  };
+  db.saveContextTelemetry("trace-session", "trace-2", traced);
+  db.saveContextTelemetry("trace-session", "trace-2", traced);
+  assert.deepEqual(db.getContextTelemetry("trace-session", "trace-2"), traced);
+  assert.throws(
+    () =>
+      db.saveContextTelemetry("trace-session", "trace-2", {
+        ...traced,
+        trace: { ...traced.trace, dropped: 3 },
+      }),
+    (error) => error.code === "CONFLICT",
+  );
+
+  db.saveContextTelemetry("trace-session", "trace-3", {
+    ...base,
+    trace: { events: [], dropped: 0 },
+  });
+  assert.equal(
+    Object.hasOwn(db.getContextTelemetry("trace-session", "trace-3"), "trace"),
+    false,
+  );
+  db.saveContextTelemetry("trace-session", "trace-4", {
+    ...base,
+    trace: { events: [], dropped: 3 },
+  });
+  assert.deepEqual(db.getContextTelemetry("trace-session", "trace-4").trace, {
+    events: [],
+    dropped: 3,
+  });
+
+  const unsafe = [
+    {
+      events: [
+        {
+          kind: "model",
+          elapsedMs: 0,
+          attempt: 1,
+          phase: "initial",
+          status: "started",
+          finishReason: "invented-reason",
+        },
+      ],
+      dropped: 0,
+    },
+    {
+      events: [
+        {
+          kind: "tool",
+          elapsedMs: 0,
+          name: "AIzaAAAAAAAAAAAAAAAAAAAAAAAA",
+          status: "succeeded",
+          resultChars: null,
+        },
+      ],
+      dropped: 0,
+    },
+    {
+      events: [
+        {
+          kind: "validation",
+          elapsedMs: 0,
+          status: "accepted",
+          extra: true,
+        },
+      ],
+      dropped: 0,
+    },
+    {
+      events: Array.from({ length: 129 }, () => ({
+        kind: "repair",
+        elapsedMs: 0,
+      })),
+      dropped: 0,
+    },
+    { events: "none", dropped: 0 },
+    { events: [], dropped: -1 },
+  ];
+  for (const trace of unsafe) {
+    assert.throws(
+      () =>
+        db.saveContextTelemetry("trace-session", "trace-1", {
+          ...base,
+          trace,
+        }),
+      (error) => error.code === "INVALID_INPUT",
+    );
+  }
+});
+
+test("missing trace columns are repaired without rewriting legacy telemetry", (t) => {
+  const { db, databasePath, track } = withDb(t, "fworld-trace-repair-");
+  db.startSessionForDefinition({
+    definition: definition("trace-repair-game"),
+    ai: { provider: "gemini", model: "gemini-test" },
+    sessionId: "trace-repair-session",
+  });
+  recordSimpleRun(db, "trace-repair-session", "trace-repair-run");
+  db.saveContextTelemetry("trace-repair-session", "trace-repair-run", {
+    contextChars: 10,
+    approximateTokens: 3,
+    tokenEstimateMethod: "test",
+    sections: {},
+    selectedLoreIds: [],
+    omissions: [],
+    toolCalls: 0,
+    repairs: 0,
+    trace: {
+      events: [{ kind: "validation", elapsedMs: 1, status: "rejected" }],
+      dropped: 0,
+    },
+  });
+  db.close();
+  const raw = new DatabaseSync(databasePath);
+  raw.exec(
+    "ALTER TABLE context_telemetry DROP COLUMN trace_json; PRAGMA user_version = 3;",
+  );
+  raw.close();
+  const reopened = new api.GameDatabase(databasePath);
+  track(reopened);
+  const inspect = new DatabaseSync(databasePath, { readOnly: true });
+  const columns = inspect
+    .prepare("PRAGMA table_info(context_telemetry)")
+    .all()
+    .map((row) => row.name);
+  const version = inspect.prepare("PRAGMA user_version").get().user_version;
+  inspect.close();
+  assert.equal(version, 5);
+  assert.ok(columns.includes("trace_json"));
+  assert.equal(reopened.getSession("trace-repair-session").name, undefined);
+  assert.equal(reopened.getSession("trace-repair-session").pinned, false);
+  assert.equal(
+    Object.hasOwn(
+      reopened.getContextTelemetry("trace-repair-session", "trace-repair-run"),
+      "trace",
+    ),
+    false,
+  );
+});
+
+test("v3 backups restore profiles, bindings, and ledger fields and add the trace column", async (t) => {
+  const { db, directory, track } = withDb(t, "fworld-v3-restore-");
+  const profile = db.createAiProfile({
+    name: "V3 profile",
+    provider: "gemini",
+    model: "gemini-test",
+    systemPrompt: "Prompt v3.",
+  });
+  db.startSessionForDefinition({
+    definition: definition("v3-restore-game"),
+    profileId: profile.id,
+    sessionId: "v3-restore-session",
+  });
+  const ledger = db.startAiRequest({
+    sessionId: "v3-restore-session",
+    kind: "connection_test",
+    attempt: 1,
+    provider: "gemini",
+    model: "gemini-test",
+  });
+  db.finishAiRequest(ledger.id, {
+    status: "succeeded",
+    usage: {
+      inputTokens: 10,
+      outputTokens: 4,
+      totalTokens: 14,
+      cachedInputTokens: 3,
+      reasoningTokens: 2,
+    },
+    latencyMs: 12,
+    finishReason: "stop",
+  });
+  const originalSession = db.getSession("v3-restore-session");
+  const sourcePath = join(directory, "v3-source.sqlite");
+  await db.backupTo(sourcePath);
+  db.close();
+  const raw = new DatabaseSync(sourcePath);
+  raw.exec(
+    "ALTER TABLE context_telemetry DROP COLUMN trace_json; PRAGMA user_version = 3;",
+  );
+  raw.close();
+  const restored = await api.GameDatabase.restoreFrom(
+    sourcePath,
+    join(directory, "v3-restored.sqlite"),
+  );
+  track(restored);
+  const restoredSession = restored.getSession("v3-restore-session");
+  assert.deepEqual(restoredSession.state, originalSession.state);
+  assert.equal(restoredSession.ai.provider, "gemini");
+  assert.equal(restoredSession.ai.model, "gemini-test");
+  assert.equal(restoredSession.nextSequence, originalSession.nextSequence);
+  assert.deepEqual(
+    restored.listAiProfiles().map((entry) => entry.name),
+    ["V3 profile"],
+  );
+  assert.equal(
+    restored.getSessionAiBinding("v3-restore-session").profileId,
+    profile.id,
+  );
+  const inspect = new DatabaseSync(join(directory, "v3-restored.sqlite"), {
+    readOnly: true,
+  });
+  const version = inspect.prepare("PRAGMA user_version").get().user_version;
+  const columns = inspect
+    .prepare("PRAGMA table_info(context_telemetry)")
+    .all()
+    .map((row) => row.name);
+  const ledgerRow = inspect
+    .prepare(
+      `SELECT cached_input_tokens, reasoning_tokens, finish_reason, status
+       FROM ai_requests WHERE id = ?`,
+    )
+    .get(ledger.id);
+  inspect.close();
+  assert.equal(version, 5);
+  assert.ok(columns.includes("trace_json"));
+  assert.deepEqual(
+    { ...ledgerRow },
+    {
+      cached_input_tokens: 3,
+      reasoning_tokens: 2,
+      finish_reason: "stop",
+      status: "succeeded",
+    },
+  );
+});
+
 test("SQLite backups carry profile metadata but never credential tokens", async (t) => {
   const { db, directory } = withDb(t, "fworld-profile-backup-");
   const profile = db.createAiProfile({
@@ -1564,4 +1889,109 @@ test("SQLite backups carry profile metadata but never credential tokens", async 
   raw.close();
   assert.deepEqual(profileNames, ["Backup custom"]);
   assert.equal(bindingCount, 1);
+});
+test("v4 databases migrate to v5 with legacy session metadata defaults", (t) => {
+  const { db, databasePath, track } = withDb(t, "fworld-v4-v5-");
+  start(db, definition("v4-session-metadata"), "v4-session");
+  db.close();
+  const raw = new DatabaseSync(databasePath);
+  raw.exec(`
+    PRAGMA foreign_keys = OFF;
+    BEGIN IMMEDIATE;
+    CREATE TABLE sessions_v4 (
+      id TEXT PRIMARY KEY NOT NULL,
+      game_id TEXT NOT NULL REFERENCES games(id) ON DELETE RESTRICT,
+      definition_snapshot_json TEXT NOT NULL CHECK (json_valid(definition_snapshot_json)),
+      state_json TEXT NOT NULL CHECK (json_valid(state_json)),
+      ai_json TEXT NOT NULL CHECK (json_valid(ai_json)),
+      next_sequence INTEGER NOT NULL CHECK (next_sequence >= 0),
+      revision INTEGER NOT NULL CHECK (revision > 0),
+      updated_at TEXT NOT NULL,
+      world_map_json TEXT CHECK (world_map_json IS NULL OR json_valid(world_map_json)),
+      lore_refs_json TEXT CHECK (lore_refs_json IS NULL OR json_valid(lore_refs_json))
+    ) STRICT;
+    INSERT INTO sessions_v4(
+      id, game_id, definition_snapshot_json, state_json, ai_json,
+      next_sequence, revision, updated_at, world_map_json, lore_refs_json
+    )
+    SELECT
+      id, game_id, definition_snapshot_json, state_json, ai_json,
+      next_sequence, revision, updated_at, world_map_json, lore_refs_json
+    FROM sessions;
+    DROP TABLE sessions;
+    ALTER TABLE sessions_v4 RENAME TO sessions;
+    DROP TABLE saved_templates;
+    PRAGMA user_version = 4;
+    COMMIT;
+    PRAGMA foreign_keys = ON;
+  `);
+  raw.close();
+
+  const upgraded = new api.GameDatabase(databasePath);
+  track(upgraded);
+  const session = upgraded.getSession("v4-session");
+  assert.equal(session.name, undefined);
+  assert.equal(session.pinned, false);
+  const inspect = new DatabaseSync(databasePath, { readOnly: true });
+  assert.equal(inspect.prepare("PRAGMA user_version").get().user_version, 5);
+  assert.ok(
+    inspect
+      .prepare("PRAGMA table_info(sessions)")
+      .all()
+      .some((column) => column.name === "name"),
+  );
+  assert.ok(
+    inspect
+      .prepare("PRAGMA table_info(sessions)")
+      .all()
+      .some((column) => column.name === "pinned"),
+  );
+  assert.ok(
+    inspect
+      .prepare("SELECT name FROM sqlite_master WHERE name = 'saved_templates'")
+      .get(),
+  );
+  inspect.close();
+});
+
+test("v5 reopen and staged restore preserve session metadata and saved templates", async (t) => {
+  const { db, databasePath, directory, track } = withDb(
+    t,
+    "fworld-v5-template-restore-",
+  );
+  const started = start(db, definition("v5-metadata-game"), "v5-session");
+  const metadata = db.updateSessionMetadata("v5-session", {
+    name: "  Saved session  ",
+    pinned: true,
+  });
+  assert.equal(metadata.name, "Saved session");
+  const template = db.saveTemplate("v5-metadata-game", started.game.revision);
+  db.close();
+
+  const reopened = new api.GameDatabase(databasePath);
+  track(reopened);
+  assert.equal(reopened.getSession("v5-session").name, "Saved session");
+  assert.equal(reopened.getSession("v5-session").pinned, true);
+  assert.equal(reopened.getTemplate(template.id).game.title, "Lantern Cafe");
+
+  const backupPath = join(directory, "v5-backup.sqlite");
+  await reopened.backupTo(backupPath);
+  const restorePath = join(directory, "restored-v5.sqlite");
+  const restored = await api.GameDatabase.restoreFrom(backupPath, restorePath);
+  track(restored);
+  assert.equal(restored.getSession("v5-session").name, "Saved session");
+  assert.equal(restored.getSession("v5-session").pinned, true);
+  assert.deepEqual(restored.listTemplates(), [template]);
+
+  const invalidBackup = join(directory, "invalid-template-backup.sqlite");
+  copyFileSync(backupPath, invalidBackup);
+  const raw = new DatabaseSync(invalidBackup);
+  raw.prepare("UPDATE saved_templates SET bundle_json = ?").run("{}");
+  raw.close();
+  await assert.rejects(
+    api.GameDatabase.restoreFrom(invalidBackup, restorePath),
+    (error) => error.code === "CORRUPT_DATABASE",
+  );
+  assert.equal(restored.getSession("v5-session").name, "Saved session");
+  assert.deepEqual(restored.listTemplates(), [template]);
 });

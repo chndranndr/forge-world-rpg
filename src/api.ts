@@ -15,6 +15,7 @@ import type {
   LorePackHeader,
   Message,
   NpcDefinition,
+  RelationshipPartyDefinition,
   SessionState,
   WorldLocation,
   WorldState,
@@ -44,18 +45,35 @@ export type PlayerItemEffect = Exclude<
 export type PlayerItem = Omit<ItemDefinition, "effects"> & {
   effects: PlayerItemEffect[];
 };
-export type PlayerGameDefinition = Pick<
-  GameDefinition,
-  | "id"
-  | "title"
-  | "genre"
-  | "attributes"
-  | "resources"
-  | "relationships"
-  | "player"
-  | "startingInventory"
-  | "updatedAt"
-> & { items: PlayerItem[]; npcs: PlayerNpc[] };
+export type PlayerRelationshipParty = Omit<
+  RelationshipPartyDefinition,
+  "secret"
+>;
+export type PlayerGameDefinition = Omit<
+  Pick<
+    GameDefinition,
+    | "id"
+    | "title"
+    | "description"
+    | "genre"
+    | "tone"
+    | "language"
+    | "ageRating"
+    | "relationshipParties"
+    | "attributes"
+    | "resources"
+    | "relationships"
+    | "player"
+    | "startingInventory"
+    | "lorebookRefs"
+    | "updatedAt"
+  >,
+  "relationshipParties"
+> & {
+  relationshipParties?: PlayerRelationshipParty[];
+  items: PlayerItem[];
+  npcs: PlayerNpc[];
+};
 export type PlayerFact = Omit<Fact, "knownBy" | "revealableTo">;
 export type PlayerWorldState = Omit<
   WorldState,
@@ -76,6 +94,19 @@ export type PlayerSession = Omit<
   state: PlayerSessionState;
 };
 export type SessionRecord = Versioned<PlayerSession>;
+export type SessionSummaryRecord = SessionRecord & {
+  turnCount: number;
+  excerpt: string | null;
+};
+export interface SessionMetadataPatch {
+  name?: string | null;
+  pinned?: boolean;
+}
+export interface SavedTemplateRecord {
+  id: string;
+  title: string;
+  createdAt: string;
+}
 export type PlayerMessage = Omit<Message, "knownBy">;
 export type PlayerLoreEntry = Pick<
   LoreEntry,
@@ -283,8 +314,17 @@ export function deleteGame(
     json("DELETE", { expectedRevision }),
   );
 }
+export function duplicateGame(
+  id: string,
+  expectedRevision: number,
+): Promise<GameRecord> {
+  return api(
+    `/games/${encodeURIComponent(id)}/duplicate`,
+    json("POST", { expectedRevision }),
+  );
+}
 
-export function listSessions(gameId: string): Promise<SessionRecord[]> {
+export function listSessions(gameId: string): Promise<SessionSummaryRecord[]> {
   return api(`/games/${encodeURIComponent(gameId)}/sessions`);
 }
 
@@ -300,9 +340,47 @@ export function startSession(
   );
 }
 
-export function getSession(id: string): Promise<SessionRecord> {
+export function startSavedSession(
+  gameId: string,
+  expectedGameRevision: number,
+  source:
+    { ai: AiConfig; profileId?: never } | { profileId: string; ai?: never },
+  name?: string,
+): Promise<SessionRecord> {
+  return api(
+    `/games/${encodeURIComponent(gameId)}/sessions`,
+    json("POST", {
+      expectedGameRevision,
+      ...(name === undefined ? {} : { name }),
+      ...source,
+    }),
+  );
+}
+
+export function getSession(id: string): Promise<SessionSummaryRecord> {
   return api(`/sessions/${encodeURIComponent(id)}`);
 }
+
+export function updateSessionMetadata(
+  id: string,
+  patch: SessionMetadataPatch,
+): Promise<SessionRecord> {
+  return api(
+    `/sessions/${encodeURIComponent(id)}/metadata`,
+    json("PUT", patch),
+  );
+}
+
+export function deleteSession(
+  id: string,
+  expectedRevision: number,
+): Promise<void> {
+  return api(
+    `/sessions/${encodeURIComponent(id)}`,
+    json("DELETE", { expectedRevision }),
+  );
+}
+
 export function getSessionWorld(sessionId: string): Promise<SessionWorldView> {
   return api(`/sessions/${encodeURIComponent(sessionId)}/world`);
 }
@@ -456,6 +534,20 @@ export function exportGameTemplate(
   gameId: string,
 ): Promise<GameTemplateBundle> {
   return api(`/games/${encodeURIComponent(gameId)}/template`);
+}
+export function saveGameTemplate(
+  gameId: string,
+  expectedGameRevision: number,
+): Promise<SavedTemplateRecord> {
+  return api("/templates", json("POST", { gameId, expectedGameRevision }));
+}
+
+export function listSavedTemplates(): Promise<SavedTemplateRecord[]> {
+  return api("/templates");
+}
+
+export function getSavedTemplate(id: string): Promise<GameTemplateBundle> {
+  return api(`/templates/${encodeURIComponent(id)}`);
 }
 
 export interface AiSettings {

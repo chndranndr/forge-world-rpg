@@ -299,6 +299,17 @@ test("HTTP lore routes validate, paginate, preview, pin exact versions, and isol
   });
   assert.equal(oversized.status, 413);
   assert.equal((await oversized.json()).code, "PAYLOAD_TOO_LARGE");
+  const partySecret = "A brass marker appears at low tide.";
+  definition.ageRating = "teen-13-plus";
+  definition.relationshipParties = [
+    {
+      id: "harbor-circle",
+      name: "Harbor Circle",
+      type: "community",
+      initialStance: "wary",
+      secret: partySecret,
+    },
+  ];
 
   const startedResponse = await fetch(
     `${base}/sessions/start`,
@@ -315,6 +326,26 @@ test("HTTP lore routes validate, paginate, preview, pin exact versions, and isol
   const started = await startedResponse.json();
   const sessionId = started.session.value.id;
   assert.deepEqual(started.session.value.lorebookRefs, definition.lorebookRefs);
+  assert.equal(
+    started.session.value.definitionSnapshot.ageRating,
+    "teen-13-plus",
+  );
+  assert.deepEqual(
+    started.session.value.definitionSnapshot.relationshipParties,
+    [
+      {
+        id: "harbor-circle",
+        name: "Harbor Circle",
+        type: "community",
+        initialStance: "wary",
+      },
+    ],
+  );
+  assert.equal(
+    database.getSession(sessionId).definitionSnapshot.relationshipParties[0]
+      .secret,
+    partySecret,
+  );
   assert.equal(Object.hasOwn(started.session.value, "worldMap"), false);
   assert.equal(
     Object.hasOwn(started.session.value.definitionSnapshot, "worldMap"),
@@ -479,6 +510,7 @@ test("HTTP lore routes validate, paginate, preview, pin exact versions, and isol
   );
   assert.equal(Object.hasOwn(world, "flags"), false);
   assert.ok(!JSON.stringify(world).includes("yard-open"));
+  assert.equal(JSON.stringify(world).includes(partySecret), false);
 
   const gateResult = engineApi.applyEffects(
     rawSession.definitionSnapshot,
@@ -664,4 +696,388 @@ test("HTTP lore routes validate, paginate, preview, pin exact versions, and isol
     "LORE_DEPENDENCY_MISSING",
   );
   assert.equal(emptyRef.current.listGames().length, 0);
+});
+test("session management routes start saved worlds, persist metadata, duplicate worlds, and summarize visible turns", async (t) => {
+  const { base, database, json } = await openApi(t);
+  database.importLorebook(lorebook);
+  const profile = database.createAiProfile({
+    name: "Saved start profile",
+    provider: "gemini",
+    model: "gemini-test",
+    systemPrompt: "A test narrator.",
+  });
+  const definition = loreGame("session-management-game");
+  const createResponse = await fetch(
+    `${base}/games`,
+    json("POST", { definition }),
+  );
+  assert.equal(createResponse.status, 201);
+  const created = await createResponse.json();
+
+  const savedStartResponse = await fetch(
+    `${base}/games/${definition.id}/sessions`,
+    json("POST", {
+      expectedGameRevision: created.revision,
+      name: "  Coastal letter  ",
+      profileId: profile.id,
+    }),
+  );
+  assert.equal(savedStartResponse.status, 201);
+  const started = await savedStartResponse.json();
+  const sessionId = started.value.id;
+  assert.equal(started.value.name, "Coastal letter");
+  assert.equal(started.value.pinned, false);
+  assert.equal(started.revision, 1);
+  assert.deepEqual(
+    started.value.definitionSnapshot.lorebookRefs,
+    definition.lorebookRefs,
+  );
+  const draftStartResponse = await fetch(
+    `${base}/sessions/start`,
+    json("POST", {
+      definition: plainGame("draft-name-game"),
+      ai: { provider: "gemini", model: "gemini-test" },
+      name: "  Draft named  ",
+    }),
+  );
+  assert.equal(draftStartResponse.status, 201);
+  assert.equal(
+    (await draftStartResponse.json()).session.value.name,
+    "Draft named",
+  );
+
+  const invalidStart = await fetch(
+    `${base}/games/${definition.id}/sessions`,
+    json("POST", {
+      expectedGameRevision: created.revision,
+      ai: { provider: "gemini", model: "gemini-test" },
+      profileId: profile.id,
+    }),
+  );
+  assert.equal(invalidStart.status, 400);
+  assert.equal(database.listSessions(definition.id).length, 1);
+  const customStart = await fetch(
+    `${base}/games/${definition.id}/sessions`,
+    json("POST", {
+      expectedGameRevision: created.revision,
+      ai: { provider: "custom", model: "custom-test" },
+    }),
+  );
+  assert.equal(customStart.status, 400);
+  assert.equal((await customStart.json()).code, "AI_PROFILE_REQUIRED");
+  const staleStart = await fetch(
+    `${base}/games/${definition.id}/sessions`,
+    json("POST", {
+      expectedGameRevision: created.revision + 1,
+      ai: { provider: "gemini", model: "gemini-test" },
+    }),
+  );
+  assert.equal(staleStart.status, 409);
+  const missingProfile = await fetch(
+    `${base}/games/${definition.id}/sessions`,
+    json("POST", {
+      expectedGameRevision: created.revision,
+      profileId: "missing-profile",
+    }),
+  );
+  assert.equal(missingProfile.status, 404);
+  assert.equal(database.listSessions(definition.id).length, 1);
+  assert.equal(database.getGame(definition.id).revision, created.revision);
+
+  const initialSummary = await fetch(
+    `${base}/games/${definition.id}/sessions`,
+    { headers: { Origin: "http://127.0.0.1:5173" } },
+  );
+  assert.equal(initialSummary.status, 200);
+  const [initialRecord] = await initialSummary.json();
+  assert.equal(initialRecord.turnCount, 0);
+  assert.equal(initialRecord.excerpt, null);
+  const emptyMetadata = await fetch(
+    `${base}/sessions/${sessionId}/metadata`,
+    json("PUT", {}),
+  );
+  assert.equal(emptyMetadata.status, 400);
+  const unknownMetadata = await fetch(
+    `${base}/sessions/${sessionId}/metadata`,
+    json("PUT", { title: "unsupported" }),
+  );
+  assert.equal(unknownMetadata.status, 400);
+  for (const metadata of [{ name: 7 }, { pinned: "true" }]) {
+    const invalidMetadata = await fetch(
+      `${base}/sessions/${sessionId}/metadata`,
+      json("PUT", metadata),
+    );
+    assert.equal(invalidMetadata.status, 400);
+  }
+
+  const beforeRun = database.getSession(sessionId);
+  database.startRun({
+    sessionId,
+    requestId: "summary-run",
+    inputHash: "summary-run",
+    expectedRevision: beforeRun.revision,
+  });
+  const metadataResponse = await fetch(
+    `${base}/sessions/${sessionId}/metadata`,
+    json("PUT", { name: "  During run  ", pinned: true }),
+  );
+  assert.equal(metadataResponse.status, 200);
+  const updatedMetadata = await metadataResponse.json();
+  assert.equal(updatedMetadata.value.name, "During run");
+  assert.equal(updatedMetadata.value.pinned, true);
+  assert.equal(updatedMetadata.revision, beforeRun.revision);
+  assert.equal(updatedMetadata.value.updatedAt, beforeRun.updatedAt);
+
+  const createdAt = new Date().toISOString();
+  const messages = [
+    {
+      id: "summary-player",
+      sessionId,
+      turnId: "player-action",
+      sequence: 0,
+      role: "PLAYER",
+      content: "I read the note.",
+      visibility: "public",
+      createdAt,
+    },
+    {
+      id: "summary-event",
+      sessionId,
+      turnId: "player-action",
+      sequence: 1,
+      role: "SYSTEM_EVENT",
+      content: "The note is opened.",
+      visibility: "public",
+      createdAt,
+    },
+    {
+      id: "summary-narrator",
+      sessionId,
+      turnId: "player-action",
+      sequence: 2,
+      role: "NARRATOR",
+      content: "🍋".repeat(61),
+      visibility: "public",
+      createdAt,
+    },
+    {
+      id: "summary-hidden-player",
+      sessionId,
+      turnId: "private-action",
+      sequence: 3,
+      role: "PLAYER",
+      content: "not shared",
+      visibility: "private",
+      knownBy: [],
+      createdAt,
+    },
+    {
+      id: "summary-visible-player",
+      sessionId,
+      turnId: "visible-private-action",
+      sequence: 4,
+      role: "PLAYER",
+      content: "shared with player",
+      visibility: "private",
+      knownBy: ["player"],
+      createdAt,
+    },
+    {
+      id: "summary-hidden-narrator",
+      sessionId,
+      turnId: "npc-secret",
+      sequence: 5,
+      role: "NARRATOR",
+      content: "Private to Aiko.",
+      visibility: "private",
+      knownBy: [definition.npcs[0].id],
+      createdAt,
+    },
+  ];
+  database.commitRun(sessionId, "summary-run", {
+    state: beforeRun.state,
+    messages,
+    result: { ok: true },
+  });
+  const getResponse = await fetch(`${base}/sessions/${sessionId}`, {
+    headers: { Origin: "http://127.0.0.1:5173" },
+  });
+  assert.equal(getResponse.status, 200);
+  const record = await getResponse.json();
+  assert.equal(record.turnCount, 2);
+  assert.equal(Buffer.byteLength(record.excerpt, "utf8"), 240);
+  assert.equal(record.excerpt, "🍋".repeat(60));
+  assert.equal(JSON.stringify(record).includes("Private to Aiko."), false);
+  const listedSummary = await fetch(`${base}/games/${definition.id}/sessions`, {
+    headers: { Origin: "http://127.0.0.1:5173" },
+  });
+  const [listedRecord] = await listedSummary.json();
+  assert.equal(listedRecord.turnCount, 2);
+  assert.equal(listedRecord.excerpt, "🍋".repeat(60));
+  assert.equal(
+    Object.hasOwn(database.getSession(sessionId), "turnCount"),
+    false,
+  );
+  assert.equal(
+    Object.hasOwn(database.exportSave(sessionId).session, "turnCount"),
+    false,
+  );
+
+  const current = database.getSession(sessionId);
+  database.startRun({
+    sessionId,
+    requestId: "opening-only",
+    inputHash: "opening-only",
+    expectedRevision: current.revision,
+    kind: "opening",
+  });
+  database.commitRun(sessionId, "opening-only", {
+    state: current.state,
+    messages: [
+      {
+        id: "opening-message",
+        sessionId,
+        turnId: "opening-only",
+        sequence: current.nextSequence,
+        role: "NARRATOR",
+        content: "A quiet opening.",
+        visibility: "public",
+        createdAt,
+      },
+    ],
+    result: { ok: true },
+  });
+  const afterOpening = database.sessionSummary(sessionId);
+  assert.equal(afterOpening.turnCount, 2);
+  assert.equal(afterOpening.excerpt, "A quiet opening.");
+  const choiceState = database.getSession(sessionId);
+  database.startRun({
+    sessionId,
+    requestId: "choice-only",
+    inputHash: "choice-only",
+    expectedRevision: choiceState.revision,
+    kind: "choices",
+  });
+  database.completeReadOnlyRun(sessionId, "choice-only", { choices: [] });
+  database.startRun({
+    sessionId,
+    requestId: "failed-opening",
+    inputHash: "failed-opening",
+    expectedRevision: choiceState.revision,
+    kind: "opening",
+  });
+  database.failRun(sessionId, "failed-opening", { code: "MODEL_ERROR" });
+  assert.equal(database.sessionSummary(sessionId).turnCount, 2);
+  const clearName = await fetch(
+    `${base}/sessions/${sessionId}/metadata`,
+    json("PUT", { name: null }),
+  );
+  assert.equal(clearName.status, 200);
+  const clearedMetadata = await clearName.json();
+  assert.equal(clearedMetadata.value.name, undefined);
+  assert.equal(clearedMetadata.value.pinned, true);
+
+  const duplicateResponse = await fetch(
+    `${base}/games/${definition.id}/duplicate`,
+    json("POST", { expectedRevision: created.revision }),
+  );
+  assert.equal(duplicateResponse.status, 201);
+  const duplicate = await duplicateResponse.json();
+  assert.notEqual(duplicate.value.id, definition.id);
+  assert.equal(duplicate.revision, 1);
+  assert.equal(duplicate.value.title, `${definition.title} — salinan`);
+  assert.deepEqual(duplicate.value.lorebookRefs, created.value.lorebookRefs);
+  for (const collection of [
+    "attributes",
+    "resources",
+    "relationships",
+    "items",
+    "npcs",
+  ]) {
+    assert.deepEqual(
+      duplicate.value[collection].map((entry) => entry.id),
+      created.value[collection].map((entry) => entry.id),
+    );
+  }
+  const duplicateSessions = await fetch(
+    `${base}/games/${duplicate.value.id}/sessions`,
+    { headers: { Origin: "http://127.0.0.1:5173" } },
+  );
+  assert.deepEqual(await duplicateSessions.json(), []);
+
+  const staleTemplate = await fetch(
+    `${base}/templates`,
+    json("POST", {
+      gameId: definition.id,
+      expectedGameRevision: created.revision + 1,
+    }),
+  );
+  assert.equal(staleTemplate.status, 409);
+  const templatesAfterStaleSave = await fetch(`${base}/templates`, {
+    headers: { Origin: "http://127.0.0.1:5173" },
+  });
+  assert.deepEqual(await templatesAfterStaleSave.json(), []);
+  const templateResponse = await fetch(
+    `${base}/templates`,
+    json("POST", {
+      gameId: definition.id,
+      expectedGameRevision: created.revision,
+    }),
+  );
+  assert.equal(templateResponse.status, 201);
+  const template = await templateResponse.json();
+  const templateBundleResponse = await fetch(
+    `${base}/templates/${template.id}`,
+    { headers: { Origin: "http://127.0.0.1:5173" } },
+  );
+  assert.equal(templateBundleResponse.status, 200);
+  const templateBundle = await templateBundleResponse.json();
+  assert.deepEqual(templateBundle.game.lorebookRefs, definition.lorebookRefs);
+  assert.equal(Object.hasOwn(templateBundle, "ai"), false);
+  assert.equal(JSON.stringify(templateBundle).includes(profile.id), false);
+  const templateListResponse = await fetch(`${base}/templates`, {
+    headers: { Origin: "http://127.0.0.1:5173" },
+  });
+  assert.deepEqual(await templateListResponse.json(), [template]);
+
+  const staleDelete = await fetch(
+    `${base}/sessions/${sessionId}`,
+    json("DELETE", { expectedRevision: 1 }),
+  );
+  assert.equal(staleDelete.status, 409);
+  const active = database.getSession(sessionId);
+  database.startRun({
+    sessionId,
+    requestId: "delete-active",
+    inputHash: "delete-active",
+    expectedRevision: active.revision,
+  });
+  const runningDelete = await fetch(
+    `${base}/sessions/${sessionId}`,
+    json("DELETE", { expectedRevision: active.revision }),
+  );
+  assert.equal(runningDelete.status, 409);
+  assert.equal((await runningDelete.json()).code, "RUN_IN_PROGRESS");
+  database.failRun(sessionId, "delete-active", { code: "CANCELLED" });
+  const deleteResponse = await fetch(
+    `${base}/sessions/${sessionId}`,
+    json("DELETE", { expectedRevision: active.revision }),
+  );
+  assert.equal(deleteResponse.status, 204);
+  assert.equal(database.getSession(sessionId), undefined);
+  assert.equal(database.getSessionAiBinding(sessionId), undefined);
+
+  const deleteGameResponse = await fetch(
+    `${base}/games/${definition.id}`,
+    json("DELETE", { expectedRevision: created.revision }),
+  );
+  assert.equal(deleteGameResponse.status, 204);
+  const survivingTemplate = await fetch(`${base}/templates/${template.id}`, {
+    headers: { Origin: "http://127.0.0.1:5173" },
+  });
+  assert.equal(survivingTemplate.status, 200);
+  const health = await fetch(`${base}/health`, {
+    headers: { Origin: "http://127.0.0.1:5173" },
+  });
+  assert.equal((await health.json()).schemaVersion, 5);
 });

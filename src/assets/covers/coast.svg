@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="125 0 1350 900" role="img" aria-label="Senja di pesisir dengan mercusuar yang padam">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#23363c"/>
+      <stop offset=".42" stop-color="#6d5550"/>
+      <stop offset=".68" stop-color="#c58a63"/>
+      <stop offset="1" stop-color="#e8bd90"/>
+    </linearGradient>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a4d4c"/>
+      <stop offset=".45" stop-color="#22383a"/>
+      <stop offset="1" stop-color="#0d1b1d"/>
+    </linearGradient>
+    <radialGradient id="sun" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#ffdba6" stop-opacity=".95"/>
+      <stop offset=".55" stop-color="#f4b878" stop-opacity=".45"/>
+      <stop offset="1" stop-color="#f4b878" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="beam" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f7d6a2" stop-opacity=".28"/>
+      <stop offset="1" stop-color="#f7d6a2" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="soft"><feGaussianBlur stdDeviation="18"/></filter>
+    <filter id="haze"><feGaussianBlur stdDeviation="6"/></filter>
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="3" stitchTiles="stitch"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feComponentTransfer><feFuncA type="linear" slope=".14"/></feComponentTransfer>
+    </filter>
+  </defs>
+  <rect width="1600" height="900" fill="url(#sky)"/>
+  <circle cx="1120" cy="548" r="190" fill="url(#sun)"/>
+  <ellipse cx="840" cy="512" rx="420" ry="26" fill="#f0c79a" opacity=".22" filter="url(#soft)"/>
+  <path d="M0 556 L180 512 L310 530 L460 498 L610 534 L760 516 L930 540 L1110 508 L1300 536 L1450 520 L1600 544 L1600 610 L0 610 Z" fill="#2b3a3b" opacity=".72" filter="url(#haze)"/>
+  <rect y="566" width="1600" height="334" fill="url(#sea)"/>
+  <g fill="none" stroke="#d9b184" stroke-linecap="round" opacity=".24">
+    <path d="M80 612 q70 -8 140 0 t140 0 t140 0" stroke-width="3"/>
+    <path d="M420 648 q80 -9 160 0 t160 0 t160 0" stroke-width="2"/>
+    <path d="M120 704 q90 -10 180 0 t180 0" stroke-width="2"/>
+    <path d="M760 742 q70 -8 140 0 t140 0 t140 0" stroke-width="1.6"/>
+    <path d="M260 796 q110 -10 220 0 t220 0" stroke-width="1.4"/>
+  </g>
+  <ellipse cx="1050" cy="610" rx="300" ry="12" fill="#f6c48b" opacity=".14" filter="url(#soft)"/>
+  <path d="M1290 900 L1320 590 L1380 548 L1520 560 L1600 620 L1600 900 Z" fill="#101c1c"/>
+  <path d="M1140 900 L1280 646 L1350 606 L1420 636 L1510 900 Z" fill="#162424"/>
+  <g fill="#0b1414">
+    <path d="M1388 312 L1418 312 L1436 566 L1372 566 Z"/>
+    <rect x="1370" y="292" width="66" height="24" rx="4"/>
+    <path d="M1378 270 L1428 270 L1434 294 L1372 294 Z"/>
+    <rect x="1379" y="236" width="48" height="36" rx="6"/>
+  </g>
+  <rect x="1390" y="246" width="26" height="16" rx="2" fill="#e5b574" opacity=".55"/>
+  <polygon points="1382,258 1120,214 1100,306 1382,286" fill="url(#beam)" opacity=".5"/>
+  <g stroke="#0b1414" stroke-width="6" stroke-linecap="round" opacity=".9">
+    <path d="M1330 900 L1330 612"/><path d="M1352 620 L1352 900"/>
+  </g>
+  <rect width="1600" height="900" filter="url(#grain)" opacity=".5"/>
+  <rect x="125" width="1350" height="900" fill="none" stroke="#0a1212" stroke-width="40" opacity=".28"/>
+</svg>

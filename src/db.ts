@@ -266,34 +266,6 @@ export async function importBundle(
   await tx.done;
   return { gameId, sessionId };
 }
-export async function applyDefinitionUpdate(
-  newGame: GameDefinition,
-): Promise<void> {
-  const db = await getDb();
-  const tx = db.transaction(["games", "sessions"], "readwrite");
-  try {
-    await tx.objectStore("games").put(newGame);
-    const sessionStore = tx.objectStore("sessions");
-    const sessions: GameSession[] = await sessionStore
-      .index("by-game")
-      .getAll(newGame.id);
-    const now = new Date().toISOString();
-    for (const session of sessions) {
-      session.definitionSnapshot = structuredClone(newGame);
-      session.updatedAt = now;
-      await sessionStore.put(session);
-    }
-    await tx.done;
-  } catch (err) {
-    try {
-      tx.abort();
-    } catch {
-      // Transaction sudah berakhir; error asli yang dilempar.
-    }
-    await tx.done.catch(() => {});
-    throw err;
-  }
-}
 
 export async function updateSessionAi(
   sessionId: string,

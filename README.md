@@ -35,6 +35,14 @@ npm.cmd run start
 
 Backend menyajikan frontend dan API pada `http://127.0.0.1:5173`. Hentikan server development sebelum menjalankannya karena port harus tersedia dan tidak berpindah otomatis.
 
+## Tampilan
+
+Antarmuka memakai shell gelap bernuansa hutan dengan aksen kuningan: rail navigasi (Perpustakaan, Sesi, Pengaturan) beserta dunia terakhir, header halaman, feature card dan grid dunia di perpustakaan, panggung cerita dengan composer tindakan, serta drawer **Catatan lapangan** berisi sumber daya, orang terdekat, lokasi, dan isi tas. Settings dan editor memakai permukaan kertas krem. Rail menjadi ikon pada lebar 701–1000px dan bar bawah pada ≤700px; grid dunia 3 kolom di desktop dan 2 kolom di ponsel.
+
+Panggung cerita memberi label **Adegan N · lokasi** (turn bukan bab) dan memakai judul dunia sebagai judul panggung. Dialog hanya diambil dari turn terakhir; percakapan turn lama tetap ada di riwayat. Kartu dunia memakai enam ilustrasi sampul 3:2 (`coast`, `lantern`, `archive`, `desert`, `mountain`, `rain`) yang dipilih secara deterministik dari genre dan judul.
+
+Token warna, tipografi, spasi, radius, bayangan, dan gerak ada di `src/styles.css`. Font Newsreader, Public Sans, dan IBM Plex Mono dibundel di `src/assets/fonts` dan dideklarasikan lewat `@font-face`. Tekstur kulit memakai `src/assets/leather.svg`; token CSS asli dari desain tidak termasuk dalam distribusi aplikasi.
+
 ## Credential dan data
 
 Opsional, buat `.env` dari `.env.example`, lalu isi `GEMINI_API_KEY` dan/atau `OPENROUTER_API_KEY`. File `.env` diabaikan Git. Settings juga bisa menerima atau mengganti API key; backend menyimpannya sebagai `FWORLD_GEMINI_API_KEY` atau `FWORLD_OPENROUTER_API_KEY` di `.env`, dan nilai ini diprioritaskan atas credential environment biasa. Backend hanya mengembalikan status configured; key tidak tersimpan permanen di browser, database game, log, backup, atau export. Request AI nyata memerlukan koneksi internet dan credential provider yang sesuai.
@@ -43,7 +51,9 @@ Provider ketiga adalah **OpenAI-compatible** melalui profil AI. Endpoint custom 
 
 Profil AI menyimpan nama, provider, model, prompt narrator, dan Base URL custom di SQLite; API key disimpan terpisah di `.env` sebagai `FWORLD_AI_KEY_<credentialId>` dan hanya dikembalikan sebagai status configured. Metadata dan key disimpan lewat tombol berbeda. Mengubah nama/model/prompt mempertahankan identitas credential; mengubah provider atau Base URL membuat identitas baru tanpa menyalin key lama. Sesi menyimpan snapshot saat profil dimulai atau diterapkan, jadi mengedit profil tidak mengubah sesi berjalan sampai **Terapkan profil** ditekan; key yang dirotasi pada identitas yang sama dipakai run berikutnya. Profil default sesi baru dipilih di Settings dan baru tersimpan setelah **Simpan pengaturan AI**. Profil tidak ikut template, save JSON, atau export; backup SQLite membawa metadata dan binding tanpa key.
 
-Provider, model, dan prompt sistem narrator diatur melalui Settings. Prompt bawaan dikemas dari `shared/narrator-system-prompt.json`; teks yang diedit menggantikan seluruh prompt bawaan dan dapat dipulihkan kapan saja. Perubahan default global baru disimpan setelah tombol **Simpan pengaturan AI** ditekan, lalu disalin ke sesi baru. Preferensi ukuran teks juga baru disimpan setelah tombol **Simpan ukuran teks** ditekan. Prompt sesi aktif tersimpan terpisah di konfigurasi sesi serta ikut save/export; template game tidak membawa prompt. Prompt wajib berisi teks non-whitespace dan dibatasi 8.000 karakter.
+Provider, model, dan prompt sistem narrator diatur melalui Settings. Prompt bawaan dikemas dari `shared/narrator-system-prompt.json`; teks yang diedit menggantikan seluruh prompt bawaan dan dapat dipulihkan kapan saja. Perubahan default global baru disimpan setelah tombol **Simpan pengaturan AI** ditekan, lalu disalin ke sesi baru. Preferensi ukuran teks langsung diterapkan dan disimpan. Prompt sesi aktif tersimpan terpisah di konfigurasi sesi serta ikut save/export; template game tidak membawa prompt. Prompt wajib berisi teks non-whitespace dan dibatasi 8.000 karakter.
+
+**Editor** memuat ringkasan, skenario, pemain, atribut, sumber daya, relasi dan kelompok pihak, item beserta efek, inventaris awal, NPC, peta dunia, lorebook, dan pratinjau. Draft dunia baru belum tersimpan sampai **Simpan** ditekan. Menerapkan template mengganti bidang konten draft dan menghapus bidang opsional yang tidak disertakan template. Mengedit dunia tersimpan memperbarui definisi untuk sesi berikutnya saja; sesi yang telah dimulai mempertahankan snapshot awal. **Mulai sesi** sebelum menyimpan perubahan lokal tetap memakai definisi tersimpan.
 
 Untuk request OpenRouter `google/gemini-*`, provider dipin ke `google-ai-studio` tanpa fallback agar signature reasoning tetap pada endpoint yang sama selama lanjutan tool. Jika endpoint itu tidak tersedia, run gagal alih-alih berpindah ke provider Google lain.
 
@@ -51,13 +61,21 @@ Uji koneksi memakai prompt singkat yang independen dari prompt narrator dan tida
 
 Masing-masing permintaan model narrator dibatasi 4.096 token output; satu permintaan perbaikan tetap dibatasi 1.800 token.
 
+### Runtime agen dan cache konteks
+
+Narator dijalankan melalui modul internal di `server/agent/`. `context.ts` membangun konteks dan memisahkan snapshot stabil (game, scenario, player) dari konteks dinamis (aksi, state, history, lore terpilih); `knowledge.ts` memuat history, peta, lore, dan ringkasan dari SQLite; `harness.ts` memiliki empat tool tetap serta validasi domain; `runtime.ts` menegakkan batas 60 detik, tiga panggilan model, dan satu perbaikan; `gemini-cache.ts` mengelola cache eksplisit Google. Tool tetap dieksekusi lokal dan tidak pernah menulis langsung ke database.
+
+Cache eksplisit hanya aktif jika environment server `FWORLD_GEMINI_CONTEXT_CACHE=explicit`; nilai kosong atau `off` memakai jalur uncached. Hanya model Gemini 2.5/3 langsung yang memenuhi syarat. Resource memakai TTL 300 detik tanpa perpanjangan, handle hanya disimpan di memori proses dan tidak masuk SQLite, save, atau backup, dan maksimal 32 resource aktif per proses. Penolakan pembuatan cache 400/404 dicatat sementara sebagai bypass; kegagalan cache lain menghentikan run dengan `CONTEXT_CACHE_UNAVAILABLE`. Respons provider yang dilaporkan tetap menjadi sumber token cache dan reasoning; cache implisit provider tidak dimatikan saat mode `off`.
+
+Jejak runtime dibatasi 128 event dan disimpan di `context_telemetry.trace_json` tanpa prompt, credential, nama resource, atau handle discovery. Jejak bukan pengganti status run tersimpan: proposal yang divalidasi belum tentu berhasil di-commit. `npm.cmd run eval` menjalankan verifikasi HTTP terisolasi dan protokol Google offline; hasilnya membuktikan integrasi terhadap fixture, bukan cache cloud, kualitas bahasa, atau penghematan biaya nyata.
+
 Gunakan **Settings → Migrasi data IndexedDB** dari origin canonical untuk mengunduh atau mentransfer data lama. Transfer memvalidasi seluruh store, memakai Web Lock, memverifikasi read-back, dan membiarkan IndexedDB lama utuh. Gunakan **Backup backend** untuk backup/pemulihan SQLite. Menghapus cerita menghapus seluruh sesi dan riwayatnya setelah konfirmasi; penghapusan ditolak saat run AI masih aktif. Restore save JSON v1 membuat salinan dengan ID baru; template JSON tetap di alur Create Game.
 
 ## NPC dalam sesi
 
 Jika ingin cerita dimulai tanpa NPC, hapus NPC awal di **Editor** sebelum memulai session. Saat karakter player berinteraksi langsung dengan orang baru, narrator dapat mendaftarkannya sebagai NPC pada sesi itu. Sekadar menyebut atau melihat orang tidak cukup untuk membuat NPC.
 
-NPC yang didaftarkan tersimpan bersama sesi dan tidak mengubah template game. Mereka dapat muncul lagi dalam cerita dan tercakup dalam ekspor serta pemulihan save. Tab **People** menampilkan karakter yang hadir di adegan saat ini.
+NPC yang didaftarkan tersimpan bersama sesi dan tidak mengubah template game. Mereka dapat muncul lagi dalam cerita dan tercakup dalam ekspor serta pemulihan save. Tab **Orang** menampilkan karakter yang hadir di adegan saat ini.
 
 ## Format cerita
 
@@ -65,7 +83,7 @@ Pesan narator dan NPC mendukung Markdown untuk paragraf, heading, penekanan, daf
 
 ## Format lorebook dan save
 
-SQLite memakai schema v3. Database v1 dan v2 dimigrasikan saat dibuka; tabel schema yang hilang dibuat ulang saat startup tanpa menghapus tabel lain. Isi tabel yang terhapus tidak dapat dipulihkan dari schema—restore backup untuk mendapatkan kembali datanya; indeks pencarian turunan dibangun ulang dari data yang masih ada. Restore memvalidasi dan memigrasikan salinan staging sebelum mengganti database aktif. Backup SQLite mencakup pack lore, indeks, pin session, history, ringkasan cerita, serta metadata profil AI dan binding session. Credential provider selalu berada di luar backup.
+SQLite memakai schema v5. Database versi 1 sampai 4 dimigrasikan saat dibuka; tabel schema yang hilang dibuat ulang saat startup tanpa menghapus tabel lain. Isi tabel yang terhapus tidak dapat dipulihkan dari schema—restore backup untuk mendapatkan kembali datanya; indeks pencarian turunan dibangun ulang dari data yang masih ada. Restore memvalidasi dan memigrasikan salinan staging sebelum mengganti database aktif. Backup SQLite mencakup pack lore, indeks, pin session, history, ringkasan cerita, telemetri konteks, serta metadata profil AI dan binding session. Credential provider selalu berada di luar backup.
 
 `examples/lorebook-prontera.json` adalah pack kecil dengan 21 entri berprosa asli, berlisensi CC0-1.0. `examples/lorebook-game.json` adalah template playable yang merujuk versi pack tersebut. Artikel lore tidak otomatis menjadi NPC playable, item inventory, atau effects. Pemetaan memakai `metadata.actorId` atau `metadata.itemId` yang harus menunjuk definisi game.
 
@@ -90,6 +108,7 @@ Untuk memindahkan save v2, pindahkan juga export JSON setiap versi pack. Install
 | Backend development       | `npm.cmd run dev:server` |
 | Typecheck dan format      | `npm.cmd run check`      |
 | Tes                       | `npm.cmd test`           |
+| Verifikasi offline        | `npm.cmd run eval`       |
 | Build frontend + server   | `npm.cmd run build`      |
 | Jalankan build lokal      | `npm.cmd run start`      |
 | Seluruh pemeriksaan lokal | `npm.cmd run doctor`     |

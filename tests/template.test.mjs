@@ -148,13 +148,43 @@ test("bundled example parses as a playable draft without AI config", async () =>
 
 test("template round-trip preserves content and drops ids, timestamps, foreign fields", () => {
   const game = fullGame(crypto.randomUUID());
-  game.apiKey = "secret";
+  game.ageRating = "teen-13-plus";
+  game.relationshipParties = [
+    {
+      id: "harbor-circle",
+      name: "Harbor Circle",
+      type: "community",
+      initialStance: "wary",
+      secret: "A brass marker appears at low tide.",
+    },
+  ];
+  game.scenario = {
+    ...game.scenario,
+    trigger: "A lantern appears below the pier.",
+    narratorStyle: "literary-third-person",
+    tempo: "slow",
+    turnLength: "medium",
+    pointOfView: "second-person",
+    contentLimits: "Avoid graphic injury.",
+  };
+  game.player = {
+    ...game.player,
+    role: "cartographer",
+    pronoun: "neutral",
+    age: "29 years",
+    goal: "Map the coast.",
+    fear: "Deep water.",
+  };
+  game.npcs[0].voice = "Careful, measured sentences.";
+  game.startingInventory[0].owner = "Dian";
+  game.startingInventory[0].place = "canvas satchel";
+  game.apiKey = "credential-value";
   game.state = { attributes: {} };
   const bundle = template.exportTemplate(game);
   assert.equal(bundle.format, "fworld-template");
   assert.equal(bundle.version, 1);
   const text = JSON.stringify(bundle);
-  assert.ok(!text.includes("secret"));
+  assert.ok(!text.includes("credential-value"));
   assert.ok(!text.includes(game.id));
 
   const { draft, ai } = template.parseTemplate(JSON.parse(text));
@@ -165,6 +195,11 @@ test("template round-trip preserves content and drops ids, timestamps, foreign f
   assert.deepEqual(draft.player, game.player);
   assert.deepEqual(draft.npcs, game.npcs);
   assert.deepEqual(draft.startingInventory, game.startingInventory);
+  assert.deepEqual(draft.scenario, game.scenario);
+  assert.equal(draft.ageRating, game.ageRating);
+  assert.deepEqual(draft.relationshipParties, game.relationshipParties);
+  assert.equal(draft.npcs[0].voice, "Careful, measured sentences.");
+  assert.equal(draft.startingInventory[0].owner, "Dian");
   assert.equal(draft.genre, "slice of life");
   assert.equal(draft.language, "id");
   assert.equal("id" in draft, false);
@@ -172,6 +207,47 @@ test("template round-trip preserves content and drops ids, timestamps, foreign f
   assert.equal("apiKey" in draft, false);
   assert.equal("state" in draft, false);
   assert.equal(ai, undefined);
+});
+
+test("applying a template replaces optional fields and preserves game identity", () => {
+  const current = fullGame("existing-game");
+  current.description = "Old description";
+  current.genre = "old genre";
+  current.ageRating = "teen-13-plus";
+  current.relationshipParties = [
+    {
+      id: "old-party",
+      name: "Old party",
+      type: "community",
+      initialStance: "neutral",
+    },
+  ];
+  current.worldMap = {};
+  current.startingLocationId = "old-location";
+  current.lorebookRefs = [{ packId: "old-pack", version: 1 }];
+
+  const { draft } = template.parseTemplate({
+    format: "fworld-template",
+    version: 1,
+    game: fullGame("imported-game"),
+  });
+  const applied = template.applyTemplateDraft(current, draft);
+
+  assert.equal(applied.id, current.id);
+  assert.equal(applied.updatedAt, current.updatedAt);
+  for (const field of [
+    "description",
+    "ageRating",
+    "relationshipParties",
+    "worldMap",
+    "startingLocationId",
+    "lorebookRefs",
+  ]) {
+    assert.equal(applied[field], undefined, `${field} should be cleared`);
+  }
+  assert.equal(applied.title, draft.title);
+  assert.equal(applied.genre, draft.genre);
+  assert.notEqual(applied.attributes, draft.attributes);
 });
 
 test("skeleton template without title, player, or scenario parses as draft", () => {
@@ -372,6 +448,79 @@ test("structurally broken templates rejected with specific problems", () => {
     }).replace('"game"', '"__proto__": {}, "game"'),
   );
   assert.throws(() => template.parseTemplate(polluted), db.ImportError);
+});
+
+test("new authored enums, parties, and descriptive metadata are validated", () => {
+  const reject = (candidate, pattern) => {
+    assert.throws(
+      () =>
+        template.parseTemplate({
+          format: "fworld-template",
+          version: 1,
+          game: candidate,
+        }),
+      (error) => {
+        assert.ok(
+          error.problems.some((problem) => pattern.test(problem)),
+          `expected ${pattern} in ${JSON.stringify(error.problems)}`,
+        );
+        return true;
+      },
+    );
+  };
+  const base = () => fullGame("validated-fields");
+
+  const badAgeRating = base();
+  badAgeRating.ageRating = "all";
+  reject(badAgeRating, /ageRating/);
+
+  const badNarratorStyle = base();
+  badNarratorStyle.scenario.narratorStyle = "first-person";
+  reject(badNarratorStyle, /narratorStyle/);
+
+  const badTempo = base();
+  badTempo.scenario.tempo = "urgent";
+  reject(badTempo, /tempo/);
+
+  const badTurnLength = base();
+  badTurnLength.scenario.turnLength = "huge";
+  reject(badTurnLength, /turnLength/);
+
+  const badPointOfView = base();
+  badPointOfView.scenario.pointOfView = "omniscient";
+  reject(badPointOfView, /pointOfView/);
+
+  const badPronoun = base();
+  badPronoun.player.pronoun = "they";
+  reject(badPronoun, /pronoun/);
+
+  const badStance = base();
+  badStance.relationshipParties = [
+    { id: "one", name: "Harbor", type: "community", initialStance: "curious" },
+  ];
+  reject(badStance, /initialStance/);
+
+  const duplicatePartyNames = base();
+  duplicatePartyNames.relationshipParties = [
+    { id: "one", name: "Harbor", type: "community", initialStance: "neutral" },
+    { id: "two", name: " harbor ", type: "community", initialStance: "wary" },
+  ];
+  reject(duplicatePartyNames, /name duplikat/);
+
+  const duplicatePartyIds = base();
+  duplicatePartyIds.relationshipParties = [
+    { id: "same", name: "One", type: "community", initialStance: "neutral" },
+    { id: "same", name: "Two", type: "community", initialStance: "wary" },
+  ];
+  reject(duplicatePartyIds, /id duplikat/);
+
+  const badVoice = base();
+  badVoice.npcs[0].voice = 7;
+  reject(badVoice, /voice harus string/);
+
+  const badOwner = base();
+  badOwner.startingInventory[0].owner = 4;
+  reject(badOwner, /owner harus string/);
 });
 
 test("parse never writes the database", async () => {

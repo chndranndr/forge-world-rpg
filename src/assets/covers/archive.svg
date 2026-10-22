@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="125 0 1350 900" role="img" aria-label="Ruang arsip dengan rak buku dan lampu meja">
+  <defs>
+    <linearGradient id="aroom" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b1a16"/>
+      <stop offset=".55" stop-color="#2a241d"/>
+      <stop offset="1" stop-color="#151310"/>
+    </linearGradient>
+    <linearGradient id="shelf" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a2e22"/>
+      <stop offset="1" stop-color="#231b15"/>
+    </linearGradient>
+    <radialGradient id="lamp" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#ffd79c" stop-opacity=".95"/>
+      <stop offset=".4" stop-color="#e4a95f" stop-opacity=".35"/>
+      <stop offset="1" stop-color="#e4a95f" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="pool" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#f4c17c" stop-opacity=".5"/>
+      <stop offset="1" stop-color="#f4c17c" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="blur"><feGaussianBlur stdDeviation="26"/></filter>
+    <filter id="blur2"><feGaussianBlur stdDeviation="8"/></filter>
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency=".7" numOctaves="3" stitchTiles="stitch"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feComponentTransfer><feFuncA type="linear" slope=".15"/></feComponentTransfer>
+    </filter>
+  </defs>
+  <rect width="1600" height="900" fill="url(#aroom)"/>
+  <g fill="url(#shelf)">
+    <rect x="0" y="120" width="1600" height="26"/>
+    <rect x="0" y="342" width="1600" height="26"/>
+    <rect x="0" y="566" width="1600" height="26"/>
+    <rect x="0" y="760" width="1600" height="26"/>
+  </g>
+  <g opacity=".9">
+    <g fill="#4d3827">
+      <rect x="60" y="154" width="26" height="188"/><rect x="92" y="170" width="18" height="172"/>
+      <rect x="116" y="150" width="34" height="192"/><rect x="156" y="180" width="20" height="162"/>
+      <rect x="182" y="160" width="28" height="182"/><rect x="216" y="176" width="16" height="166"/>
+      <rect x="240" y="152" width="30" height="190"/><rect x="276" y="168" width="22" height="174"/>
+    </g>
+    <g fill="#3f3d2e">
+      <rect x="1260" y="380" width="28" height="186"/><rect x="1294" y="396" width="18" height="170"/>
+      <rect x="1318" y="372" width="34" height="194"/><rect x="1358" y="404" width="22" height="162"/>
+      <rect x="1386" y="386" width="26" height="180"/><rect x="1418" y="400" width="18" height="166"/>
+      <rect x="1442" y="378" width="30" height="188"/><rect x="1478" y="394" width="24" height="172"/>
+    </g>
+    <g fill="#513a2c" opacity=".85">
+      <rect x="330" y="600" width="24" height="160"/><rect x="360" y="618" width="32" height="142"/>
+      <rect x="398" y="592" width="18" height="168"/><rect x="422" y="612" width="28" height="148"/>
+      <rect x="456" y="604" width="22" height="156"/><rect x="484" y="620" width="34" height="140"/>
+    </g>
+    <g fill="#46412f" opacity=".85">
+      <rect x="1080" y="600" width="30" height="160"/><rect x="1116" y="616" width="20" height="144"/>
+      <rect x="1142" y="596" width="26" height="164"/><rect x="1174" y="612" width="34" height="148"/>
+      <rect x="1214" y="604" width="18" height="156"/>
+    </g>
+  </g>
+  <g stroke="#0f0c09" stroke-width="5" opacity=".5" fill="none">
+    <path d="M330 154 l-8 188"/><path d="M116 150 l6 192"/><path d="M1260 380 l-6 186"/><path d="M1318 372 l4 194"/>
+  </g>
+  <ellipse cx="820" cy="330" rx="420" ry="300" fill="url(#lamp)" opacity=".14" filter="url(#blur)"/>
+  <g>
+    <path d="M820 120 L820 250" stroke="#0e0c09" stroke-width="5"/>
+    <path d="M772 250 L868 250 L900 320 L740 320 Z" fill="#2b2118"/>
+    <path d="M772 250 L868 250 L880 280 L760 280 Z" fill="#6e4e2e" opacity=".8"/>
+    <ellipse cx="820" cy="320" rx="80" ry="14" fill="#ffd79c" opacity=".7" filter="url(#blur2)"/>
+  </g>
+  <rect y="760" width="1600" height="140" fill="#1b1510"/>
+  <ellipse cx="820" cy="820" rx="420" ry="150" fill="url(#pool)" opacity=".55" filter="url(#blur)"/>
+  <g fill="#f2e3c6" opacity=".8">
+    <rect x="700" y="760" width="250" height="14" rx="2" transform="rotate(-3 700 760)"/>
+    <rect x="724" y="780" width="230" height="12" rx="2" transform="rotate(2 724 780)"/>
+    <rect x="742" y="800" width="200" height="10" rx="2" transform="rotate(-2 742 800)"/>
+  </g>
+  <g stroke="#6b5438" stroke-width="5" opacity=".8">
+    <path d="M690 762 L672 850"/><path d="M948 770 L960 852"/>
+  </g>
+  <circle cx="806" cy="812" r="6" fill="#d9a465"/><circle cx="848" cy="824" r="4" fill="#d9a465"/>
+  <rect width="1600" height="900" filter="url(#grain)" opacity=".55"/>
+  <rect x="125" width="1350" height="900" fill="none" stroke="#0b0907" stroke-width="46" opacity=".4"/>
+</svg>

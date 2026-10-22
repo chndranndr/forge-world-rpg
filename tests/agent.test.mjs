@@ -4,6 +4,8 @@ import { createServer } from "vite";
 
 let server;
 let agent;
+let contextModule;
+let runtimeModule;
 let narratorPrompt;
 
 test.before(async () => {
@@ -12,6 +14,8 @@ test.before(async () => {
     appType: "custom",
   });
   agent = await server.ssrLoadModule("/server/agent.ts");
+  contextModule = await server.ssrLoadModule("/server/agent/context.ts");
+  runtimeModule = await server.ssrLoadModule("/server/agent/runtime.ts");
   narratorPrompt = await server.ssrLoadModule("/shared/narrator-prompt.ts");
 });
 
@@ -124,6 +128,117 @@ function makeInput(overrides = {}) {
   };
 }
 
+test("authored guidance enters bounded context without leaking party secrets to NPCs", () => {
+  const session = makeSession();
+  const definition = session.definitionSnapshot;
+  definition.ageRating = "teen-13-plus";
+  definition.relationshipParties = [
+    {
+      id: "harbor-circle",
+      name: "Harbor Circle",
+      type: "community",
+      initialStance: "wary",
+      secret: "They hide the brass tide marker.",
+    },
+  ];
+  definition.scenario = {
+    ...definition.scenario,
+    trigger: "A lantern appears below the pier.",
+    narratorStyle: "literary-third-person",
+    tempo: "slow",
+    turnLength: "medium",
+    pointOfView: "second-person",
+    contentLimits: "Avoid graphic injury.",
+  };
+  definition.player = {
+    ...definition.player,
+    role: "cartographer",
+    pronoun: "neutral",
+    age: "29 years",
+    goal: "Map the coast.",
+    fear: "Deep water.",
+  };
+  definition.npcs[0].voice = "Careful, measured sentences.";
+  session.state.inventory[0].owner = "Ren";
+  session.state.inventory[0].place = "canvas satchel";
+
+  const player = contextModule.buildNarratorContext(
+    makeInput({ session, playerAction: "I inspect the umbrella." }),
+  );
+  const playerPrompt = JSON.parse(player.prompt);
+  assert.equal(playerPrompt.context.game.ageRating, "teen-13-plus");
+  assert.deepEqual(playerPrompt.context.game.relationshipParties[0], {
+    id: "harbor-circle",
+    name: "Harbor Circle",
+    type: "community",
+    initialStance: "wary",
+    secret: "They hide the brass tide marker.",
+  });
+  assert.equal(
+    playerPrompt.context.scenario.narrativeGuidance.pointOfView,
+    "second-person",
+  );
+  assert.equal(
+    playerPrompt.context.scenario.narrativeGuidance.approximateWordCount,
+    "150–220",
+  );
+  assert.equal(playerPrompt.context.player.goal, "Map the coast.");
+  assert.equal(
+    playerPrompt.context.activeNpcs[0].voice,
+    "Careful, measured sentences.",
+  );
+  assert.deepEqual(
+    {
+      owner: playerPrompt.context.state.inventory[0].owner,
+      place: playerPrompt.context.state.inventory[0].place,
+    },
+    { owner: "Ren", place: "canvas satchel" },
+  );
+  assert.doesNotMatch(player.system, /Avoid graphic injury/);
+
+  const npcSession = structuredClone(session);
+  const npc = contextModule.buildNarratorContext(
+    makeInput({
+      session: npcSession,
+      playerAction: "I ask Aiko about the Harbor Circle.",
+    }),
+  );
+  const npcPrompt = JSON.parse(npc.prompt);
+  assert.deepEqual(npc.audience, { kind: "npc", npcId: "aiko" });
+  assert.equal(npcPrompt.context.game.relationshipParties[0].secret, undefined);
+  assert.equal(
+    npcPrompt.context.scenario.contentLimits,
+    "Avoid graphic injury.",
+  );
+  assert.doesNotMatch(JSON.stringify(npcPrompt), /brass tide marker/);
+  assert.doesNotMatch(
+    JSON.stringify(contextModule.npcContext(definition.npcs[0])),
+    /Harbor Circle|brass tide marker/,
+  );
+
+  const changedNpcSession = structuredClone(npcSession);
+  changedNpcSession.definitionSnapshot.relationshipParties[0].secret =
+    "A different private marker.";
+  const changedNpc = contextModule.buildNarratorContext(
+    makeInput({
+      session: changedNpcSession,
+      playerAction: "I ask Aiko about the Harbor Circle.",
+    }),
+  );
+  assert.equal(npc.stablePrompt, changedNpc.stablePrompt);
+
+  const changedPlayerSession = structuredClone(session);
+  changedPlayerSession.definitionSnapshot.relationshipParties[0].secret =
+    "A different private marker.";
+  const changedPlayer = contextModule.buildNarratorContext(
+    makeInput({
+      session: changedPlayerSession,
+      playerAction: "I inspect the umbrella.",
+    }),
+  );
+  assert.notEqual(player.stablePrompt, changedPlayer.stablePrompt);
+});
+
 function fakeStep(
   options,
   usage = { inputTokens: 12, outputTokens: 4, totalTokens: 16 },
@@ -178,9 +293,8 @@ test("uses the session model, fixed request limits, compact context, and counts 
       generateText: async (options) => {
         calls += 1;
         assert.equal(options.system, customSystemPrompt);
-        assert.equal(
-          options.system.length + options.prompt.length,
-          estimatedChars,
+        assert.ok(
+          estimatedChars >= options.system.length + options.prompt.length,
         );
         if (calls === 1) {
           assert.equal(options.model.modelId, "gemini-test");
@@ -245,6 +359,9 @@ test("uses the session model, fixed request limits, compact context, and counts 
       status: "succeeded",
       usage: { inputTokens: 12, outputTokens: 4, totalTokens: 16 },
       latencyMs: null,
+      finishReason: null,
+      cachedInputTokens: null,
+      reasoningTokens: null,
     },
   );
   assert.equal(finished[0].latencyMs, 38);
@@ -367,7 +484,7 @@ test("accepts zero or fewer than three choices and rejects more than three", asy
         },
       },
     ),
-    (error) => error instanceof agent.NarratorResponseError,
+    (error) => error instanceof runtimeModule.NarratorResponseError,
   );
   assert.equal(invalidCalls, 2);
 });
@@ -1074,7 +1191,7 @@ test("fails before the provider when required context exceeds its limit", async 
       },
     }),
     (error) => {
-      assert.ok(error instanceof agent.NarratorContextError);
+      assert.ok(error instanceof contextModule.NarratorContextError);
       assert.ok(error.actualChars > error.maxChars);
       assert.equal(error.maxChars, 512_000);
       assert.equal(error.maxTokens, 128_000);
@@ -1146,32 +1263,35 @@ test("only explicit NPC address grants private context or NPC-scoped tools", asy
   ];
 
   assert.equal(
-    agent.selectPrincipalNpc(
+    contextModule.selectPrincipalNpc(
       session,
       "Privately ask Sava to show the lighthouse clue.",
     ),
     "sava",
   );
   assert.equal(
-    agent.selectPrincipalNpc(session, "Sava, tell me about the lighthouse."),
+    contextModule.selectPrincipalNpc(
+      session,
+      "Sava, tell me about the lighthouse.",
+    ),
     "sava",
   );
   assert.equal(
-    agent.selectPrincipalNpc(
+    contextModule.selectPrincipalNpc(
       session,
       "I remember a story about Sava and the lighthouse.",
     ),
     undefined,
   );
   assert.equal(
-    agent.selectPrincipalNpc(
+    contextModule.selectPrincipalNpc(
       session,
       "I remember asking Sava about the lighthouse.",
     ),
     undefined,
   );
   assert.equal(
-    agent.selectPrincipalNpc(
+    contextModule.selectPrincipalNpc(
       session,
       "I ask Sava's friend about the lighthouse.",
     ),
