@@ -15,6 +15,7 @@ import type {
   LoreEntry,
   TurnEffect,
   NpcDefinition,
+  RegisterItemEffect,
   RegisterNpcEffect,
   RelationshipDefinition,
   ResourceDefinition,
@@ -468,9 +469,16 @@ function applyOne(
         fail("NPC_PRESENCE membutuhkan present boolean");
       }
       const previous = next.world.npcPresence?.[effect.npcId];
+      const presentLocationId =
+        effect.present && next.world.locationId !== undefined
+          ? next.world.locationId
+          : undefined;
       const presence =
         typeof previous === "object"
-          ? { locationId: previous.locationId, present: effect.present }
+          ? {
+              locationId: presentLocationId ?? previous.locationId,
+              present: effect.present,
+            }
           : effect.present
             ? "present"
             : "absent";
@@ -501,7 +509,7 @@ export function applyEffects(
   }
   return { state: next, applied };
 }
-function normalizedNpcName(value: string): string {
+function normalizedEntityName(value: string): string {
   return value.normalize("NFKC").trim().replace(/\s+/gu, " ").toLowerCase();
 }
 
@@ -530,10 +538,10 @@ function registerNpc(
   if (usedIds.has(effect.id)) {
     fail(`REGISTER_NPC.id "${effect.id}" sudah digunakan`);
   }
-  const normalizedName = normalizedNpcName(effect.name);
+  const normalizedName = normalizedEntityName(effect.name);
   if (
-    normalizedName === normalizedNpcName(game.player.name) ||
-    game.npcs.some((npc) => normalizedNpcName(npc.name) === normalizedName)
+    normalizedName === normalizedEntityName(game.player.name) ||
+    game.npcs.some((npc) => normalizedEntityName(npc.name) === normalizedName)
   ) {
     fail(`Nama NPC "${effect.name}" sudah digunakan`);
   }
@@ -589,6 +597,97 @@ function registerNpc(
   return `NPC "${npc.name}" terdaftar`;
 }
 
+function registerItem(
+  game: GameDefinition,
+  next: SessionState,
+  raw: RegisterItemEffect,
+  context?: EffectContext,
+): string {
+  const parsedEffect = parseEffect(raw);
+  if (parsedEffect.type !== "REGISTER_ITEM") {
+    fail("Effect bukan REGISTER_ITEM");
+  }
+  const effect = parsedEffect;
+  const usedIds = new Set([
+    PLAYER_ID,
+    game.id,
+    ...game.attributes.map(({ id }) => id),
+    ...game.resources.map(({ id }) => id),
+    ...game.relationships.map(({ id }) => id),
+    ...game.items.map(({ id }) => id),
+    ...game.npcs.map(({ id }) => id),
+    ...(game.relationshipParties ?? []).map(({ id }) => id),
+    ...(game.worldMap?.locations.map(({ id }) => id) ?? []),
+    ...(context?.worldMap?.locations.map(({ id }) => id) ?? []),
+  ]);
+  if (usedIds.has(effect.id)) {
+    fail(`REGISTER_ITEM.id "${effect.id}" sudah digunakan`);
+  }
+  const normalizedName = normalizedEntityName(effect.name);
+  const existing = game.items.find(
+    (item) => normalizedEntityName(item.name) === normalizedName,
+  );
+  if (existing) {
+    fail(
+      `Item "${effect.name}" sudah terdaftar sebagai "${existing.id}"; gunakan ADD_ITEM.`,
+    );
+  }
+  for (const nested of effect.effects) {
+    if (nested.type !== "DISCOVER_LORE") continue;
+    const entry = context?.loreEntries?.find(({ id }) => id === nested.loreId);
+    if (!entry || entry.visibility !== "discovery") {
+      fail(
+        `REGISTER_ITEM efek DISCOVER_LORE "${nested.loreId}" tidak diizinkan`,
+      );
+    }
+  }
+
+  const item: ItemDefinition = {
+    id: effect.id,
+    name: effect.name,
+    stackable: effect.stackable,
+    consumable: effect.consumable,
+    effects: effect.effects,
+    tags: effect.tags,
+    ...(effect.description === undefined
+      ? {}
+      : { description: effect.description }),
+    ...(effect.maxStack === undefined ? {} : { maxStack: effect.maxStack }),
+  };
+  const effectiveMap = context?.worldMap ?? game.worldMap;
+  const declaredFlags = new Set(Object.keys(game.worldMap?.flags ?? {}));
+  const needsPinnedMap =
+    effectiveMap !== undefined &&
+    effect.effects.some(
+      (nested) =>
+        nested.type === "SET_FLAG" &&
+        !declaredFlags.has(nested.target) &&
+        Object.hasOwn(effectiveMap.flags ?? {}, nested.target),
+    );
+  const candidate: GameDefinition = {
+    ...game,
+    items: [...game.items, item],
+    ...(needsPinnedMap && effectiveMap
+      ? { worldMap: structuredClone(effectiveMap) }
+      : {}),
+  };
+  const definitionProblems = validateDefinition(candidate);
+  if (definitionProblems.length) {
+    fail(`REGISTER_ITEM tidak valid: ${definitionProblems.join(" ")}`);
+  }
+
+  applyOne(candidate, next, {
+    type: "ADD_ITEM",
+    target: item.id,
+    quantity: effect.quantity,
+  });
+  game.items.push(item);
+  if (needsPinnedMap && candidate.worldMap) {
+    game.worldMap = candidate.worldMap;
+  }
+  return `Item "${item.name}" terdaftar dan diperoleh sebanyak ${effect.quantity}`;
+}
+
 export function applyNarratorEffects(
   game: GameDefinition,
   state: SessionState,
@@ -600,10 +699,14 @@ export function applyNarratorEffects(
   let currentGame = game;
   const applied: string[] = [];
   for (const effect of effects) {
-    if (effect.type === "REGISTER_NPC") {
+    if (effect.type === "REGISTER_NPC" || effect.type === "REGISTER_ITEM") {
       definition ??= structuredClone(game);
       currentGame = definition;
-      applied.push(registerNpc(currentGame, next, effect, context));
+      applied.push(
+        effect.type === "REGISTER_NPC"
+          ? registerNpc(currentGame, next, effect, context)
+          : registerItem(currentGame, next, effect, context),
+      );
     } else {
       applied.push(applyOne(currentGame, next, effect, context));
     }
@@ -772,7 +875,7 @@ function parseStringList(raw: unknown, label: string): string[] {
   for (const value of raw) entries.push(parseRequiredText(value, label));
   return entries;
 }
-const NPC_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
+const ENTITY_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const REGISTER_NPC_FIELDS = [
   "type",
   "id",
@@ -781,6 +884,18 @@ const REGISTER_NPC_FIELDS = [
   "personality",
   "role",
   "goals",
+];
+const REGISTER_ITEM_FIELDS = [
+  "type",
+  "id",
+  "name",
+  "description",
+  "stackable",
+  "maxStack",
+  "consumable",
+  "effects",
+  "tags",
+  "quantity",
 ];
 const EFFECT_FIELDS: Record<string, readonly string[]> = {
   ATTRIBUTE_CHANGE: ["type", "target", "operation", "value"],
@@ -795,6 +910,7 @@ const EFFECT_FIELDS: Record<string, readonly string[]> = {
   SET_FLAG: ["type", "target", "value"],
   NPC_PRESENCE: ["type", "npcId", "present"],
   REGISTER_NPC: REGISTER_NPC_FIELDS,
+  REGISTER_ITEM: REGISTER_ITEM_FIELDS,
 };
 
 function assertOnlyKeys(
@@ -898,7 +1014,7 @@ function parseEffect(raw: unknown): TurnEffect {
       };
     case "REGISTER_NPC": {
       const id = parseRequiredText(obj.id, "REGISTER_NPC.id");
-      if (id.length > 128 || !NPC_ID_PATTERN.test(id)) {
+      if (id.length > 128 || !ENTITY_ID_PATTERN.test(id)) {
         fail("REGISTER_NPC.id tidak valid");
       }
       const name = parseRequiredText(obj.name, "REGISTER_NPC.name");
@@ -945,6 +1061,70 @@ function parseEffect(raw: unknown): TurnEffect {
         goals,
         ...(description === undefined ? {} : { description }),
         ...(role === undefined ? {} : { role }),
+      };
+    }
+    case "REGISTER_ITEM": {
+      const id = parseRequiredText(obj.id, "REGISTER_ITEM.id");
+      if (id.length > 128 || !ENTITY_ID_PATTERN.test(id)) {
+        fail("REGISTER_ITEM.id tidak valid");
+      }
+      const name = parseRequiredText(obj.name, "REGISTER_ITEM.name");
+      if (name.length > 100)
+        fail("REGISTER_ITEM.name melebihi batas 100 karakter");
+      const description =
+        obj.description === undefined
+          ? undefined
+          : parseRequiredText(obj.description, "REGISTER_ITEM.description");
+      if (description && description.length > 500) {
+        fail("REGISTER_ITEM.description melebihi batas 500 karakter");
+      }
+      if (typeof obj.stackable !== "boolean")
+        fail("REGISTER_ITEM.stackable harus boolean");
+      if (typeof obj.consumable !== "boolean")
+        fail("REGISTER_ITEM.consumable harus boolean");
+      const maxStack =
+        obj.maxStack === undefined
+          ? undefined
+          : parseQuantityNumber(obj.maxStack);
+      if (!Array.isArray(obj.tags) || obj.tags.length > 8)
+        fail("REGISTER_ITEM.tags harus array dengan maksimal 8 nilai");
+      const tags: string[] = [];
+      for (const value of obj.tags) {
+        const tag = parseRequiredText(value, "REGISTER_ITEM.tags");
+        if (tag.length > 100)
+          fail("REGISTER_ITEM.tags melebihi batas 100 karakter");
+        tags.push(tag);
+      }
+      if (!Array.isArray(obj.effects) || obj.effects.length > 16)
+        fail("REGISTER_ITEM.effects harus array dengan maksimal 16 nilai");
+      const effects: ItemEffect[] = [];
+      for (const nested of obj.effects) {
+        const nestedType =
+          nested !== null &&
+          typeof nested === "object" &&
+          !Array.isArray(nested)
+            ? (nested as Record<string, unknown>).type
+            : undefined;
+        if (nestedType === "REGISTER_ITEM" || nestedType === "REGISTER_NPC") {
+          fail("REGISTER_ITEM.effects tidak boleh mendaftarkan entitas baru");
+        }
+        const parsed = parseEffect(nested);
+        if (parsed.type === "REGISTER_ITEM" || parsed.type === "REGISTER_NPC") {
+          fail("REGISTER_ITEM.effects tidak boleh mendaftarkan entitas baru");
+        }
+        effects.push(parsed);
+      }
+      return {
+        type,
+        id,
+        name,
+        stackable: obj.stackable,
+        consumable: obj.consumable,
+        effects,
+        tags,
+        quantity: parseQuantityNumber(obj.quantity),
+        ...(description === undefined ? {} : { description }),
+        ...(maxStack === undefined ? {} : { maxStack }),
       };
     }
     default:

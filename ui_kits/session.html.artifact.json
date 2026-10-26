@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "kind": "html",
+  "title": "session.html",
+  "entry": "session.html",
+  "renderer": "html",
+  "status": "complete",
+  "exports": [
+    "html",
+    "pdf",
+    "zip"
+  ],
+  "createdAt": "2026-10-20T05:02:56.982Z",
+  "updatedAt": "2026-10-20T07:39:39.559Z",
+  "metadata": {
+    "inferred": true,
+    "reconciled": true
+  }
+}

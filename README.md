@@ -37,7 +37,7 @@ Backend menyajikan frontend dan API pada `http://127.0.0.1:5173`. Hentikan serve
 
 ## Tampilan
 
-Antarmuka memakai shell gelap bernuansa hutan dengan aksen kuningan: rail navigasi (Perpustakaan, Sesi, Pengaturan) beserta dunia terakhir, header halaman, feature card dan grid dunia di perpustakaan, panggung cerita dengan composer tindakan, serta drawer **Catatan lapangan** berisi sumber daya, orang terdekat, lokasi, dan isi tas. Settings dan editor memakai permukaan kertas krem. Rail menjadi ikon pada lebar 701–1000px dan bar bawah pada ≤700px; grid dunia 3 kolom di desktop dan 2 kolom di ponsel.
+Antarmuka memakai shell gelap bernuansa hutan dengan aksen kuningan: rail navigasi (Perpustakaan, Sesi, Pengaturan), header halaman, aksi `Buat dunia` yang selalu terlihat di perpustakaan, ringkasan sesi terakhir, grid dunia, panggung cerita, dan drawer **Catatan lapangan**. Setiap kartu dunia menampilkan jumlah sesi dan pintasan `Sesi baru`; halaman dunia menyediakan formulir untuk memulai sesi independen dari definisi tersimpan. Settings dan editor memakai sistem gelap yang sama. Rail selebar 248px berubah menjadi bar horizontal pada ≤1199px dan navigasi bawah pada ≤899px.
 
 Panggung cerita memberi label **Adegan N · lokasi** (turn bukan bab) dan memakai judul dunia sebagai judul panggung. Dialog hanya diambil dari turn terakhir; percakapan turn lama tetap ada di riwayat. Kartu dunia memakai enam ilustrasi sampul 3:2 (`coast`, `lantern`, `archive`, `desert`, `mountain`, `rain`) yang dipilih secara deterministik dari genre dan judul.
 
@@ -53,7 +53,7 @@ Profil AI menyimpan nama, provider, model, prompt narrator, dan Base URL custom 
 
 Provider, model, dan prompt sistem narrator diatur melalui Settings. Prompt bawaan dikemas dari `shared/narrator-system-prompt.json`; teks yang diedit menggantikan seluruh prompt bawaan dan dapat dipulihkan kapan saja. Perubahan default global baru disimpan setelah tombol **Simpan pengaturan AI** ditekan, lalu disalin ke sesi baru. Preferensi ukuran teks langsung diterapkan dan disimpan. Prompt sesi aktif tersimpan terpisah di konfigurasi sesi serta ikut save/export; template game tidak membawa prompt. Prompt wajib berisi teks non-whitespace dan dibatasi 8.000 karakter.
 
-**Editor** memuat ringkasan, skenario, pemain, atribut, sumber daya, relasi dan kelompok pihak, item beserta efek, inventaris awal, NPC, peta dunia, lorebook, dan pratinjau. Draft dunia baru belum tersimpan sampai **Simpan** ditekan. Menerapkan template mengganti bidang konten draft dan menghapus bidang opsional yang tidak disertakan template. Mengedit dunia tersimpan memperbarui definisi untuk sesi berikutnya saja; sesi yang telah dimulai mempertahankan snapshot awal. **Mulai sesi** sebelum menyimpan perubahan lokal tetap memakai definisi tersimpan.
+**Editor** memuat ringkasan, skenario, pemain, peta dunia, NPC, item, inventaris awal, lorebook, atribut, sumber daya, relasi, dan pratinjau. Bagian dikelompokkan tetapi tetap bebas dipilih. Draft dunia baru belum tersimpan sampai **Simpan dunia** ditekan. Menerapkan template mengganti bidang konten draft dan menghapus bidang opsional yang tidak disertakan template. Mengedit dunia tersimpan memperbarui definisi untuk sesi baru; sesi yang telah dimulai mempertahankan snapshot awal. Perubahan draft harus disimpan sebelum **Mulai sesi baru** aktif di Editor; sesi yang sudah ada dapat dilanjutkan tanpa mengubah progresnya.
 
 Untuk request OpenRouter `google/gemini-*`, provider dipin ke `google-ai-studio` tanpa fallback agar signature reasoning tetap pada endpoint yang sama selama lanjutan tool. Jika endpoint itu tidak tersedia, run gagal alih-alih berpindah ke provider Google lain.
 
@@ -76,6 +76,8 @@ Gunakan **Settings → Migrasi data IndexedDB** dari origin canonical untuk meng
 Jika ingin cerita dimulai tanpa NPC, hapus NPC awal di **Editor** sebelum memulai session. Saat karakter player berinteraksi langsung dengan orang baru, narrator dapat mendaftarkannya sebagai NPC pada sesi itu. Sekadar menyebut atau melihat orang tidak cukup untuk membuat NPC.
 
 NPC yang didaftarkan tersimpan bersama sesi dan tidak mengubah template game. Mereka dapat muncul lagi dalam cerita dan tercakup dalam ekspor serta pemulihan save. Tab **Orang** menampilkan karakter yang hadir di adegan saat ini.
+
+NPC yang terikat lokasi hanya hadir di lokasi itu. Pemain yang kembali ke lokasi tersebut menemui NPC itu lagi, kecuali kehadirannya pernah disetel eksplisit absen. Pada turn perjalanan, sapaan langsung kepada NPC di lokasi tujuan sudah dihitung sebagai interaksi di tujuan; sekadar menyebut nama tetap tidak membuka detail atau pengetahuan pribadinya. Efek `NPC_PRESENCE` yang menandai hadir mengikat NPC ke lokasi adegan saat itu, sehingga narator dapat memunculkannya kembali setelah perpindahan lokasi. Untuk itu narator menerima daftar identitas publik (nama dan ID) NPC yang pernah ditemui tetapi sedang di luar adegan; daftar ini tidak memuat detail, pengetahuan pribadi, relasi, atau lokasi, dan tidak membuka tool detail NPC. Tanpa efek itu, NPC yang tetap terikat di lokasi lain tidak otomatis hadir hanya karena namanya disebut.
 
 ## Format cerita
 

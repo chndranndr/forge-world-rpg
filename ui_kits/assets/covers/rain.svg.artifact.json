@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "kind": "svg",
+  "title": "assets/covers/rain.svg",
+  "entry": "assets/covers/rain.svg",
+  "renderer": "svg",
+  "status": "complete",
+  "exports": [
+    "svg",
+    "zip"
+  ],
+  "createdAt": "2026-10-20T07:39:39.694Z",
+  "updatedAt": "2026-10-20T07:39:39.694Z",
+  "metadata": {
+    "inferred": true
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "kind": "svg",
+  "title": "assets/textures/paper.svg",
+  "entry": "assets/textures/paper.svg",
+  "renderer": "svg",
+  "status": "complete",
+  "exports": [
+    "svg",
+    "zip"
+  ],
+  "createdAt": "2026-10-20T07:39:39.625Z",
+  "updatedAt": "2026-10-20T07:39:39.625Z",
+  "metadata": {
+    "inferred": true
+  }
+}

@@ -1,0 +1,23 @@
+/* Fworld source-derived color and type bindings. Values mirror assets/tokens.css. */
+@font-face{font-family:"Newsreader";src:url("fonts/newsreader-normal-400-600.woff2") format("woff2");font-weight:400 600;font-display:swap}
+@font-face{font-family:"Newsreader";src:url("fonts/newsreader-italic-400-500.woff2") format("woff2");font-weight:400 500;font-style:italic;font-display:swap}
+@font-face{font-family:"Public Sans";src:url("fonts/public-sans-normal-400-600.woff2") format("woff2");font-weight:400 600;font-display:swap}
+@font-face{font-family:"IBM Plex Mono";src:url("fonts/ibm-plex-mono-normal-400.woff2") format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:"IBM Plex Mono";src:url("fonts/ibm-plex-mono-normal-500.woff2") format("woff2");font-weight:500;font-display:swap}
+:root{
+  --color-bg:#101917; --color-surface:#17221e; --color-surface-raised:#202d28;
+  --color-fg:#eee9df; --color-muted:#b6b2a7; --color-border:#3a4640;
+  --color-accent:#d3a55e; --color-accent-ink:#241a0c; --color-night:#0a1210;
+  --color-story:#e7c98f; --color-dialogue:#f7f2e7; --color-danger:#a94a3c;
+  --color-danger-fg:#ffe4de; --color-ok:#86ab92; --color-ok-fg:#c6ddcb;
+  --color-paper:#f1ece2; --color-paper-raised:#fbf8f1; --color-paper-ink:#37302a;
+  --color-paper-muted:#7c7468; --color-paper-line:#d8d0c2; --color-paper-action:#34463a;
+  --bg:oklch(0.17 0.012 160); --surface:oklch(0.215 0.014 160); --surface-2:oklch(0.25 0.014 160); --surface-3:oklch(0.285 0.014 160);
+  --fg:oklch(0.93 0.01 90); --muted:oklch(0.72 0.015 90); --border:oklch(0.32 0.012 160); --accent:oklch(0.78 0.11 75); --accent-ink:oklch(0.20 0.02 75);
+  --night:oklch(0.135 0.010 160); --story:oklch(0.885 0.06 85); --dialogue:oklch(0.955 0.012 90);
+  --paper:oklch(0.955 0.010 85); --paper-raised:oklch(0.985 0.005 85); --paper-ink:oklch(0.24 0.015 70); --paper-muted:oklch(0.50 0.012 70); --paper-line:oklch(0.86 0.010 85); --paper-action:oklch(0.28 0.03 155);
+  --radius-ctl:4px; --radius-panel:8px; --radius-sheet:14px; --rail:248px; --app-max:1180px;
+  --font-display:"Newsreader","Iowan Old Style","Palatino Linotype",Georgia,serif;
+  --font-ui:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+}

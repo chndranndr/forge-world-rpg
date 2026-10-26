@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Perpustakaan — Fworld</title>
+  <meta name="description" content="Perpustakaan Fworld: kembali ke cerita yang sedang diputar atau mulai dunia baru.">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/tokens.css">
+  <link rel="stylesheet" href="assets/app.css">
+  <script src="assets/app.js" defer></script>
+</head>
+<body class="library-page">
+  <a class="skip-link" href="#main">Langsung ke isi</a>
+
+  <div class="shell">
+    <aside class="rail texture texture--leather" aria-label="Navigasi utama">
+      <a class="rail__brand" href="index.html" aria-label="Fworld, beranda prototipe">
+        <span class="brand-mark" aria-hidden="true">F</span>
+        <span>
+          <span class="brand-word">Fworld</span>
+          <span class="brand-sub">Ruang cerita</span>
+        </span>
+      </a>
+
+      <nav class="rail__nav" aria-label="Jelajahi">
+        <p class="rail__label">Jelajahi</p>
+        <a class="nav-link" href="library.html" aria-current="page">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-library"></use></svg>
+          Perpustakaan
+          <span class="nav-link__count">06</span>
+        </a>
+        <a class="nav-link" href="settings.html">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-settings"></use></svg>
+          Pengaturan
+        </a>
+      </nav>
+
+      <div class="rail__recent">
+        <p class="rail__label">Dunia terakhir</p>
+        <a class="recent-link" href="session.html">
+          <span class="recent-link__title">Lentera di Hutan</span>
+          <span class="recent-link__meta">Sesi 4 · 2 jam lalu</span>
+        </a>
+        <a class="recent-link" href="world.html">
+          <span class="recent-link__title">Pesisir Utara</span>
+          <span class="recent-link__meta">Sesi 12 · kemarin</span>
+        </a>
+        <a class="recent-link" href="world.html">
+          <span class="recent-link__title">Arsip Hujan</span>
+          <span class="recent-link__meta">Sesi 2 · 3 hari lalu</span>
+        </a>
+      </div>
+
+      <div class="rail__foot">
+        <p class="status-line">
+          <span class="status-dot status-dot--ok" aria-hidden="true"></span>
+          Backend lokal aktif
+        </p>
+        <p class="rail__version">Fworld 0.9 · prototipe</p>
+      </div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <div class="topbar__brand">
+          <span class="brand-mark" aria-hidden="true">F</span>
+          <span class="brand-word">Fworld</span>
+        </div>
+        <p class="topbar__title">Perpustakaan</p>
+        <div class="topbar__actions">
+          <a class="icon-btn" href="settings.html" aria-label="Pengaturan">
+            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-settings"></use></svg>
+          </a>
+        </div>
+      </header>
+
+      <main id="main" class="page">
+        <div class="page__inner">
+          <header class="page-head">
+            <p class="eyebrow">Perpustakaan</p>
+            <div class="page-head__row">
+              <div>
+                <h1 class="page-title">Dunia untuk kembali.</h1>
+                <p class="page-lede">Lanjutkan dari adegan terakhir, atau buka halaman baru. Semua cerita tinggal di perangkat ini.</p>
+                <p class="mono faint" style="margin-top:8px">Data contoh · Prototipe antarmuka</p>
+              </div>
+              <div class="page-actions">
+                <a class="btn btn--secondary" href="create-world.html">
+                  <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-plus"></use></svg>
+                  Buat dunia baru
+                </a>
+              </div>
+            </div>
+          </header>
+
+          <section class="feature" aria-labelledby="feature-title">
+            <div class="feature__still">
+              <div class="cover cover--still">
+                <img src="assets/covers/coast.svg" alt="Ilustrasi pesisir berbatu saat senja dengan mercusuar kecil di kejauhan." width="1200" height="514">
+              </div>
+            </div>
+            <div class="feature__body">
+              <div>
+                <p class="eyebrow">Sedang diputar</p>
+                <h2 class="feature__title" id="feature-title">Pesisir Utara</h2>
+                <p class="feature__meta">
+                  <span class="badge badge--active"><span class="badge__dot" aria-hidden="true"></span>Aktif</span>
+                  <span>Petualangan</span>
+                  <span class="meta-dot" aria-hidden="true"></span>
+                  <span>3 sesi</span>
+                  <span class="meta-dot" aria-hidden="true"></span>
+                  <span>terakhir kemarin</span>
+                </p>
+                <p class="feature__chapter">Bab III — “Air pasang membawa sesuatu yang tidak kami undang.”</p>
+                <p class="feature__desc">Kamu meninggalkan mercusuar sebelum fajar. Di dermaga, seorang penjaga tua menunggu dengan peta yang sudah lama tidak dipakai siapa pun.</p>
+              </div>
+              <div class="feature__cta cluster">
+                <a class="btn btn--primary" href="session.html">
+                  Lanjutkan cerita
+                  <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-arrow-right"></use></svg>
+                </a>
+                <a class="btn btn--ghost" href="world.html">Lihat dunia</a>
+              </div>
+            </div>
+          </section>
+
+          <section class="section" aria-labelledby="wall-title">
+            <div class="section-head">
+              <div>
+                <h2 class="section-title" id="wall-title">Dunia kamu</h2>
+                <p class="section-meta">
+                  <span data-world-count>06 dunia</span>
+                  <span class="meta-dot" aria-hidden="true"></span>
+                  <span>diurutkan dari yang terakhir dimainkan</span>
+                </p>
+              </div>
+              <div class="wall-tools">
+                <div class="search">
+                  <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-search"></use></svg>
+                  <label class="sr-only" for="cari-dunia">Cari dunia</label>
+                  <input class="input" id="cari-dunia" type="search" placeholder="Cari judul atau genre" autocomplete="off" data-search>
+                  <button class="search__clear" type="button" aria-label="Hapus pencarian" data-search-clear hidden>
+                    <svg class="icon icon--sm" aria-hidden="true"><use href="assets/icons.svg#i-close"></use></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <ul class="wall" data-wall style="margin-top:24px">
+              <li class="world-card" data-world-card data-title="Pesisir Utara" data-genre="Petualangan">
+                <div class="world-card__coverwrap">
+                  <div class="cover world-card__cover">
+                    <img src="assets/covers/coast.svg" alt="Pesisir berbatu dengan mercusuar saat senja." width="600" height="400">
+                  </div>
+                  <div class="world-card__quick">
+                    <a class="btn btn--sm" href="session.html">Lanjutkan</a>
+                    <div class="menu-wrap">
+                      <button class="icon-btn" type="button" aria-label="Menu dunia Pesisir Utara" aria-haspopup="menu" data-menu="menu-pesisir">
+                        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-more"></use></svg>
+                      </button>
+                      <div class="menu" id="menu-pesisir" role="menu" aria-label="Pesisir Utara">
+                        <a class="menu__item" role="menuitem" href="world.html">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-world"></use></svg>
+                          Buka dunia
+                        </a>
+                        <a class="menu__item" role="menuitem" href="editor.html">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-edit"></use></svg>
+                          Edit dunia
+                        </a>
+                        <a class="menu__item" role="menuitem" href="#export" data-toast="Template disiapkan (contoh).">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-download"></use></svg>
+                          Export template
+                        </a>
+                        <div class="menu__sep" role="separator"></div>
+                        <button class="menu__item menu__item--danger" type="button" role="menuitem" data-open="dialog-delete">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-trash"></use></svg>
+                          Hapus cerita
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <h3 class="world-card__title"><a href="world.html">Pesisir Utara</a></h3>
+                  <p class="world-card__meta">
+                    <span class="badge badge--active"><span class="badge__dot" aria-hidden="true"></span>Aktif</span>
+                    <span>Petualangan</span>
+                    <span class="meta-dot" aria-hidden="true"></span>
+                    <span>kemarin</span>
+                  </p>
+                  <p class="world-card__sessions">3 sesi terakhir · 12 giliran</p>
+                </div>
+              </li>
+
+              <li class="world-card world-card--sample" data-world-card data-title="Lentera di Hutan" data-genre="Fantasi">
+                <div class="world-card__coverwrap">
+                  <div class="cover world-card__cover">
+                    <img src="assets/covers/lantern.svg" alt="Hutan pinus gelap dengan lentera kuning di antara pepohonan." width="600" height="400">
+                  </div>
+                  <div class="world-card__quick">
+                    <a class="btn btn--sm" href="session.html">Lanjutkan</a>
+                    <div class="menu-wrap">
+                      <button class="icon-btn" type="button" aria-label="Menu dunia Lentera di Hutan" aria-haspopup="menu" data-menu="menu-lentera">
+                        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-more"></use></svg>
+                      </button>
+                      <div class="menu" id="menu-lentera" role="menu" aria-label="Lentera di Hutan">
+                        <a class="menu__item" role="menuitem" href="world.html">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-world"></use></svg>
+                          Buka dunia
+                        </a>
+                        <a class="menu__item" role="menuitem" href="editor.html">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-edit"></use></svg>
+                          Edit dunia
+                        </a>
+                        <a class="menu__item" role="menuitem" href="#export" data-toast="Template disiapkan (contoh).">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-download"></use></svg>
+                          Export template
+                        </a>
+                        <div class="menu__sep" role="separator"></div>
+                        <button class="menu__item menu__item--danger" type="button" role="menuitem" data-open="dialog-delete">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-trash"></use></svg>
+                          Hapus cerita
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <h3 class="world-card__title"><a href="world.html">Lentera di Hutan</a></h3>
+                  <p class="world-card__meta">
+                    <span class="badge badge--ready"><span class="badge__dot" aria-hidden="true"></span>Siap</span>
+                    <span>Fantasi</span>
+                    <span class="meta-dot" aria-hidden="true"></span>
+                    <span>2 jam lalu</span>
+                  </p>
+                  <p class="world-card__sessions">5 sesi terakhir · 28 giliran</p>
+                </div>
+              </li>
+
+              <li class="world-card" data-world-card data-title="Arsip Hujan" data-genre="Misteri">
+                <div class="world-card__coverwrap">
+                  <div class="cover world-card__cover">
+                    <img src="assets/covers/rain.svg" alt="Jendela berembun menghadap kota hujan dengan siluet gedung." width="600" height="400">
+                  </div>
+                  <div class="world-card__quick">
+                    <a class="btn btn--sm" href="world.html">Buka</a>
+                    <div class="menu-wrap">
+                      <button class="icon-btn" type="button" aria-label="Menu dunia Arsip Hujan" aria-haspopup="menu" data-menu="menu-arsip">
+                        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-more"></use></svg>
+                      </button>
+                      <div class="menu" id="menu-arsip" role="menu" aria-label="Arsip Hujan">
+                        <a class="menu__item" role="menuitem" href="world.html">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-world"></use></svg>
+                          Buka dunia
+                        </a>
+                        <a class="menu__item" role="menuitem" href="editor.html">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-edit"></use></svg>
+                          Edit dunia
+                        </a>
+                        <a class="menu__item" role="menuitem" href="#export" data-toast="Template disiapkan (contoh).">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-download"></use></svg>
+                          Export template
+                        </a>
+                        <div class="menu__sep" role="separator"></div>
+                        <button class="menu__item menu__item--danger" type="button" role="menuitem" data-open="dialog-delete">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-trash"></use></svg>
+                          Hapus cerita
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <h3 class="world-card__title"><a href="world.html">Arsip Hujan</a></h3>
+                  <p class="world-card__meta">
+                    <span class="badge badge--draft"><span class="badge__dot" aria-hidden="true"></span>Draft</span>
+                    <span>Misteri</span>
+                    <span class="meta-dot" aria-hidden="true"></span>
+                    <span>3 hari lalu</span>
+                  </p>
+                  <p class="world-card__sessions">2 sesi terakhir · 9 giliran</p>
+                </div>
+              </li>
+
+              <li class="world-card" data-world-card data-title="Jalur Gunung Tua" data-genre="Petualangan">
+                <div class="world-card__coverwrap">
+                  <div class="cover world-card__cover">
+                    <img src="assets/covers/mountain.svg" alt="Pegunungan berlapis di pagi berkabut dengan jalur sempit." width="600" height="400">
+                  </div>
+                  <div class="world-card__quick">
+                    <a class="btn btn--sm" href="world.html">Buka</a>
+                    <div class="menu-wrap">
+                      <button class="icon-btn" type="button" aria-label="Menu dunia Jalur Gunung Tua" aria-haspopup="menu" data-menu="menu-gunung">
+                        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-more"></use></svg>
+                      </button>
+                      <div class="menu" id="menu-gunung" role="menu" aria-label="Jalur Gunung Tua">
+                        <a class="menu__item" role="menuitem" href="world.html">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-world"></use></svg>
+                          Buka dunia
+                        </a>
+                        <a class="menu__item" role="menuitem" href="editor.html">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-edit"></use></svg>
+                          Edit dunia
+                        </a>
+                        <a class="menu__item" role="menuitem" href="#export" data-toast="Template disiapkan (contoh).">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-download"></use></svg>
+                          Export template
+                        </a>
+                        <div class="menu__sep" role="separator"></div>
+                        <button class="menu__item menu__item--danger" type="button" role="menuitem" data-open="dialog-delete">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-trash"></use></svg>
+                          Hapus cerita
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <h3 class="world-card__title"><a href="world.html">Jalur Gunung Tua</a></h3>
+                  <p class="world-card__meta">
+                    <span class="badge badge--ready"><span class="badge__dot" aria-hidden="true"></span>Siap</span>
+                    <span>Petualangan</span>
+                    <span class="meta-dot" aria-hidden="true"></span>
+                    <span>5 hari lalu</span>
+                  </p>
+                  <p class="world-card__sessions">1 sesi terakhir · 4 giliran</p>
+                </div>
+              </li>
+
+              <li class="world-card" data-world-card data-title="Kota Gurun" data-genre="Fantasi">
+                <div class="world-card__coverwrap">
+                  <div class="cover world-card__cover">
+                    <img src="assets/covers/desert.svg" alt="Kota berdinding pasir dengan menara dan langit jingga." width="600" height="400">
+                  </div>
+                  <div class="world-card__quick">
+                    <a class="btn btn--sm" href="session.html">Lanjutkan</a>
+                    <div class="menu-wrap">
+                      <button class="icon-btn" type="button" aria-label="Menu dunia Kota Gurun" aria-haspopup="menu" data-menu="menu-gurun">
+                        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-more"></use></svg>
+                      </button>
+                      <div class="menu" id="menu-gurun" role="menu" aria-label="Kota Gurun">
+                        <a class="menu__item" role="menuitem" href="world.html">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-world"></use></svg>
+                          Buka dunia
+                        </a>
+                        <a class="menu__item" role="menuitem" href="editor.html">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-edit"></use></svg>
+                          Edit dunia
+                        </a>
+                        <a class="menu__item" role="menuitem" href="#export" data-toast="Template disiapkan (contoh).">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-download"></use></svg>
+                          Export template
+                        </a>
+                        <div class="menu__sep" role="separator"></div>
+                        <button class="menu__item menu__item--danger" type="button" role="menuitem" data-open="dialog-delete">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-trash"></use></svg>
+                          Hapus cerita
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <h3 class="world-card__title"><a href="world.html">Kota Gurun</a></h3>
+                  <p class="world-card__meta">
+                    <span class="badge badge--active"><span class="badge__dot" aria-hidden="true"></span>Aktif</span>
+                    <span>Fantasi</span>
+                    <span class="meta-dot" aria-hidden="true"></span>
+                    <span>1 minggu lalu</span>
+                  </p>
+                  <p class="world-card__sessions">4 sesi terakhir · 21 giliran</p>
+                </div>
+              </li>
+
+              <li class="world-card" data-world-card data-title="Stasiun Terakhir" data-genre="Misteri">
+                <div class="world-card__coverwrap">
+                  <div class="cover world-card__cover">
+                    <img src="assets/covers/archive.svg" alt="Ruang arsip dengan rak berkas dan lampu meja tunggal." width="600" height="400">
+                  </div>
+                  <div class="world-card__quick">
+                    <a class="btn btn--sm" href="world.html">Buka</a>
+                    <div class="menu-wrap">
+                      <button class="icon-btn" type="button" aria-label="Menu dunia Stasiun Terakhir" aria-haspopup="menu" data-menu="menu-stasiun">
+                        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-more"></use></svg>
+                      </button>
+                      <div class="menu" id="menu-stasiun" role="menu" aria-label="Stasiun Terakhir">
+                        <a class="menu__item" role="menuitem" href="world.html">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-world"></use></svg>
+                          Buka dunia
+                        </a>
+                        <a class="menu__item" role="menuitem" href="editor.html">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-edit"></use></svg>
+                          Edit dunia
+                        </a>
+                        <a class="menu__item" role="menuitem" href="#export" data-toast="Template disiapkan (contoh).">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-download"></use></svg>
+                          Export template
+                        </a>
+                        <div class="menu__sep" role="separator"></div>
+                        <button class="menu__item menu__item--danger" type="button" role="menuitem" data-open="dialog-delete">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-trash"></use></svg>
+                          Hapus cerita
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <h3 class="world-card__title"><a href="world.html">Stasiun Terakhir</a></h3>
+                  <p class="world-card__meta">
+                    <span class="badge badge--draft"><span class="badge__dot" aria-hidden="true"></span>Draft</span>
+                    <span>Misteri</span>
+                    <span class="meta-dot" aria-hidden="true"></span>
+                    <span>2 minggu lalu</span>
+                  </p>
+                  <p class="world-card__sessions">Belum ada sesi</p>
+                </div>
+              </li>
+            </ul>
+
+            <div class="empty empty--search" data-search-empty hidden>
+              <h3 class="empty__title">Tidak ada yang cocok</h3>
+              <p class="empty__text">Coba kata lain, atau kembali ke seluruh dunia. Pencarian hanya melihat judul dan genre.</p>
+              <div class="empty__actions">
+                <button class="btn btn--secondary" type="button" data-search-reset>Hapus pencarian</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+
+      <nav class="tabbar" aria-label="Navigasi bawah">
+        <a class="tabbar__link" href="library.html" aria-current="page">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-library"></use></svg>
+          Perpustakaan
+        </a>
+        <a class="tabbar__link" href="settings.html">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-settings"></use></svg>
+          Pengaturan
+        </a>
+      </nav>
+    </div>
+  </div>
+
+  <div class="scrim" data-scrim></div>
+
+  <div class="dialog" id="dialog-delete" role="dialog" aria-modal="true" aria-labelledby="delete-title" aria-hidden="true">
+    <h2 class="dialog__title" id="delete-title">Hapus cerita ini?</h2>
+    <p class="dialog__body">Dunia, sesi, dan riwayat cerita akan dihapus dari perangkat ini. Tindakan ini tidak bisa dibatalkan. Template dan lorebook yang sudah diekspor tetap aman.</p>
+    <p class="dialog__note">Cadangkan save lebih dulu bila kamu masih ragu.</p>
+    <div class="dialog__actions">
+      <button class="btn btn--ghost" type="button" data-close>Batal</button>
+      <button class="btn btn--secondary" type="button" data-toast="Backup dibuat (contoh).">Backup dulu</button>
+      <button class="btn btn--danger" type="button" data-confirm-action="Cerita dihapus dari perpustakaan.">Hapus cerita</button>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ApiError,
   createBackup,
@@ -30,6 +30,7 @@ import type { AiConfig, LorebookRef, LorePackHeader } from "../types";
 
 interface WorldDetailProps {
   entry?: GameEntry;
+  focusSessionCreator?: boolean;
   defaultAi: AiConfig;
   defaultProfileId?: string;
   onBack: () => void;
@@ -83,6 +84,7 @@ function backupDescription(backup: BackupRecord): string {
 
 export default function WorldDetail({
   entry,
+  focusSessionCreator = false,
   defaultAi,
   defaultProfileId,
   onBack,
@@ -138,6 +140,22 @@ export default function WorldDetail({
   const [sessionNotices, setSessionNotices] = useState<Record<string, string>>(
     {},
   );
+  const sessionNameRef = useRef<HTMLInputElement>(null);
+  const sessionsSectionRef = useRef<HTMLElement>(null);
+
+  function focusNewSession(): void {
+    sessionsSectionRef.current?.scrollIntoView({
+      behavior: "auto",
+      block: "start",
+    });
+    sessionNameRef.current?.focus({ preventScroll: true });
+  }
+
+  useEffect(() => {
+    if (!focusSessionCreator || !maybeGame) return;
+    focusNewSession();
+  }, [focusSessionCreator, maybeGame?.id]);
+
   useEffect(() => {
     const gameId = maybeGame?.id;
     if (!gameId || loreRefs.length === 0) {
@@ -593,6 +611,13 @@ export default function WorldDetail({
             )}
             <button
               type="button"
+              className={latest ? "quiet" : "primary"}
+              onClick={focusNewSession}
+            >
+              Sesi baru
+            </button>
+            <button
+              type="button"
               className="quiet"
               onClick={() => onEdit(game.id)}
             >
@@ -602,142 +627,88 @@ export default function WorldDetail({
         </div>
       </article>
 
-      <section aria-label="Tindakan dunia" className="session-menu">
-        <button
-          type="button"
-          className="quiet"
-          onClick={() => {
-            setWorldNotice("");
-            setWorldError("");
-            setPendingDuplicate(savedGame);
-          }}
-          disabled={busyAction !== null}
-        >
-          Duplikat dunia
-        </button>
-        <button
-          type="button"
-          className="quiet"
-          onClick={() => void exportTemplate()}
-          disabled={busyAction !== null}
-        >
-          {busyAction === "export-template" ? "Mengekspor…" : "Export template"}
-        </button>
-        <button
-          type="button"
-          className="quiet"
-          onClick={() => void saveTemplate()}
-          disabled={busyAction !== null}
-        >
-          {busyAction === "save-template"
-            ? "Menyimpan…"
-            : "Simpan sebagai template"}
-        </button>
-        <button
-          type="button"
-          className="quiet"
-          onClick={() => {
-            setWorldDialogNote("");
-            setWorldDialogNoteRole("status");
-            setPendingWorldDelete(savedGame);
-          }}
-          disabled={busyAction !== null}
-        >
-          Hapus dunia permanen…
-        </button>
-      </section>
-      {worldNotice && (
-        <p className="hint" role="status">
-          {worldNotice}
-        </p>
-      )}
-      {worldError && (
-        <p className="error" role="alert">
-          {worldError}
-        </p>
-      )}
-
-      <section aria-labelledby="world-summary-title">
-        <div className="section-head">
-          <div>
-            <span className="eyebrow">Ringkasan</span>
-            <h2 id="world-summary-title">Isi dunia.</h2>
-          </div>
-        </div>
-        <dl className="world-details">
-          <div>
-            <dt>Genre</dt>
-            <dd>{game.genre?.trim() || "Belum diatur"}</dd>
-          </div>
-          <div>
-            <dt>Nada</dt>
-            <dd>{game.tone?.trim() || "Belum diatur"}</dd>
-          </div>
-          <div>
-            <dt>Bahasa</dt>
-            <dd>{game.language?.trim() || "Belum diatur"}</dd>
-          </div>
-          <div>
-            <dt>Tokoh</dt>
-            <dd>{game.npcs.length}</dd>
-          </div>
-          <div>
-            <dt>Atribut · sumber daya · item</dt>
-            <dd>
-              {game.attributes.length} · {game.resources.length} ·{" "}
-              {game.items.length}
-            </dd>
-          </div>
-          <div>
-            <dt>Sesi tersimpan</dt>
-            <dd>{entry.sessions.length}</dd>
-          </div>
-          <div>
-            <dt>Total giliran tersimpan</dt>
-            <dd>{turnTotal}</dd>
-          </div>
-          <div>
-            <dt>Aktivitas terakhir</dt>
-            <dd>{relativeTime(lastActivity)}</dd>
-          </div>
-        </dl>
-      </section>
-
-      <section aria-labelledby="world-setting-title">
-        <div className="section-head">
-          <div>
-            <span className="eyebrow">Latar cerita</span>
-            <h2 id="world-setting-title">Dunia dan pembuka.</h2>
-          </div>
-        </div>
-        <article className="feature feature-empty">
-          <div className="feature-copy">
-            <h3>Latar</h3>
-            <p>{game.scenario.setting.trim() || "Latar belum ditulis."}</p>
-            <h3>Pembuka</h3>
-            <p>
-              {game.scenario.startingSituation.trim() ||
-                "Situasi pembuka belum ditulis."}
-            </p>
-          </div>
-        </article>
-      </section>
-
-      <section aria-labelledby="world-sessions-title">
+      <section aria-labelledby="world-sessions-title" ref={sessionsSectionRef}>
         <div className="section-head">
           <div>
             <span className="eyebrow">Sesi tersimpan</span>
-            <h2 id="world-sessions-title">Perjalanan.</h2>
+            <h2 id="world-sessions-title">Sesi di dunia ini</h2>
             <p className="hint">
               {entry.sessions.length} sesi · {turnTotal} giliran · pin lebih
               dahulu, lalu sesi terbaru.
             </p>
           </div>
         </div>
+        {defaultProfileId !== undefined ? (
+          <>
+            {selectedProfile && (
+              <dl className="world-details">
+                <div>
+                  <dt>Nama</dt>
+                  <dd>{selectedProfile.name}</dd>
+                </div>
+                <div>
+                  <dt>Penyedia</dt>
+                  <dd>{selectedProfile.provider}</dd>
+                </div>
+                <div>
+                  <dt>Model</dt>
+                  <dd>{selectedProfile.model}</dd>
+                </div>
+              </dl>
+            )}
+            {profileLoading && (
+              <p className="hint" role="status">
+                Memuat profil AI…
+              </p>
+            )}
+            {profileError && (
+              <p className="error" role="alert">
+                Profil AI gagal dimuat: {profileError}
+                {selectedProfile && " Metadata terakhir tetap ditampilkan."}
+              </p>
+            )}
+            {!profileLoading && !profileError && !selectedProfile && (
+              <p className="error" role="alert">
+                Profil AI bawaan ({defaultProfileId}) tidak ditemukan.
+              </p>
+            )}
+            {!profileLoading && (profileError || !selectedProfile) && (
+              <button
+                type="button"
+                className="quiet"
+                onClick={() => setProfileRetry((retry) => retry + 1)}
+              >
+                Coba lagi
+              </button>
+            )}
+          </>
+        ) : (
+          <dl className="world-details">
+            <div>
+              <dt>Sumber</dt>
+              <dd>Bawaan global</dd>
+            </div>
+            <div>
+              <dt>Penyedia</dt>
+              <dd>{defaultAi.provider}</dd>
+            </div>
+            <div>
+              <dt>Model</dt>
+              <dd>{defaultAi.model}</dd>
+            </div>
+          </dl>
+        )}
+        <button type="button" className="quiet" onClick={onOpenSettings}>
+          Pengaturan profil AI
+        </button>
+        <p className="hint">
+          Mulai dari kondisi awal dunia. Sesi lain tidak berubah.
+        </p>
         <form className="row" onSubmit={(event) => void createSession(event)}>
           <label className="search">
             Nama sesi (opsional)
             <input
+              ref={sessionNameRef}
               type="text"
               value={sessionName}
               onChange={(event) => setSessionName(event.target.value)}
@@ -750,7 +721,7 @@ export default function WorldDetail({
             className="primary"
             disabled={busyAction !== null}
           >
-            {busyAction === "new-session" ? "Membuat sesi…" : "Sesi baru"}
+            {busyAction === "new-session" ? "Membuat sesi…" : "Mulai sesi baru"}
           </button>
         </form>
         {sessionCreateError && (
@@ -894,6 +865,127 @@ export default function WorldDetail({
         )}
       </section>
 
+      <section aria-label="Tindakan dunia" className="session-menu">
+        <button
+          type="button"
+          className="quiet"
+          onClick={() => {
+            setWorldNotice("");
+            setWorldError("");
+            setPendingDuplicate(savedGame);
+          }}
+          disabled={busyAction !== null}
+        >
+          Duplikat dunia
+        </button>
+        <button
+          type="button"
+          className="quiet"
+          onClick={() => void exportTemplate()}
+          disabled={busyAction !== null}
+        >
+          {busyAction === "export-template" ? "Mengekspor…" : "Export template"}
+        </button>
+        <button
+          type="button"
+          className="quiet"
+          onClick={() => void saveTemplate()}
+          disabled={busyAction !== null}
+        >
+          {busyAction === "save-template"
+            ? "Menyimpan…"
+            : "Simpan sebagai template"}
+        </button>
+        <button
+          type="button"
+          className="quiet"
+          onClick={() => {
+            setWorldDialogNote("");
+            setWorldDialogNoteRole("status");
+            setPendingWorldDelete(savedGame);
+          }}
+          disabled={busyAction !== null}
+        >
+          Hapus dunia permanen…
+        </button>
+      </section>
+      {worldNotice && (
+        <p className="hint" role="status">
+          {worldNotice}
+        </p>
+      )}
+      {worldError && (
+        <p className="error" role="alert">
+          {worldError}
+        </p>
+      )}
+
+      <section aria-labelledby="world-summary-title">
+        <div className="section-head">
+          <div>
+            <span className="eyebrow">Ringkasan</span>
+            <h2 id="world-summary-title">Isi dunia.</h2>
+          </div>
+        </div>
+        <dl className="world-details">
+          <div>
+            <dt>Genre</dt>
+            <dd>{game.genre?.trim() || "Belum diatur"}</dd>
+          </div>
+          <div>
+            <dt>Nada</dt>
+            <dd>{game.tone?.trim() || "Belum diatur"}</dd>
+          </div>
+          <div>
+            <dt>Bahasa</dt>
+            <dd>{game.language?.trim() || "Belum diatur"}</dd>
+          </div>
+          <div>
+            <dt>Tokoh</dt>
+            <dd>{game.npcs.length}</dd>
+          </div>
+          <div>
+            <dt>Atribut · sumber daya · item</dt>
+            <dd>
+              {game.attributes.length} · {game.resources.length} ·{" "}
+              {game.items.length}
+            </dd>
+          </div>
+          <div>
+            <dt>Sesi tersimpan</dt>
+            <dd>{entry.sessions.length}</dd>
+          </div>
+          <div>
+            <dt>Total giliran tersimpan</dt>
+            <dd>{turnTotal}</dd>
+          </div>
+          <div>
+            <dt>Aktivitas terakhir</dt>
+            <dd>{relativeTime(lastActivity)}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section aria-labelledby="world-setting-title">
+        <div className="section-head">
+          <div>
+            <span className="eyebrow">Latar cerita</span>
+            <h2 id="world-setting-title">Dunia dan pembuka.</h2>
+          </div>
+        </div>
+        <article className="feature feature-empty">
+          <div className="feature-copy">
+            <h3>Latar</h3>
+            <p>{game.scenario.setting.trim() || "Latar belum ditulis."}</p>
+            <h3>Pembuka</h3>
+            <p>
+              {game.scenario.startingSituation.trim() ||
+                "Situasi pembuka belum ditulis."}
+            </p>
+          </div>
+        </article>
+      </section>
+
       <section aria-labelledby="world-lorebooks-title">
         <div className="section-head">
           <div>
@@ -1022,78 +1114,6 @@ export default function WorldDetail({
             })}
           </>
         )}
-      </section>
-
-      <section aria-labelledby="world-ai-profile-title">
-        <div className="section-head">
-          <div>
-            <span className="eyebrow">Narator</span>
-            <h2 id="world-ai-profile-title">Profil AI.</h2>
-          </div>
-        </div>
-        {defaultProfileId !== undefined ? (
-          <>
-            {selectedProfile && (
-              <dl className="world-details">
-                <div>
-                  <dt>Nama</dt>
-                  <dd>{selectedProfile.name}</dd>
-                </div>
-                <div>
-                  <dt>Penyedia</dt>
-                  <dd>{selectedProfile.provider}</dd>
-                </div>
-                <div>
-                  <dt>Model</dt>
-                  <dd>{selectedProfile.model}</dd>
-                </div>
-              </dl>
-            )}
-            {profileLoading && (
-              <p className="hint" role="status">
-                Memuat profil AI…
-              </p>
-            )}
-            {profileError && (
-              <p className="error" role="alert">
-                Profil AI gagal dimuat: {profileError}
-                {selectedProfile && " Metadata terakhir tetap ditampilkan."}
-              </p>
-            )}
-            {!profileLoading && !profileError && !selectedProfile && (
-              <p className="error" role="alert">
-                Profil AI bawaan ({defaultProfileId}) tidak ditemukan.
-              </p>
-            )}
-            {!profileLoading && (profileError || !selectedProfile) && (
-              <button
-                type="button"
-                className="quiet"
-                onClick={() => setProfileRetry((retry) => retry + 1)}
-              >
-                Coba lagi
-              </button>
-            )}
-          </>
-        ) : (
-          <dl className="world-details">
-            <div>
-              <dt>Sumber</dt>
-              <dd>Bawaan global</dd>
-            </div>
-            <div>
-              <dt>Penyedia</dt>
-              <dd>{defaultAi.provider}</dd>
-            </div>
-            <div>
-              <dt>Model</dt>
-              <dd>{defaultAi.model}</dd>
-            </div>
-          </dl>
-        )}
-        <button type="button" className="quiet" onClick={onOpenSettings}>
-          Pengaturan profil AI
-        </button>
       </section>
 
       <ConfirmDialog

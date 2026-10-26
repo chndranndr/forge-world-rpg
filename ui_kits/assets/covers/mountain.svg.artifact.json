@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "kind": "svg",
+  "title": "assets/covers/mountain.svg",
+  "entry": "assets/covers/mountain.svg",
+  "renderer": "svg",
+  "status": "complete",
+  "exports": [
+    "svg",
+    "zip"
+  ],
+  "createdAt": "2026-10-20T07:39:39.682Z",
+  "updatedAt": "2026-10-20T07:39:39.682Z",
+  "metadata": {
+    "inferred": true
+  }
+}

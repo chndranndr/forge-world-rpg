@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "kind": "html",
+  "title": "library.html",
+  "entry": "library.html",
+  "renderer": "html",
+  "status": "complete",
+  "exports": [
+    "html",
+    "pdf",
+    "zip"
+  ],
+  "createdAt": "2026-10-20T04:49:41.767Z",
+  "updatedAt": "2026-10-20T07:39:39.543Z",
+  "metadata": {
+    "inferred": true,
+    "reconciled": true
+  }
+}

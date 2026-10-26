@@ -35,7 +35,7 @@ type View =
   | { kind: "settings" }
   | { kind: "session-settings"; sessionId: string; originGameId?: string }
   | { kind: "editor"; gameId: string; originGameId?: string }
-  | { kind: "world"; gameId: string }
+  | { kind: "world"; gameId: string; focusSessionCreator?: true }
   | { kind: "create-world" }
   | { kind: "session"; sessionId: string; originGameId?: string };
 
@@ -44,7 +44,7 @@ type TextSize = "normal" | "large";
 
 const PAGE_HEADINGS: Record<View["kind"], { eyebrow: string; title: string }> =
   {
-    library: { eyebrow: "Perpustakaan", title: "Dunia untuk kembali." },
+    library: { eyebrow: "Perpustakaan", title: "Dunia kamu." },
     session: { eyebrow: "Sesi berlangsung", title: "Suara dari cerita." },
     settings: { eyebrow: "Preferensi", title: "Ruangmu, caramu." },
     "session-settings": {
@@ -213,16 +213,21 @@ export default function App() {
     requestView({ kind: "world", gameId: world.gameId });
   }
 
+  function openCreateWorld(): void {
+    setPendingDraft(null);
+    requestView({ kind: "create-world" });
+  }
+
   const heading = PAGE_HEADINGS[view.kind];
   let headerAction: ReactNode = null;
   if (view.kind === "library") {
     headerAction = (
       <button
         type="button"
-        className="quiet"
-        onClick={() => requestView({ kind: "settings" })}
+        className="primary library-create-world"
+        onClick={openCreateWorld}
       >
-        Pengaturan
+        Buat dunia
       </button>
     );
   } else if (view.kind === "session") {
@@ -313,10 +318,10 @@ export default function App() {
             loadError={libraryError}
             loading={libraryLoading}
             onRefresh={refreshLibrary}
-            onCreateWorld={() => {
-              setPendingDraft(null);
-              requestView({ kind: "create-world" });
-            }}
+            onCreateWorld={openCreateWorld}
+            onNewSession={(gameId) =>
+              requestView({ kind: "world", gameId, focusSessionCreator: true })
+            }
             onOpenWorld={(gameId) => requestView({ kind: "world", gameId })}
             onOpenEditor={(gameId) => requestView({ kind: "editor", gameId })}
             onStartSession={(sessionId) =>
@@ -326,9 +331,11 @@ export default function App() {
         )}
         {view.kind === "world" && (
           <WorldDetail
+            key={view.gameId}
             entry={entriesList.find(
               (entry) => entry.game.value.id === view.gameId,
             )}
+            focusSessionCreator={view.focusSessionCreator === true}
             defaultAi={defaultAi}
             {...(aiDefaults.defaultProfileId === undefined
               ? {}

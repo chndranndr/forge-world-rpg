@@ -1,0 +1,1376 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Workshop - Fworld</title>
+  <meta name="description" content="Workshop Fworld: susun dunia, skenario, pemain, atribut, dan lorebook sebelum sesi pertama.">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/tokens.css">
+  <link rel="stylesheet" href="assets/app.css">
+  <script src="assets/app.js" defer></script>
+</head>
+<body class="editor-page" data-surface="nocturnal">
+  <a class="skip-link" href="#main">Langsung ke isi</a>
+
+  <div class="editor-shell" data-editor data-dirty="true">
+    <header class="editor-topbar">
+      <a class="editor-topbar__back" href="library.html" aria-label="Kembali ke perpustakaan" data-editor-back>
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-arrow-left"></use></svg>
+      </a>
+
+      <div class="editor-topbar__titles">
+        <p class="editor-topbar__title">Buat dunia</p>
+        <p class="editor-topbar__sub">Workshop &middot; Draf baru</p>
+      </div>
+
+      <button class="btn btn--ghost btn--sm editor-topbar__bagian" type="button" aria-label="Bagian dunia" data-open="sheet-bagian">
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-layers"></use></svg>
+        <span class="editor-topbar__bagian-label">Bagian</span>
+      </button>
+
+      <div class="editor-topbar__group">
+        <span class="save-state save-state--dirty" data-save-state>
+          <span class="status-dot" aria-hidden="true"></span>Belum disimpan
+        </span>
+        <button class="btn btn--secondary btn--sm" type="button" data-section="pratinjau">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-focus"></use></svg>
+          Pratinjau
+        </button>
+        <button class="icon-btn" type="button" aria-label="Tindakan lain" aria-haspopup="dialog" data-open="sheet-more">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-more"></use></svg>
+        </button>
+        <button class="btn btn--primary" type="button" data-editor-primary data-mode="save">Simpan</button>
+      </div>
+    </header>
+
+    <nav class="section-rail" aria-label="Bagian dunia">
+      <p class="section-rail__label">Bagian dunia</p>
+
+      <button class="sec-link" type="button" data-section="ringkasan" aria-current="true">
+        <span class="sec-dot sec-dot--ok" aria-hidden="true"></span>
+        Ringkasan
+      </button>
+      <button class="sec-link" type="button" data-section="skenario">
+        <span class="sec-dot sec-dot--ok" aria-hidden="true"></span>
+        Skenario
+        <span class="sec-link__count">4</span>
+      </button>
+      <button class="sec-link" type="button" data-section="pemain">
+        <span class="sec-dot sec-dot--attention" aria-hidden="true"></span>
+        Pemain
+        <span class="sec-link__count">1</span>
+      </button>
+      <button class="sec-link" type="button" data-section="atribut">
+        <span class="sec-dot sec-dot--ok" aria-hidden="true"></span>
+        Atribut
+        <span class="sec-link__count">4</span>
+      </button>
+      <button class="sec-link" type="button" data-section="sumber-daya">
+        <span class="sec-dot sec-dot--ok" aria-hidden="true"></span>
+        Sumber daya
+        <span class="sec-link__count">3</span>
+      </button>
+      <button class="sec-link" type="button" data-section="relasi">
+        <span class="sec-dot sec-dot--optional" aria-hidden="true"></span>
+        Relasi
+        <span class="sec-link__count">2</span>
+      </button>
+      <button class="sec-link" type="button" data-section="item">
+        <span class="sec-dot sec-dot--ok" aria-hidden="true"></span>
+        Item
+        <span class="sec-link__count">3</span>
+      </button>
+      <button class="sec-link" type="button" data-section="inventaris">
+        <span class="sec-dot sec-dot--attention" aria-hidden="true"></span>
+        Inventaris awal
+        <span class="sec-link__count">2</span>
+      </button>
+      <button class="sec-link" type="button" data-section="npc">
+        <span class="sec-dot sec-dot--ok" aria-hidden="true"></span>
+        NPC
+        <span class="sec-link__count">6</span>
+      </button>
+      <button class="sec-link" type="button" data-section="lorebook">
+        <span class="sec-dot sec-dot--optional" aria-hidden="true"></span>
+        Lorebook
+        <span class="sec-link__count">3 paket</span>
+      </button>
+      <button class="sec-link" type="button" data-section="pratinjau">
+        <span class="sec-dot sec-dot--ok" aria-hidden="true"></span>
+        Pratinjau
+      </button>
+
+      <div class="section-rail__foot">
+        <div class="meter meter--accent">
+          <div class="meter__row">
+            <span class="meter__label">Kesiapan draf</span>
+            <span class="meter__value">8 / 11</span>
+          </div>
+          <div class="meter__track" role="progressbar" aria-label="Kesiapan draf" aria-valuemin="0" aria-valuemax="11" aria-valuenow="8">
+            <span class="meter__fill" style="width: 72.7%"></span>
+          </div>
+        </div>
+        <a class="section-rail__issues" href="#pemain" data-section="pemain">2 hal perlu dilengkapi</a>
+      </div>
+    </nav>
+
+    <main class="editor-main" id="main">
+      <div class="editor-main__inner">
+        <header class="editor-doc-head">
+          <p class="eyebrow">Workshop &middot; Draf baru</p>
+          <h1 class="editor-title">Pesisir Utara</h1>
+          <p class="editor-lede">Dunia tenang dengan satu misteri air pasang. Lengkapi bagian yang ditandai, lalu mulai sesi pertama saat draf sudah siap.</p>
+        </header>
+
+        <form data-editor-form novalidate>
+          <section class="ed-section is-active" id="ringkasan" aria-labelledby="ringkasan-title">
+            <header class="ed-section__head">
+              <h2 class="ed-section__title" id="ringkasan-title">Ringkasan</h2>
+              <span class="ed-section__meta">Lengkap &middot; 4 field</span>
+            </header>
+
+            <div class="field-grid">
+              <div class="field field--full">
+                <label class="field__label" for="world-name">Nama dunia</label>
+                <input class="input" id="world-name" name="world-name" type="text" value="Pesisir Utara" autocomplete="off">
+                <p class="field__hint">Nama ini tampil di perpustakaan dan kartu sesi.</p>
+              </div>
+
+              <div class="field">
+                <label class="field__label" for="world-genre">Genre</label>
+                <div class="select-wrap">
+                  <select class="select" id="world-genre" name="world-genre">
+                    <option selected>Pesisir</option>
+                    <option>Fantasi</option>
+                    <option>Misteri</option>
+                    <option>Sejarah alternatif</option>
+                  </select>
+                  <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                </div>
+              </div>
+
+              <div class="field">
+                <label class="field__label" for="world-tone">Nada</label>
+                <div class="select-wrap">
+                  <select class="select" id="world-tone" name="world-tone">
+                    <option selected>Tenang &amp; melankolis</option>
+                    <option>Hangat &amp; akrab</option>
+                    <option>Sunyi &amp; waspada</option>
+                    <option>Megah &amp; berani</option>
+                  </select>
+                  <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                </div>
+              </div>
+
+              <div class="field">
+                <label class="field__label" for="world-language">Bahasa narasi</label>
+                <div class="select-wrap">
+                  <select class="select" id="world-language" name="world-language">
+                    <option selected>Indonesia</option>
+                    <option>Inggris</option>
+                  </select>
+                  <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                </div>
+              </div>
+
+              <div class="field">
+                <label class="field__label" for="world-rating">Batas usia</label>
+                <div class="select-wrap">
+                  <select class="select" id="world-rating" name="world-rating">
+                    <option selected>Remaja &middot; 13+</option>
+                    <option>Semua umur</option>
+                    <option>Dewasa &middot; 18+</option>
+                  </select>
+                  <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                </div>
+              </div>
+
+              <div class="field field--full">
+                <label class="field__label" for="world-premise">Premis</label>
+                <textarea class="textarea textarea--prose" id="world-premise" name="world-premise" rows="5">Sebuah mercusuar tua di pesisir utara kembali menyala setelah tiga puluh tahun. Penduduk dermaga menganggapnya pertanda baik, tetapi kapal-kapal kecil mulai hilang di kabut pagi. Pemain datang sebagai pencatat cuaca yang membawa lentera kuning milik ayahnya.</textarea>
+                <p class="field__hint">Tulis dua sampai empat kalimat. Fokus pada situasi, bukan rangkuman seluruh sejarah.</p>
+              </div>
+
+              <div class="field field--full">
+                <label class="field__label" for="world-rules">Aturan dunia</label>
+                <textarea class="textarea" id="world-rules" name="world-rules" rows="4">Sihir tidak terlihat, tetapi jejaknya terasa di air dan logam. Cuaca berubah lebih cepat dari biasanya. Tidak ada yang boleh menyebut nama mercusuar setelah matahari terbenam.</textarea>
+              </div>
+            </div>
+          </section>
+
+          <section class="ed-section" id="skenario" aria-labelledby="skenario-title">
+            <header class="ed-section__head">
+              <h2 class="ed-section__title" id="skenario-title">Skenario</h2>
+              <span class="ed-section__meta">Lengkap &middot; Pembuka siap</span>
+            </header>
+
+            <div class="form-block">
+              <div class="form-block__head">
+                <h3 class="form-block__title">Adegan pembuka</h3>
+                <p class="form-block__hint">Narator memakai ini sebagai gambar pertama sebelum pemain bertindak.</p>
+              </div>
+              <div class="field">
+                <label class="field__label" for="scenario-opening">Gambar pembuka</label>
+                <textarea class="textarea textarea--prose" id="scenario-opening" name="scenario-opening" rows="5">Pagi datang bersama kabut yang terlalu tebal untuk bulan ini. Di ujung dermaga, lampu mercusuar berkedip sekali, lalu padam. Seorang nelayan berhenti mengikat tali dan menatap ke arah menara, seolah menunggu jawaban.</textarea>
+              </div>
+            </div>
+
+            <div class="form-block">
+              <div class="form-block__head">
+                <h3 class="form-block__title">Pemicu pertama</h3>
+              </div>
+              <div class="field-grid">
+                <div class="field field--full">
+                  <label class="field__label" for="scenario-trigger">Peristiwa yang memulai cerita</label>
+                  <input class="input" id="scenario-trigger" name="scenario-trigger" type="text" value="Nelayan menemukan perahu kosong yang masih hangat.">
+                </div>
+                <div class="field">
+                  <label class="field__label" for="scenario-narrator">Gaya narator</label>
+                  <div class="select-wrap">
+                    <select class="select" id="scenario-narrator" name="scenario-narrator">
+                      <option selected>Sinematik &middot; orang kedua</option>
+                      <option>Sastra &middot; orang ketiga</option>
+                      <option>Ringkas &middot; orang kedua</option>
+                    </select>
+                    <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                  </div>
+                </div>
+                <div class="field">
+                  <label class="field__label" for="scenario-tempo">Tempo</label>
+                  <div class="select-wrap">
+                    <select class="select" id="scenario-tempo" name="scenario-tempo">
+                      <option>Pelan &middot; banyak ruang</option>
+                      <option selected>Sedang &middot; satu adegan per giliran</option>
+                      <option>Cepat &middot; langsung ke konflik</option>
+                    </select>
+                    <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                  </div>
+                </div>
+                <div class="field">
+                  <label class="field__label" for="scenario-turn">Panjang giliran</label>
+                  <div class="select-wrap">
+                    <select class="select" id="scenario-turn" name="scenario-turn">
+                      <option>Singkat &middot; 80&ndash;120 kata</option>
+                      <option selected>Sedang &middot; 150&ndash;220 kata</option>
+                      <option>Panjang &middot; 250&ndash;350 kata</option>
+                    </select>
+                    <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                  </div>
+                </div>
+                <div class="field">
+                  <label class="field__label" for="scenario-language">Sudut pandang</label>
+                  <div class="select-wrap">
+                    <select class="select" id="scenario-language" name="scenario-language">
+                      <option selected>Orang kedua &middot; &ldquo;kamu&rdquo;</option>
+                      <option>Orang ketiga &middot; terbatas</option>
+                    </select>
+                    <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-block">
+              <div class="form-block__head">
+                <h3 class="form-block__title">Batas cerita</h3>
+              </div>
+              <div class="field">
+                <label class="field__label" for="scenario-limits">Yang tidak boleh muncul</label>
+                <textarea class="textarea" id="scenario-limits" name="scenario-limits" rows="3">Kekerasan eksplisit, kematian hewan, dan akhir yang sepenuhnya tanpa harapan. Jangan mengambil alih tindakan pemain.</textarea>
+              </div>
+            </div>
+          </section>
+
+          <section class="ed-section" id="pemain" aria-labelledby="pemain-title">
+            <header class="ed-section__head">
+              <h2 class="ed-section__title" id="pemain-title">Pemain</h2>
+              <span class="ed-section__meta">Perlu perhatian &middot; 1 pemain</span>
+            </header>
+
+            <div class="issue-list" aria-label="Perlu dilengkapi">
+              <p class="issue">
+                <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-alert"></use></svg>
+                <span><a href="#player-name">Nama pemain belum diisi.</a> Nama ini dipakai narator untuk menyapa tokoh.</span>
+              </p>
+              <p class="issue">
+                <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-alert"></use></svg>
+                <span><a href="#player-goal">Tujuan awal belum ditulis.</a> Tanpa tujuan, pilihan pertama akan terasa tanpa arah.</span>
+              </p>
+            </div>
+
+            <div class="field-grid">
+              <div class="field">
+                <label class="field__label" for="player-name">Nama tokoh</label>
+                <input class="input" id="player-name" name="player-name" type="text" placeholder="Belum diisi" autocomplete="off">
+              </div>
+              <div class="field">
+                <label class="field__label" for="player-role">Peran</label>
+                <input class="input" id="player-role" name="player-role" type="text" value="Pencatat cuaca">
+              </div>
+              <div class="field">
+                <label class="field__label" for="player-pronoun">Kata ganti</label>
+                <div class="select-wrap">
+                  <select class="select" id="player-pronoun" name="player-pronoun">
+                    <option selected>Dia &middot; netral</option>
+                    <option>Dia &middot; laki-laki</option>
+                    <option>Dia &middot; perempuan</option>
+                  </select>
+                  <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                </div>
+              </div>
+              <div class="field">
+                <label class="field__label" for="player-age">Usia</label>
+                <input class="input" id="player-age" name="player-age" type="text" value="29 tahun">
+              </div>
+              <div class="field field--full">
+                <label class="field__label" for="player-goal">Tujuan awal</label>
+                <textarea class="textarea" id="player-goal" name="player-goal" rows="3" placeholder="Apa yang ingin dicapai tokoh sebelum cerita berubah?"></textarea>
+              </div>
+              <div class="field field--full">
+                <label class="field__label" for="player-fear">Ketakutan atau luka lama</label>
+                <textarea class="textarea" id="player-fear" name="player-fear" rows="3">Takut pada air yang tenang sejak ayahnya tidak kembali dari laut.</textarea>
+              </div>
+              <div class="field field--full">
+                <label class="field__label" for="player-note">Catatan untuk narator</label>
+                <textarea class="textarea" id="player-note" name="player-note" rows="3">Biarkan pemain menemukan sendiri hubungan antara lentera dan mercusuar. Jangan menjelaskan rahasia di awal.</textarea>
+              </div>
+            </div>
+          </section>
+
+          <section class="ed-section" id="atribut" aria-labelledby="atribut-title">
+            <header class="ed-section__head">
+              <h2 class="ed-section__title" id="atribut-title">Atribut</h2>
+              <span class="ed-section__meta">Lengkap &middot; 4 atribut</span>
+            </header>
+
+            <p class="form-block__hint">Atribut menentukan hasil tindakan yang berisiko. Kunci dipakai di balik layar; jangan memakai spasi.</p>
+
+            <div class="entity-list">
+              <article class="entity is-open">
+                <button class="entity__summary" type="button" aria-expanded="true">
+                  <span class="entity__name">Kekuatan</span>
+                  <span class="entity__key">1&ndash;10</span>
+                  <svg class="icon entity__chev" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                </button>
+                <div class="entity__panel">
+                  <div class="field-grid">
+                    <div class="field">
+                      <label class="field__label" for="attr1-name">Nama</label>
+                      <input class="input" id="attr1-name" type="text" value="Kekuatan">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="attr1-key">Kunci</label>
+                      <input class="input input--mono" id="attr1-key" type="text" value="strength">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="attr1-start">Nilai awal</label>
+                      <input class="input" id="attr1-start" type="number" min="0" max="10" value="4">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="attr1-max">Maksimum</label>
+                      <input class="input" id="attr1-max" type="number" min="1" max="20" value="10">
+                    </div>
+                    <div class="field field--full">
+                      <label class="field__label" for="attr1-desc">Deskripsi</label>
+                      <textarea class="textarea" id="attr1-desc" rows="2">Tenaga untuk mengangkat, menahan, dan memaksa jalan.</textarea>
+                    </div>
+                  </div>
+                  <div class="entity__foot">
+                    <div class="entity__order">
+                      <button class="icon-btn icon-btn--sm" type="button" aria-label="Naikkan Kekuatan" data-toast="Urutan atribut diperbarui (contoh).">
+                        <svg class="icon" aria-hidden="true" style="transform: rotate(180deg)"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                      </button>
+                      <button class="icon-btn icon-btn--sm" type="button" aria-label="Turunkan Kekuatan" data-toast="Urutan atribut diperbarui (contoh).">
+                        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                      </button>
+                    </div>
+                    <button class="btn btn--ghost btn--sm" type="button" data-toast="Atribut dihapus (contoh).">
+                      <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-trash"></use></svg>
+                      Hapus
+                    </button>
+                  </div>
+                </div>
+              </article>
+
+              <article class="entity">
+                <button class="entity__summary" type="button" aria-expanded="false">
+                  <span class="entity__name">Ketangkasan</span>
+                  <span class="entity__key">1&ndash;10</span>
+                  <svg class="icon entity__chev" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                </button>
+                <div class="entity__panel">
+                  <div class="field-grid">
+                    <div class="field">
+                      <label class="field__label" for="attr2-name">Nama</label>
+                      <input class="input" id="attr2-name" type="text" value="Ketangkasan">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="attr2-key">Kunci</label>
+                      <input class="input input--mono" id="attr2-key" type="text" value="agility">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="attr2-start">Nilai awal</label>
+                      <input class="input" id="attr2-start" type="number" min="0" max="10" value="5">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="attr2-max">Maksimum</label>
+                      <input class="input" id="attr2-max" type="number" min="1" max="20" value="10">
+                    </div>
+                    <div class="field field--full">
+                      <label class="field__label" for="attr2-desc">Deskripsi</label>
+                      <textarea class="textarea" id="attr2-desc" rows="2">Keseimbangan di dek basah dan kecepatan membaca arus.</textarea>
+                    </div>
+                  </div>
+                  <div class="entity__foot">
+                    <div class="entity__order">
+                      <button class="icon-btn icon-btn--sm" type="button" aria-label="Naikkan Ketangkasan" data-toast="Urutan atribut diperbarui (contoh).">
+                        <svg class="icon" aria-hidden="true" style="transform: rotate(180deg)"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                      </button>
+                      <button class="icon-btn icon-btn--sm" type="button" aria-label="Turunkan Ketangkasan" data-toast="Urutan atribut diperbarui (contoh).">
+                        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                      </button>
+                    </div>
+                    <button class="btn btn--ghost btn--sm" type="button" data-toast="Atribut dihapus (contoh).">
+                      <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-trash"></use></svg>
+                      Hapus
+                    </button>
+                  </div>
+                </div>
+              </article>
+
+              <article class="entity">
+                <button class="entity__summary" type="button" aria-expanded="false">
+                  <span class="entity__name">Wawasan</span>
+                  <span class="entity__key">1&ndash;10</span>
+                  <svg class="icon entity__chev" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                </button>
+                <div class="entity__panel">
+                  <div class="field-grid">
+                    <div class="field">
+                      <label class="field__label" for="attr3-name">Nama</label>
+                      <input class="input" id="attr3-name" type="text" value="Wawasan">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="attr3-key">Kunci</label>
+                      <input class="input input--mono" id="attr3-key" type="text" value="insight">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="attr3-start">Nilai awal</label>
+                      <input class="input" id="attr3-start" type="number" min="0" max="10" value="3">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="attr3-max">Maksimum</label>
+                      <input class="input" id="attr3-max" type="number" min="1" max="20" value="10">
+                    </div>
+                    <div class="field field--full">
+                      <label class="field__label" for="attr3-desc">Deskripsi</label>
+                      <textarea class="textarea" id="attr3-desc" rows="2">Membaca pola cuaca, tulisan lama, dan hal yang tidak dikatakan.</textarea>
+                    </div>
+                  </div>
+                  <div class="entity__foot">
+                    <div class="entity__order">
+                      <button class="icon-btn icon-btn--sm" type="button" aria-label="Naikkan Wawasan" data-toast="Urutan atribut diperbarui (contoh).">
+                        <svg class="icon" aria-hidden="true" style="transform: rotate(180deg)"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                      </button>
+                      <button class="icon-btn icon-btn--sm" type="button" aria-label="Turunkan Wawasan" data-toast="Urutan atribut diperbarui (contoh).">
+                        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                      </button>
+                    </div>
+                    <button class="btn btn--ghost btn--sm" type="button" data-toast="Atribut dihapus (contoh).">
+                      <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-trash"></use></svg>
+                      Hapus
+                    </button>
+                  </div>
+                </div>
+              </article>
+
+              <article class="entity">
+                <button class="entity__summary" type="button" aria-expanded="false">
+                  <span class="entity__name">Keberanian</span>
+                  <span class="entity__key">1&ndash;5</span>
+                  <svg class="icon entity__chev" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                </button>
+                <div class="entity__panel">
+                  <div class="field-grid">
+                    <div class="field">
+                      <label class="field__label" for="attr4-name">Nama</label>
+                      <input class="input" id="attr4-name" type="text" value="Keberanian">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="attr4-key">Kunci</label>
+                      <input class="input input--mono" id="attr4-key" type="text" value="resolve">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="attr4-start">Nilai awal</label>
+                      <input class="input" id="attr4-start" type="number" min="0" max="5" value="3">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="attr4-max">Maksimum</label>
+                      <input class="input" id="attr4-max" type="number" min="1" max="10" value="5">
+                    </div>
+                    <div class="field field--full">
+                      <label class="field__label" for="attr4-desc">Deskripsi</label>
+                      <textarea class="textarea" id="attr4-desc" rows="2">Kemampuan bertahan saat kabut menutup jalan pulang.</textarea>
+                    </div>
+                  </div>
+                  <div class="entity__foot">
+                    <div class="entity__order">
+                      <button class="icon-btn icon-btn--sm" type="button" aria-label="Naikkan Keberanian" data-toast="Urutan atribut diperbarui (contoh).">
+                        <svg class="icon" aria-hidden="true" style="transform: rotate(180deg)"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                      </button>
+                      <button class="icon-btn icon-btn--sm" type="button" aria-label="Turunkan Keberanian" data-toast="Urutan atribut diperbarui (contoh).">
+                        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                      </button>
+                    </div>
+                    <button class="btn btn--ghost btn--sm" type="button" data-toast="Atribut dihapus (contoh).">
+                      <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-trash"></use></svg>
+                      Hapus
+                    </button>
+                  </div>
+                </div>
+              </article>
+            </div>
+
+            <button class="add-dashed" type="button" data-add="Atribut baru ditambahkan (contoh).">
+              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-plus"></use></svg>
+              Tambah atribut
+            </button>
+          </section>
+
+          <section class="ed-section" id="sumber-daya" aria-labelledby="sumber-daya-title">
+            <header class="ed-section__head">
+              <h2 class="ed-section__title" id="sumber-daya-title">Sumber daya</h2>
+              <span class="ed-section__meta">Lengkap &middot; 3 sumber daya</span>
+            </header>
+
+            <p class="form-block__hint">Sumber daya berubah selama cerita. Tentukan batas bawah, batas atas, dan nilai saat sesi dimulai.</p>
+
+            <div class="entity-list">
+              <article class="entity is-open">
+                <button class="entity__summary" type="button" aria-expanded="true">
+                  <span class="entity__name">Nyawa</span>
+                  <span class="entity__key">0&ndash;10</span>
+                  <svg class="icon entity__chev" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                </button>
+                <div class="entity__panel">
+                  <div class="field-grid">
+                    <div class="field">
+                      <label class="field__label" for="res1-name">Nama</label>
+                      <input class="input" id="res1-name" type="text" value="Nyawa">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="res1-key">Kunci</label>
+                      <input class="input input--mono" id="res1-key" type="text" value="hp">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="res1-start">Nilai awal</label>
+                      <input class="input" id="res1-start" type="number" value="10">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="res1-max">Maksimum</label>
+                      <input class="input" id="res1-max" type="number" value="10">
+                    </div>
+                  </div>
+                  <div class="entity__foot">
+                    <div class="entity__order">
+                      <button class="icon-btn icon-btn--sm" type="button" aria-label="Naikkan Nyawa" data-toast="Urutan sumber daya diperbarui (contoh).">
+                        <svg class="icon" aria-hidden="true" style="transform: rotate(180deg)"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                      </button>
+                      <button class="icon-btn icon-btn--sm" type="button" aria-label="Turunkan Nyawa" data-toast="Urutan sumber daya diperbarui (contoh).">
+                        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                      </button>
+                    </div>
+                    <button class="btn btn--ghost btn--sm" type="button" data-toast="Sumber daya dihapus (contoh).">
+                      <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-trash"></use></svg>
+                      Hapus
+                    </button>
+                  </div>
+                </div>
+              </article>
+
+              <article class="entity">
+                <button class="entity__summary" type="button" aria-expanded="false">
+                  <span class="entity__name">Kewaspadaan</span>
+                  <span class="entity__key">0&ndash;10</span>
+                  <svg class="icon entity__chev" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                </button>
+                <div class="entity__panel">
+                  <div class="field-grid">
+                    <div class="field">
+                      <label class="field__label" for="res2-name">Nama</label>
+                      <input class="input" id="res2-name" type="text" value="Kewaspadaan">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="res2-key">Kunci</label>
+                      <input class="input input--mono" id="res2-key" type="text" value="alertness">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="res2-start">Nilai awal</label>
+                      <input class="input" id="res2-start" type="number" value="6">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="res2-max">Maksimum</label>
+                      <input class="input" id="res2-max" type="number" value="10">
+                    </div>
+                  </div>
+                  <div class="entity__foot">
+                    <div class="entity__order">
+                      <button class="icon-btn icon-btn--sm" type="button" aria-label="Naikkan Kewaspadaan" data-toast="Urutan sumber daya diperbarui (contoh).">
+                        <svg class="icon" aria-hidden="true" style="transform: rotate(180deg)"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                      </button>
+                      <button class="icon-btn icon-btn--sm" type="button" aria-label="Turunkan Kewaspadaan" data-toast="Urutan sumber daya diperbarui (contoh).">
+                        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                      </button>
+                    </div>
+                    <button class="btn btn--ghost btn--sm" type="button" data-toast="Sumber daya dihapus (contoh).">
+                      <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-trash"></use></svg>
+                      Hapus
+                    </button>
+                  </div>
+                </div>
+              </article>
+
+              <article class="entity">
+                <button class="entity__summary" type="button" aria-expanded="false">
+                  <span class="entity__name">Minyak lentera</span>
+                  <span class="entity__key">0&ndash;6</span>
+                  <svg class="icon entity__chev" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                </button>
+                <div class="entity__panel">
+                  <div class="field-grid">
+                    <div class="field">
+                      <label class="field__label" for="res3-name">Nama</label>
+                      <input class="input" id="res3-name" type="text" value="Minyak lentera">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="res3-key">Kunci</label>
+                      <input class="input input--mono" id="res3-key" type="text" value="lantern-oil">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="res3-start">Nilai awal</label>
+                      <input class="input" id="res3-start" type="number" value="4">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="res3-max">Maksimum</label>
+                      <input class="input" id="res3-max" type="number" value="6">
+                    </div>
+                  </div>
+                  <div class="entity__foot">
+                    <div class="entity__order">
+                      <button class="icon-btn icon-btn--sm" type="button" aria-label="Naikkan Minyak lentera" data-toast="Urutan sumber daya diperbarui (contoh).">
+                        <svg class="icon" aria-hidden="true" style="transform: rotate(180deg)"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                      </button>
+                      <button class="icon-btn icon-btn--sm" type="button" aria-label="Turunkan Minyak lentera" data-toast="Urutan sumber daya diperbarui (contoh).">
+                        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                      </button>
+                    </div>
+                    <button class="btn btn--ghost btn--sm" type="button" data-toast="Sumber daya dihapus (contoh).">
+                      <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-trash"></use></svg>
+                      Hapus
+                    </button>
+                  </div>
+                </div>
+              </article>
+            </div>
+
+            <button class="add-dashed" type="button" data-add="Sumber daya baru ditambahkan (contoh).">
+              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-plus"></use></svg>
+              Tambah sumber daya
+            </button>
+          </section>
+
+          <section class="ed-section" id="relasi" aria-labelledby="relasi-title">
+            <header class="ed-section__head">
+              <h2 class="ed-section__title" id="relasi-title">Relasi</h2>
+              <span class="ed-section__meta">Opsional &middot; 2 pihak</span>
+            </header>
+
+            <p class="form-block__hint">Relasi membantu narator memahami siapa yang saling percaya, siapa yang berutang, dan siapa yang menunggu kesempatan.</p>
+
+            <div class="entity-list">
+              <article class="entity">
+                <button class="entity__summary" type="button" aria-expanded="false">
+                  <span class="entity__name">Penjaga mercusuar</span>
+                  <span class="entity__key">Netral</span>
+                  <svg class="icon entity__chev" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                </button>
+                <div class="entity__panel">
+                  <div class="field-grid">
+                    <div class="field">
+                      <label class="field__label" for="rel1-name">Nama pihak</label>
+                      <input class="input" id="rel1-name" type="text" value="Penjaga mercusuar">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="rel1-type">Jenis</label>
+                      <input class="input" id="rel1-type" type="text" value="Perorangan">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="rel1-stance">Sikap awal</label>
+                      <div class="select-wrap">
+                        <select class="select" id="rel1-stance">
+                          <option>Bersahabat</option>
+                          <option selected>Netral</option>
+                          <option>Waspada</option>
+                          <option>Bermusuhan</option>
+                        </select>
+                        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                      </div>
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="rel1-secret">Yang disembunyikan</label>
+                      <input class="input" id="rel1-secret" type="text" value="Tahun terakhir mercusuar menyala.">
+                    </div>
+                  </div>
+                </div>
+              </article>
+
+              <article class="entity">
+                <button class="entity__summary" type="button" aria-expanded="false">
+                  <span class="entity__name">Dermaga Utara</span>
+                  <span class="entity__key">Waspada</span>
+                  <svg class="icon entity__chev" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                </button>
+                <div class="entity__panel">
+                  <div class="field-grid">
+                    <div class="field">
+                      <label class="field__label" for="rel2-name">Nama pihak</label>
+                      <input class="input" id="rel2-name" type="text" value="Dermaga Utara">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="rel2-type">Jenis</label>
+                      <input class="input" id="rel2-type" type="text" value="Komunitas">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="rel2-stance">Sikap awal</label>
+                      <div class="select-wrap">
+                        <select class="select" id="rel2-stance">
+                          <option>Bersahabat</option>
+                          <option>Netral</option>
+                          <option selected>Waspada</option>
+                          <option>Bermusuhan</option>
+                        </select>
+                        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                      </div>
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="rel2-secret">Yang disembunyikan</label>
+                      <input class="input" id="rel2-secret" type="text" value="Dua perahu hilang sebelum kabut datang.">
+                    </div>
+                  </div>
+                </div>
+              </article>
+            </div>
+
+            <button class="add-dashed" type="button" data-add="Relasi baru ditambahkan (contoh).">
+              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-plus"></use></svg>
+              Tambah relasi
+            </button>
+          </section>
+
+          <section class="ed-section" id="item" aria-labelledby="item-title">
+            <header class="ed-section__head">
+              <h2 class="ed-section__title" id="item-title">Item</h2>
+              <span class="ed-section__meta">Lengkap &middot; 3 item</span>
+            </header>
+
+            <p class="form-block__hint">Item di sini adalah benda yang bisa dipakai berulang. Barang bawaan pemain diatur di Inventaris awal.</p>
+
+            <div class="entity-list">
+              <article class="entity">
+                <button class="entity__summary" type="button" aria-expanded="false">
+                  <span class="entity__name">Lentera kuning</span>
+                  <span class="entity__key">Peralatan</span>
+                  <svg class="icon entity__chev" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                </button>
+                <div class="entity__panel">
+                  <div class="field-grid">
+                    <div class="field">
+                      <label class="field__label" for="item1-name">Nama</label>
+                      <input class="input" id="item1-name" type="text" value="Lentera kuning">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="item1-type">Jenis</label>
+                      <input class="input" id="item1-type" type="text" value="Peralatan">
+                    </div>
+                    <div class="field field--full">
+                      <label class="field__label" for="item1-desc">Efek atau catatan</label>
+                      <textarea class="textarea" id="item1-desc" rows="2">Cahayanya tidak tembus kabut, tetapi hangat dan tidak pernah padam.</textarea>
+                    </div>
+                  </div>
+                </div>
+              </article>
+
+              <article class="entity">
+                <button class="entity__summary" type="button" aria-expanded="false">
+                  <span class="entity__name">Peta pesisir</span>
+                  <span class="entity__key">Petunjuk</span>
+                  <svg class="icon entity__chev" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                </button>
+                <div class="entity__panel">
+                  <div class="field-grid">
+                    <div class="field">
+                      <label class="field__label" for="item2-name">Nama</label>
+                      <input class="input" id="item2-name" type="text" value="Peta pesisir">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="item2-type">Jenis</label>
+                      <input class="input" id="item2-type" type="text" value="Petunjuk">
+                    </div>
+                    <div class="field field--full">
+                      <label class="field__label" for="item2-desc">Efek atau catatan</label>
+                      <textarea class="textarea" id="item2-desc" rows="2">Menandai tiga teluk yang tidak ada di peta resmi.</textarea>
+                    </div>
+                  </div>
+                </div>
+              </article>
+
+              <article class="entity">
+                <button class="entity__summary" type="button" aria-expanded="false">
+                  <span class="entity__name">Kunci berkarat</span>
+                  <span class="entity__key">Kunci</span>
+                  <svg class="icon entity__chev" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                </button>
+                <div class="entity__panel">
+                  <div class="field-grid">
+                    <div class="field">
+                      <label class="field__label" for="item3-name">Nama</label>
+                      <input class="input" id="item3-name" type="text" value="Kunci berkarat">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="item3-type">Jenis</label>
+                      <input class="input" id="item3-type" type="text" value="Kunci">
+                    </div>
+                    <div class="field field--full">
+                      <label class="field__label" for="item3-desc">Efek atau catatan</label>
+                      <textarea class="textarea" id="item3-desc" rows="2">Cocok dengan pintu kayu di dasar menara, menurut ayah pemain.</textarea>
+                    </div>
+                  </div>
+                </div>
+              </article>
+            </div>
+
+            <button class="add-dashed" type="button" data-add="Item baru ditambahkan (contoh).">
+              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-plus"></use></svg>
+              Tambah item
+            </button>
+          </section>
+
+          <section class="ed-section" id="inventaris" aria-labelledby="inventaris-title">
+            <header class="ed-section__head">
+              <h2 class="ed-section__title" id="inventaris-title">Inventaris awal</h2>
+              <span class="ed-section__meta">Perlu perhatian &middot; 2 barang</span>
+            </header>
+
+            <div class="issue-list" aria-label="Perlu dilengkapi">
+              <p class="issue">
+                <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-alert"></use></svg>
+                <span><a href="#inv2-qty">Jumlah awal Peta pesisir belum ditetapkan.</a> Kosongkan hanya bila barang memang tidak dibawa.</span>
+              </p>
+            </div>
+
+            <div class="entity-list">
+              <article class="entity is-open">
+                <button class="entity__summary" type="button" aria-expanded="true">
+                  <span class="entity__name">Lentera kuning</span>
+                  <span class="entity__key">1 buah</span>
+                  <svg class="icon entity__chev" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                </button>
+                <div class="entity__panel">
+                  <div class="field-grid">
+                    <div class="field">
+                      <label class="field__label" for="inv1-item">Item</label>
+                      <input class="input" id="inv1-item" type="text" value="Lentera kuning">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="inv1-qty">Jumlah</label>
+                      <input class="input" id="inv1-qty" type="number" min="1" value="1">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="inv1-owner">Pemilik</label>
+                      <input class="input" id="inv1-owner" type="text" value="Pemain">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="inv1-place">Disimpan di</label>
+                      <input class="input" id="inv1-place" type="text" value="Tas kanvas">
+                    </div>
+                  </div>
+                </div>
+              </article>
+
+              <article class="entity">
+                <button class="entity__summary" type="button" aria-expanded="false">
+                  <span class="entity__name">Peta pesisir</span>
+                  <span class="entity__key">Jumlah belum diisi</span>
+                  <svg class="icon entity__chev" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                </button>
+                <div class="entity__panel">
+                  <div class="field-grid">
+                    <div class="field">
+                      <label class="field__label" for="inv2-item">Item</label>
+                      <input class="input" id="inv2-item" type="text" value="Peta pesisir">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="inv2-qty">Jumlah</label>
+                      <input class="input" id="inv2-qty" type="number" min="1" placeholder="Belum diisi">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="inv2-owner">Pemilik</label>
+                      <input class="input" id="inv2-owner" type="text" value="Pemain">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="inv2-place">Disimpan di</label>
+                      <input class="input" id="inv2-place" type="text" value="Tas kanvas">
+                    </div>
+                  </div>
+                </div>
+              </article>
+            </div>
+
+            <button class="add-dashed" type="button" data-add="Barang awal ditambahkan (contoh).">
+              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-plus"></use></svg>
+              Tambah barang awal
+            </button>
+          </section>
+
+          <section class="ed-section" id="npc" aria-labelledby="npc-title">
+            <header class="ed-section__head">
+              <h2 class="ed-section__title" id="npc-title">NPC</h2>
+              <span class="ed-section__meta">Lengkap &middot; 6 tokoh</span>
+            </header>
+
+            <p class="form-block__hint">Tiga tokoh sudah ditinjau. Tiga lainnya memakai pola dasar dari template dan bisa disunting kapan saja.</p>
+
+            <div class="entity-list">
+              <article class="entity is-open">
+                <button class="entity__summary" type="button" aria-expanded="true">
+                  <span class="entity__name">Mara</span>
+                  <span class="entity__key">Penjaga mercusuar</span>
+                  <svg class="icon entity__chev" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                </button>
+                <div class="entity__panel">
+                  <div class="field-grid">
+                    <div class="field">
+                      <label class="field__label" for="npc1-name">Nama</label>
+                      <input class="input" id="npc1-name" type="text" value="Mara">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="npc1-role">Peran</label>
+                      <input class="input" id="npc1-role" type="text" value="Penjaga mercusuar">
+                    </div>
+                    <div class="field field--full">
+                      <label class="field__label" for="npc1-want">Keinginan</label>
+                      <input class="input" id="npc1-want" type="text" value="Menjaga menara tetap gelap sampai cuaca membaik.">
+                    </div>
+                    <div class="field field--full">
+                      <label class="field__label" for="npc1-secret">Rahasia</label>
+                      <textarea class="textarea" id="npc1-secret" rows="2">Ia menyalakan lampu malam itu, dan tidak yakin apakah itu kesalahan.</textarea>
+                    </div>
+                    <div class="field field--full">
+                      <label class="field__label" for="npc1-voice">Suara</label>
+                      <input class="input" id="npc1-voice" type="text" value="Pendek, hati-hati, jarang memakai nama orang.">
+                    </div>
+                  </div>
+                </div>
+              </article>
+
+              <article class="entity">
+                <button class="entity__summary" type="button" aria-expanded="false">
+                  <span class="entity__name">Ilan</span>
+                  <span class="entity__key">Nakhoda</span>
+                  <svg class="icon entity__chev" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                </button>
+                <div class="entity__panel">
+                  <div class="field-grid">
+                    <div class="field">
+                      <label class="field__label" for="npc2-name">Nama</label>
+                      <input class="input" id="npc2-name" type="text" value="Ilan">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="npc2-role">Peran</label>
+                      <input class="input" id="npc2-role" type="text" value="Nakhoda">
+                    </div>
+                    <div class="field field--full">
+                      <label class="field__label" for="npc2-want">Keinginan</label>
+                      <input class="input" id="npc2-want" type="text" value="Mendapatkan kembali perahunya tanpa melibatkan penjaga.">
+                    </div>
+                    <div class="field field--full">
+                      <label class="field__label" for="npc2-secret">Rahasia</label>
+                      <textarea class="textarea" id="npc2-secret" rows="2">Ia melihat cahaya di air, bukan di menara.</textarea>
+                    </div>
+                    <div class="field field--full">
+                      <label class="field__label" for="npc2-voice">Suara</label>
+                      <input class="input" id="npc2-voice" type="text" value="Cepat, praktis, sering mengalihkan pembicaraan ke cuaca.">
+                    </div>
+                  </div>
+                </div>
+              </article>
+
+              <article class="entity">
+                <button class="entity__summary" type="button" aria-expanded="false">
+                  <span class="entity__name">Sori</span>
+                  <span class="entity__key">Anak dermaga</span>
+                  <svg class="icon entity__chev" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                </button>
+                <div class="entity__panel">
+                  <div class="field-grid">
+                    <div class="field">
+                      <label class="field__label" for="npc3-name">Nama</label>
+                      <input class="input" id="npc3-name" type="text" value="Sori">
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="npc3-role">Peran</label>
+                      <input class="input" id="npc3-role" type="text" value="Anak dermaga">
+                    </div>
+                    <div class="field field--full">
+                      <label class="field__label" for="npc3-want">Keinginan</label>
+                      <input class="input" id="npc3-want" type="text" value="Ikut ke menara sebelum orang dewasa mengizinkan.">
+                    </div>
+                    <div class="field field--full">
+                      <label class="field__label" for="npc3-secret">Rahasia</label>
+                      <textarea class="textarea" id="npc3-secret" rows="2">Ia menemukan kunci kedua di bawah dermaga.</textarea>
+                    </div>
+                    <div class="field field--full">
+                      <label class="field__label" for="npc3-voice">Suara</label>
+                      <input class="input" id="npc3-voice" type="text" value="Cepat, jujur, kadang terlalu langsung.">
+                    </div>
+                  </div>
+                </div>
+              </article>
+            </div>
+
+            <button class="add-dashed" type="button" data-add="NPC baru ditambahkan (contoh).">
+              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-plus"></use></svg>
+              Tambah NPC
+            </button>
+          </section>
+
+          <section class="ed-section" id="lorebook" aria-labelledby="lorebook-title">
+            <header class="ed-section__head">
+              <h2 class="ed-section__title" id="lorebook-title">Lorebook</h2>
+              <span class="ed-section__meta">3 paket &middot; 2 terbit</span>
+            </header>
+
+            <div class="lore-steps">
+              <div class="step is-done">
+                <span class="step__num">1</span>
+                <div>
+                  <p class="step__title">Impor</p>
+                  <p class="step__text">Berkas lorebook dibaca di perangkat ini. Tidak ada isi yang dikirim ke penyedia AI sebelum paket diterbitkan.</p>
+                </div>
+                <div class="step__action">
+                  <button class="btn btn--secondary btn--sm" type="button" data-toast="Pemilih berkas dibuka (contoh).">
+                    <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-upload"></use></svg>
+                    Pilih berkas
+                  </button>
+                </div>
+              </div>
+
+              <div class="step is-done">
+                <span class="step__num">2</span>
+                <div>
+                  <p class="step__title">Tinjau</p>
+                  <p class="step__text">Uji kering selesai: 18 entri terbaca, 2 bentrok nama, 0 digest gagal.</p>
+                </div>
+                <div class="step__action">
+                  <button class="btn btn--ghost btn--sm" type="button" data-toast="Hasil uji kering ditampilkan (contoh).">Lihat hasil</button>
+                </div>
+              </div>
+
+              <div class="step">
+                <span class="step__num">3</span>
+                <div>
+                  <p class="step__title">Terbitkan</p>
+                  <p class="step__text">Paket baru tidak mengubah versi lama. Versi lama tetap bisa dipakai oleh sesi yang sudah berjalan.</p>
+                </div>
+                <div class="step__action">
+                  <button class="btn btn--primary btn--sm" type="button" data-toast="Paket lorebook diterbitkan (contoh).">Terbitkan paket</button>
+                </div>
+              </div>
+
+              <div class="step">
+                <span class="step__num">4</span>
+                <div>
+                  <p class="step__title">Pin ke draft</p>
+                  <p class="step__text">Paket yang dipin menjadi rujukan narator untuk draf ini. Lepas pin kapan saja tanpa menghapus paket.</p>
+                </div>
+                <div class="step__action">
+                  <button class="btn btn--secondary btn--sm" type="button" data-toast="Paket dipin ke draf (contoh).">Pin paket</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="table-list" aria-label="Paket lorebook">
+              <div class="table-row">
+                <div>
+                  <p class="table-row__label">Pesisir Utara &middot; inti</p>
+                  <p class="table-row__id">LB-PESISIR-003 &middot; 18 entri &middot; digest 7f3a</p>
+                </div>
+                <span class="badge badge--ready"><span class="badge__dot" aria-hidden="true"></span>Aktif</span>
+                <button class="icon-btn icon-btn--sm" type="button" aria-label="Menu paket Pesisir Utara" data-toast="Menu paket (contoh).">
+                  <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-more"></use></svg>
+                </button>
+              </div>
+              <div class="table-row">
+                <div>
+                  <p class="table-row__label">Mercusuar &middot; catatan lama</p>
+                  <p class="table-row__id">LB-MERCU-002 &middot; 9 entri &middot; digest 1c88</p>
+                </div>
+                <span class="badge badge--neutral"><span class="badge__dot" aria-hidden="true"></span>Terbit</span>
+                <button class="icon-btn icon-btn--sm" type="button" aria-label="Menu paket Mercusuar" data-toast="Menu paket (contoh).">
+                  <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-more"></use></svg>
+                </button>
+              </div>
+              <div class="table-row">
+                <div>
+                  <p class="table-row__label">Dermaga &middot; nama keluarga</p>
+                  <p class="table-row__id">LB-DERMAGA-001 &middot; 6 entri &middot; belum diterbitkan</p>
+                </div>
+                <span class="badge badge--draft"><span class="badge__dot" aria-hidden="true"></span>Draf</span>
+                <button class="icon-btn icon-btn--sm" type="button" aria-label="Menu paket Dermaga" data-toast="Menu paket (contoh).">
+                  <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-more"></use></svg>
+                </button>
+              </div>
+            </div>
+
+            <ul class="note-list">
+              <li><strong>Versi tidak berubah.</strong> Menerbitkan ulang membuat paket baru; sesi lama tetap memakai digest yang tercatat.</li>
+              <li><strong>Periksa dependensi.</strong> Paket Dermaga merujuk dua entri dari paket Pesisir Utara. Jangan lepas pin keduanya bersamaan.</li>
+            </ul>
+          </section>
+
+          <section class="ed-section" id="pratinjau" aria-labelledby="pratinjau-title">
+            <header class="ed-section__head">
+              <h2 class="ed-section__title" id="pratinjau-title">Pratinjau</h2>
+              <span class="ed-section__meta">Draf 8 / 11 siap</span>
+            </header>
+
+            <div class="preview-card">
+              <img src="assets/covers/coast.svg" alt="Pesisir berbatu saat senja dengan mercusuar kecil di kejauhan." width="600" height="400">
+              <div class="preview-card__body">
+                <p class="preview-card__title">Pesisir Utara</p>
+                <p class="preview-card__meta">PESISIR &middot; MISTERI &middot; TENANG</p>
+                <p class="field__hint">Sebuah mercusuar tua kembali menyala. Kapal-kapal kecil mulai hilang di kabut pagi.</p>
+              </div>
+            </div>
+
+            <div class="readiness">
+              <div class="readiness__head">
+                <p class="readiness__title">Kesiapan draf</p>
+                <span class="readiness__value">8 dari 11 bagian</span>
+              </div>
+              <div class="meter meter--accent">
+                <div class="meter__track" role="progressbar" aria-label="Kesiapan draf" aria-valuemin="0" aria-valuemax="11" aria-valuenow="8">
+                  <span class="meter__fill" style="width: 72.7%"></span>
+                </div>
+              </div>
+              <div class="preview-card__list">
+                <p class="preview-check"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-check"></use></svg>Ringkasan, skenario, dan aturan dasar</p>
+                <p class="preview-check"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-check"></use></svg>4 atribut dan 3 sumber daya</p>
+                <p class="preview-check preview-check--todo"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-alert"></use></svg>Nama dan tujuan pemain belum lengkap</p>
+                <p class="preview-check preview-check--todo"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-alert"></use></svg>Satu jumlah inventaris awal kosong</p>
+              </div>
+            </div>
+
+            <div class="count-grid">
+              <div class="stat">
+                <p class="stat__value">6</p>
+                <p class="stat__label">NPC</p>
+              </div>
+              <div class="stat">
+                <p class="stat__value">3</p>
+                <p class="stat__label">Item</p>
+              </div>
+              <div class="stat">
+                <p class="stat__value">4</p>
+                <p class="stat__label">Atribut</p>
+              </div>
+            </div>
+
+            <div class="table-list" aria-label="Profil AI aktif">
+              <div class="table-row">
+                <div>
+                  <p class="table-row__label">Profil AI aktif</p>
+                  <p class="table-row__id">NARATOR UTAMA &middot; OPENAI-COMPATIBLE</p>
+                </div>
+                <span class="badge badge--ready"><span class="badge__dot" aria-hidden="true"></span>Terhubung</span>
+                <a class="btn btn--ghost btn--sm" href="settings.html">Ubah</a>
+              </div>
+            </div>
+          </section>
+        </form>
+      </div>
+    </main>
+
+    <aside class="preview-rail" aria-label="Pratinjau dunia">
+      <p class="preview-rail__label">Pratinjau</p>
+      <div class="preview-card">
+        <img src="assets/covers/coast.svg" alt="" width="600" height="400">
+        <div class="preview-card__body">
+          <p class="preview-card__title">Pesisir Utara</p>
+          <p class="preview-card__meta">PESISIR &middot; MISTERI</p>
+        </div>
+      </div>
+
+      <div class="preview-section">
+        <p class="preview-rail__label">Kesiapan</p>
+        <div class="preview-card__list">
+          <p class="preview-check"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-check"></use></svg>Dunia &amp; nada</p>
+          <p class="preview-check"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-check"></use></svg>Skenario pembuka</p>
+          <p class="preview-check"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-check"></use></svg>Atribut &amp; sumber daya</p>
+          <p class="preview-check preview-check--todo"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-alert"></use></svg>Profil pemain</p>
+          <p class="preview-check preview-check--todo"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-alert"></use></svg>Inventaris awal</p>
+        </div>
+        <div class="meter meter--accent">
+          <div class="meter__row">
+            <span class="meter__label">8 / 11 bagian</span>
+            <span class="meter__value">72%</span>
+          </div>
+          <div class="meter__track" role="progressbar" aria-label="Kesiapan draf" aria-valuemin="0" aria-valuemax="11" aria-valuenow="8">
+            <span class="meter__fill" style="width: 72.7%"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="preview-section">
+        <p class="preview-rail__label">Isi dunia</p>
+        <p class="mono faint">6 NPC &middot; 3 item &middot; 4 atribut</p>
+        <p class="field__hint" style="margin-top: 8px">Profil AI: Narator utama</p>
+      </div>
+    </aside>
+
+    <div class="sticky-actions">
+      <span class="save-state save-state--dirty" data-save-state>
+        <span class="status-dot" aria-hidden="true"></span>Belum disimpan
+      </span>
+      <button class="btn btn--primary" type="button" data-editor-primary data-mode="save">Simpan</button>
+    </div>
+
+    <div class="scrim" data-scrim></div>
+
+    <section class="sheet sheet--right sheet--paper" id="sheet-bagian" aria-labelledby="sheet-bagian-title" aria-hidden="true">
+      <div class="sheet__head">
+        <div>
+          <p class="sheet__eyebrow">Workshop</p>
+          <h2 class="sheet__title" id="sheet-bagian-title">Bagian dunia</h2>
+        </div>
+        <button class="icon-btn" type="button" aria-label="Tutup" data-close>
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-close"></use></svg>
+        </button>
+      </div>
+      <div class="sheet__body">
+        <nav aria-label="Pilih bagian dunia">
+          <p class="section-rail__label">Daftar bagian</p>
+          <button class="sec-link" type="button" data-section="ringkasan" data-close>
+            <span class="sec-dot sec-dot--ok" aria-hidden="true"></span>Ringkasan
+          </button>
+          <button class="sec-link" type="button" data-section="skenario" data-close>
+            <span class="sec-dot sec-dot--ok" aria-hidden="true"></span>Skenario
+            <span class="sec-link__count">4</span>
+          </button>
+          <button class="sec-link" type="button" data-section="pemain" data-close>
+            <span class="sec-dot sec-dot--attention" aria-hidden="true"></span>Pemain
+            <span class="sec-link__count">1</span>
+          </button>
+          <button class="sec-link" type="button" data-section="atribut" data-close>
+            <span class="sec-dot sec-dot--ok" aria-hidden="true"></span>Atribut
+            <span class="sec-link__count">4</span>
+          </button>
+          <button class="sec-link" type="button" data-section="sumber-daya" data-close>
+            <span class="sec-dot sec-dot--ok" aria-hidden="true"></span>Sumber daya
+            <span class="sec-link__count">3</span>
+          </button>
+          <button class="sec-link" type="button" data-section="relasi" data-close>
+            <span class="sec-dot sec-dot--optional" aria-hidden="true"></span>Relasi
+            <span class="sec-link__count">2</span>
+          </button>
+          <button class="sec-link" type="button" data-section="item" data-close>
+            <span class="sec-dot sec-dot--ok" aria-hidden="true"></span>Item
+            <span class="sec-link__count">3</span>
+          </button>
+          <button class="sec-link" type="button" data-section="inventaris" data-close>
+            <span class="sec-dot sec-dot--attention" aria-hidden="true"></span>Inventaris awal
+            <span class="sec-link__count">2</span>
+          </button>
+          <button class="sec-link" type="button" data-section="npc" data-close>
+            <span class="sec-dot sec-dot--ok" aria-hidden="true"></span>NPC
+            <span class="sec-link__count">6</span>
+          </button>
+          <button class="sec-link" type="button" data-section="lorebook" data-close>
+            <span class="sec-dot sec-dot--optional" aria-hidden="true"></span>Lorebook
+            <span class="sec-link__count">3 paket</span>
+          </button>
+          <button class="sec-link" type="button" data-section="pratinjau" data-close>
+            <span class="sec-dot sec-dot--ok" aria-hidden="true"></span>Pratinjau
+          </button>
+        </nav>
+        <div class="section-rail__foot">
+          <div class="meter meter--accent">
+            <div class="meter__row">
+              <span class="meter__label">Kesiapan draf</span>
+              <span class="meter__value">8 / 11</span>
+            </div>
+            <div class="meter__track" role="progressbar" aria-label="Kesiapan draf" aria-valuemin="0" aria-valuemax="11" aria-valuenow="8">
+              <span class="meter__fill" style="width: 72.7%"></span>
+            </div>
+          </div>
+          <p class="field__hint">2 bagian perlu dilengkapi sebelum sesi pertama.</p>
+        </div>
+      </div>
+      <div class="sheet__foot">
+        <button class="btn btn--ghost" type="button" data-close>Tutup</button>
+      </div>
+    </section>
+
+    <section class="sheet sheet--right sheet--paper" id="sheet-more" aria-labelledby="sheet-more-title" aria-hidden="true">
+      <div class="sheet__head">
+        <div>
+          <p class="sheet__eyebrow">Draf dunia</p>
+          <h2 class="sheet__title" id="sheet-more-title">Tindakan lain</h2>
+        </div>
+        <button class="icon-btn" type="button" aria-label="Tutup" data-close>
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-close"></use></svg>
+        </button>
+      </div>
+      <div class="sheet__body">
+        <div class="stack">
+          <button class="btn btn--secondary btn--block" type="button" data-toast="Impor dunia dibuka (contoh).">
+            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-upload"></use></svg>
+            Impor dunia
+          </button>
+          <button class="btn btn--secondary btn--block" type="button" data-toast="Ekspor draf disiapkan (contoh).">
+            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-download"></use></svg>
+            Ekspor draf
+          </button>
+          <button class="btn btn--secondary btn--block" type="button" data-toast="Contoh dimuat (contoh).">
+            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-refresh"></use></svg>
+            Muat contoh
+          </button>
+        </div>
+        <div class="panel-group">
+          <p class="panel-group__title">Status draf</p>
+          <p class="field__hint">Draf disimpan di peramban ini. Ekspor sebelum berpindah perangkat. Perubahan yang belum disimpan akan hilang bila tab ditutup.</p>
+        </div>
+        <button class="btn btn--ghost btn--block" type="button" data-save>
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-check"></use></svg>
+          Simpan perubahan
+        </button>
+      </div>
+      <div class="sheet__foot">
+        <button class="btn btn--ghost" type="button" data-close>Tutup</button>
+      </div>
+    </section>
+
+    <div class="dialog" id="dialog-unsaved" role="dialog" aria-modal="true" aria-labelledby="unsaved-title" aria-hidden="true">
+      <h2 class="dialog__title" id="unsaved-title">Simpan perubahan sebelum keluar?</h2>
+      <p class="dialog__body">Draf ini punya perubahan yang belum disimpan. Bila keluar sekarang, perubahan itu hilang dari peramban.</p>
+      <p class="dialog__note">Draf tetap tersimpan selama tab ini terbuka.</p>
+      <div class="dialog__actions">
+        <button class="btn btn--ghost" type="button" data-close>Kembali</button>
+        <button class="btn btn--ghost" type="button" data-discard>Buang perubahan</button>
+        <button class="btn btn--primary" type="button" data-save-leave>Simpan &amp; keluar</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

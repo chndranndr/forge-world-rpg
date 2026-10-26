@@ -461,6 +461,81 @@ test("scene presence overrides map defaults and caps NPC participants at six", (
   assert.equal(updated.state.world.activeCharacters.length, 7);
 });
 
+test("present NPC_PRESENCE rebinds a scoped NPC to the current scene", () => {
+  const definition = game();
+  const worldMap = definition.worldMap;
+  const state = engine.buildInitialState(definition);
+  state.world.locationId = "loc:morroc";
+  state.world.location = "Morroc";
+  state.world.npcPresence = { "npc-a": { locationId: "loc:prontera" } };
+  state.world.activeCharacters = world.sceneParticipants(
+    worldMap,
+    state.world.locationId,
+    state.world.npcPresence,
+    ["npc-a"],
+  );
+  assert.deepEqual(state.world.activeCharacters, ["player"]);
+
+  const present = engine.applyEffects(
+    definition,
+    state,
+    [{ type: "NPC_PRESENCE", npcId: "npc-a", present: true }],
+    { worldMap },
+  );
+  assert.deepEqual(present.state.world.npcPresence["npc-a"], {
+    locationId: "loc:morroc",
+    present: true,
+  });
+  assert.deepEqual(present.state.world.activeCharacters, ["player", "npc-a"]);
+  assert.deepEqual(state.world.npcPresence["npc-a"], {
+    locationId: "loc:prontera",
+  });
+
+  const absent = engine.applyEffects(
+    definition,
+    state,
+    [{ type: "NPC_PRESENCE", npcId: "npc-a", present: false }],
+    { worldMap },
+  );
+  assert.deepEqual(absent.state.world.npcPresence["npc-a"], {
+    locationId: "loc:prontera",
+    present: false,
+  });
+  assert.deepEqual(
+    world.sceneParticipants(
+      worldMap,
+      "loc:prontera",
+      absent.state.world.npcPresence,
+      ["npc-a"],
+    ),
+    ["player"],
+    "an explicit absence is not auto-revived by visiting the old location",
+  );
+
+  const returned = {
+    ...absent.state,
+    world: {
+      ...absent.state.world,
+      locationId: "loc:prontera",
+      location: "Prontera",
+    },
+  };
+  const reappeared = engine.applyEffects(
+    definition,
+    returned,
+    [{ type: "NPC_PRESENCE", npcId: "npc-a", present: true }],
+    { worldMap },
+  );
+  assert.deepEqual(reappeared.state.world.npcPresence["npc-a"], {
+    locationId: "loc:prontera",
+    present: true,
+  });
+  assert.deepEqual(reappeared.state.world.activeCharacters, [
+    "player",
+    "npc-a",
+  ]);
+});
+
 test("lore effects require pinned discovery context, gates and player-authored action", () => {
   const definition = game({
     lorebookRefs: [{ packId: "ragnarok-original", version: 1 }],

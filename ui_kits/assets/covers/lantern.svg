@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-label="Hutan gelap dengan lentera kecil di antara pepohonan">
+  <defs>
+    <linearGradient id="night" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d1f1b"/>
+      <stop offset=".55" stop-color="#173029"/>
+      <stop offset="1" stop-color="#0a1613"/>
+    </linearGradient>
+    <linearGradient id="mist" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a7c4ae" stop-opacity="0"/>
+      <stop offset=".55" stop-color="#a7c4ae" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#a7c4ae" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="glow" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#ffd79a" stop-opacity=".9"/>
+      <stop offset=".35" stop-color="#f0b96d" stop-opacity=".35"/>
+      <stop offset="1" stop-color="#f0b96d" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="blur"><feGaussianBlur stdDeviation="22"/></filter>
+    <filter id="blur2"><feGaussianBlur stdDeviation="6"/></filter>
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency=".75" numOctaves="3" stitchTiles="stitch"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feComponentTransfer><feFuncA type="linear" slope=".16"/></feComponentTransfer>
+    </filter>
+  </defs>
+  <rect width="1600" height="900" fill="url(#night)"/>
+  <ellipse cx="800" cy="470" rx="700" ry="210" fill="url(#mist)" filter="url(#blur)"/>
+  <g fill="#07100d" opacity=".92">
+    <path d="M120 900 L160 250 L205 250 L242 900 Z"/>
+    <path d="M300 900 L330 340 L365 340 L392 900 Z"/>
+    <path d="M470 900 L500 300 L545 300 L566 900 Z"/>
+    <path d="M1050 900 L1082 270 L1124 270 L1150 900 Z"/>
+    <path d="M1220 900 L1250 330 L1292 330 L1318 900 Z"/>
+    <path d="M1410 900 L1442 240 L1488 240 L1514 900 Z"/>
+  </g>
+  <g stroke="#0a1612" stroke-width="9" fill="none" opacity=".85">
+    <path d="M160 330 q80 -60 150 -20"/><path d="M330 420 q-60 -80 -140 -30"/>
+    <path d="M500 370 q100 -50 160 10"/><path d="M1100 350 q-90 -70 -170 -10"/>
+    <path d="M1260 410 q80 -60 150 -10"/><path d="M1450 330 q-70 -70 -150 -20"/>
+  </g>
+  <path d="M690 900 q90 -210 130 -330 q30 -92 -8 -168" fill="none" stroke="#42513f" stroke-width="70" opacity=".35" filter="url(#blur2)"/>
+  <ellipse cx="792" cy="472" rx="300" ry="220" fill="url(#glow)" opacity=".8" filter="url(#blur)"/>
+  <g>
+    <g transform="translate(742 404)">
+      <rect x="-9" y="-18" width="18" height="6" rx="2" fill="#241a0f"/>
+      <path d="M-16 -12 L16 -12 L22 34 L-22 34 Z" fill="#d9a465" opacity=".9"/>
+      <path d="M-16 -12 L16 -12 L18 2 L-18 2 Z" fill="#f7d9a5" opacity=".85"/>
+      <rect x="-24" y="34" width="48" height="7" rx="3" fill="#241a0f"/>
+    </g>
+    <g transform="translate(856 508) scale(.64)">
+      <rect x="-9" y="-18" width="18" height="6" rx="2" fill="#241a0f"/>
+      <path d="M-16 -12 L16 -12 L22 34 L-22 34 Z" fill="#d9a465" opacity=".85"/>
+      <path d="M-16 -12 L16 -12 L18 2 L-18 2 Z" fill="#f7d9a5" opacity=".8"/>
+      <rect x="-24" y="34" width="48" height="7" rx="3" fill="#241a0f"/>
+    </g>
+    <g transform="translate(676 548) scale(.45)">
+      <rect x="-9" y="-18" width="18" height="6" rx="2" fill="#241a0f"/>
+      <path d="M-16 -12 L16 -12 L22 34 L-22 34 Z" fill="#d9a465" opacity=".8"/>
+      <path d="M-16 -12 L16 -12 L18 2 L-18 2 Z" fill="#f7d9a5" opacity=".75"/>
+      <rect x="-24" y="34" width="48" height="7" rx="3" fill="#241a0f"/>
+    </g>
+  </g>
+  <path d="M0 830 q240 -40 470 -8 q260 38 520 -12 q300 -50 610 6 L1600 900 L0 900 Z" fill="#07110e" opacity=".9"/>
+  <g fill="#c7b78d" opacity=".25">
+    <circle cx="620" cy="684" r="2"/><circle cx="705" cy="724" r="1.6"/><circle cx="920" cy="660" r="1.8"/>
+    <circle cx="1010" cy="742" r="1.4"/><circle cx="580" cy="620" r="1.2"/><circle cx="960" cy="602" r="1.2"/>
+  </g>
+  <rect width="1600" height="900" filter="url(#grain)" opacity=".55"/>
+  <rect width="1600" height="900" fill="none" stroke="#07100d" stroke-width="44" opacity=".35"/>
+</svg>

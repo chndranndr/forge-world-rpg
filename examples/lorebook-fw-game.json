@@ -1,0 +1,527 @@
+{
+  "format": "fworld-template",
+  "version": 1,
+  "exportedAt": "2026-10-26T00:00:00.000Z",
+  "game": {
+    "title": "FW di SCBD",
+    "description": "Kisah Dimas, mas-mas IT medioker di SCBD yang mendadak kesetrum pas lagi coli di kosan, sampai HP-nya memunculkan aplikasi misterius FW. Dari sekadar cari kenalan anonim dan partner FWB, merembet manfaatin cewek buat uang dan armada kerja, hingga naik takhta jadi bos mafia perkotaan.",
+    "genre": "Drama dewasa perkotaan",
+    "tone": "Sinis, sensual, realistis, dan berkonsekuensi",
+    "language": "Indonesian",
+    "ageRating": "adult-18-plus",
+    "scenario": {
+      "setting": "SCBD Sudirman Jakarta. Di permukaan isinya gedung pencakar langit megah, lalu-lalang pekerja kantoran berdasi, kafe estetik, dan mobil mewah. Tapi di balik gemerlapnya, ada kamar kosan sempit Setiabudi, kamar apartemen privat, studio kreator Jaksel, hingga jaringan bisnis remang-remang Sirkel Senayan. Dan di tengah semua itu, aplikasi misterius FW cuma aktif di ponsel Dimas.",
+      "startingSituation": "Lo adalah Dimas, 27 tahun, mas-mas staf IT biasa di Menara Kencana SCBD yang hidupnya lurus dan ngebosenin. Malam ini di kamar kosan sempit Setiabudi, charger KW lo konslet dan nyetrum pas lo lagi asik coli sendirian. Pas lo sadar, HP lo reboot dan semua aplikasi mendadak hilang—cuma nyisain satu aplikasi aneh berlogo 'FW'. Layar HP lo langsung nampilin Quest Hari 1: cari satu cewek dewasa di kanal pesan anonim FW, lalu ajak ngobrol sampai nyambung. Lo masih kere, tampang pas-pasan, dan nggak punya modal apa-apa selain aplikasi gila ini.",
+      "worldRules": "Semua pasangan romantis atau seksual adalah cewek dewasa fiktif (21 tahun ke atas). Karakter di bawah 21 tahun atau anak sekolah otomatis ditolak sistem. Penolakan dari target dianggap quest gagal; dilarang keras memaksa atau mengancam. Nggak ada tutorial kejahatan nyata; alur mafia dan bisnis abu-abu adalah drama fiksi perkotaan beserta konsekuensi hukum dan sosialnya.\nAturan main:\n1. Di giliran pertama, pasang world.time ke 'Hari 1, 23:40' dan catat fakta quest terbuka bila belum ada.\n2. Tiap hari hanya ada 1 quest. Quest baru pantang keluar sebelum quest aktif beres (sukses/gagal).\n3. Format catatan fakta quest: 'Quest FW Hari N: [tugas] — terbuka|berhasil|gagal'.\n4. Majukan world.time ke hari berikutnya cuma kalau quest hari itu udah tuntas.\n5. Reward sukses: RESOURCE_CHANGE ADD fw-koin 5. Kalau gagal: SUBTRACT fw-koin 2 (kalau koin cukup); kalau koin kurang, kasih hukuman sosial/naratif (toko terkunci sementara, malu di kantor, badan remuk) plus catatan fakta.\n6. Target ngasih uang cuma kalau adegan emang menetapkan dia sukarela ngasih/minjemin (maksimal 5 juta sekali kasih), terpisah dari koin FW.\n7. Pendekatan sosial dibantu charisma, taktik dan rencana oleh intelligence, fisik/stamina oleh strength, kebetulan hoki oleh luck, dan kepuasan ranjang cewek oleh size. Angka statistik nggak bisa menggantikan persetujuan sadar.\n8. Hubungan cewek dicatat lewat RELATIONSHIP_CHANGE tarik dan percaya (-10 s/d 10). Kalau lo manfaatin dia buat duit/kerjaan, rasa percaya bakal turun drastis walau rasa tertarik tetap ada.\n9. Flag tahap cerita (arc_*) cuma aktif kalau item tonggak dipakai oleh pemain, jangan di-SET_FLAG sembarangan oleh narator. Membuka aplikasi FW adalah aksi narasi di HP, bukan use item:ponsel.",
+      "additionalContext": "Panduan Narrator untuk Karakter & Tangga Cerita:\n1. Registrasi Cewek Dinamis: Gunakan REGISTER_NPC hanya saat Dimas interaksi langsung. Format id: npc-[slug], nama fiktif unik, cantumkan usia 21+ di deskripsi, lengkapi personality dan goals array. Jangan bikin NPC dobel nama. Kalau kariernya berkembang, catat pakai ADD_FACT pada NPC tersebut.\n2. Tangga Cewek:\n- Awal: Karyawati kantoran SCBD, freelancer, atau mahasiswi tingkat akhir (21+).\n- Setelah arc_pengaruh: Kreator konten medsos, selebgram, host podcast Jaksel.\n- Setelah arc_politisi: Politisi muda fiktif, staf ahli dewan.\n- Setelah arc_puncak: Model papan atas, artis lokal fiktif, sampai selebriti internasional.\n3. Urutan Milestone (Wajib Runtut lewat ADD_ITEM):\n- Selesai chat anonim & cewek mau ketemu -> serahkan item:kontak-anonim (membuka Kafe Bawah Tanah & arc_kenalan).\n- Kencan berhasil & sepakat FWB/ONS -> serahkan item:kunci-apartemen (membuka Apartemen Sudirman & arc_fwb).\n- Cewek mau minjemin duit/belanjaan -> serahkan item:struk-hadiah (membuka arc_manfaat).\n- Cewek-cewek mau bantu urusan kerjaan -> serahkan item:jadwal-kerja (membuka arc_harem).\n- Jaringan cewek ngebuka link kreator/media -> serahkan item:akses-studio (membuka Studio Konten & arc_pengaruh).\n- Aliansi pribadi bareng politisi fiktif -> serahkan item:kartu-fraksi (membuka Kantor Fraksi & arc_politisi).\n- Reputasi melesat ke level selebriti -> serahkan item:undangan-panggung (membuka tier puncak & arc_puncak).\n- Usaha jalan & terima tawaran sirkel -> serahkan item:mandat-sirkel (membuka Gudang Senayan & arc_mafia).\n4. Toko FW: Serahkan item via ADD_ITEM cuma kalau pemain beli dan fw-koinnya cukup. Jangan kurangi koin pas ngasih; pengurangan koin dan penambahan stat terjadi otomatis saat item dipakai (use). Jangan kasih item stat kalau stat sudah mentok.\nDaftar Harga Toko:\n- item:skrip-chat (3 koin), item:paket-anon (3 koin), item:voucher-kafe (4 koin), item:kartu-hotel (6 koin).\n- item:serum-otot (8 koin -> +1 strength), item:modul-logika (8 koin -> +1 intelligence), item:setelan-rapi (8 koin -> +1 charisma), item:jimat-lift (10 koin -> +1 luck), item:suplemen-ukuran (12 koin -> +1 size).",
+      "narratorStyle": "cinematic-second-person",
+      "tempo": "medium",
+      "turnLength": "medium",
+      "pointOfView": "second-person",
+      "contentLimits": "Semua pasangan romantis atau seksual wajib cewek dewasa fiktif berusia 21 tahun ke atas. Penolakan dari cewek berarti misi gagal, dilarang ada paksaan fisik atau ancaman. Tidak ada instruksi kejahatan atau eksploitasi nyata. Segala unsur mafia dan bisnis malam disajikan murni sebagai fiksi naratif beserta konsekuensinya."
+    },
+    "startingLocationId": "loc:kost",
+    "lorebookRefs": [{ "packId": "fworld-fw-scbd", "version": 1 }],
+    "attributes": [
+      {
+        "id": "strength",
+        "name": "Kekuatan Fisik",
+        "description": "Tenaga dan bentuk tubuh. Bikin postur makin tegap, berotot, dan atletis.",
+        "min": 0,
+        "max": 100,
+        "defaultValue": 3
+      },
+      {
+        "id": "intelligence",
+        "name": "Kecerdasan Taktis",
+        "description": "Ketajaman otak, akal bulus, dan cara mikir cepat buat manipulasi serta ngembangin bisnis.",
+        "min": 0,
+        "max": 100,
+        "defaultValue": 5
+      },
+      {
+        "id": "charisma",
+        "name": "Karisma & Pesona",
+        "description": "Daya tarik cowok: aura, gaya bicara, dan pesona yang bikin cewek nyaman dan luluh.",
+        "min": 0,
+        "max": 100,
+        "defaultValue": 3
+      },
+      {
+        "id": "luck",
+        "name": "Keberuntungan",
+        "description": "Hoki jalanan: chat dibalas cepat, timing lift pas, ketemu target pas lagi butuh temen.",
+        "min": 0,
+        "max": 100,
+        "defaultValue": 3
+      },
+      {
+        "id": "size",
+        "name": "Ukuran Senjata",
+        "description": "Ukuran penis. Mempengaruhi kepuasan cewek pas main di ranjang setelah dia setuju.",
+        "min": 0,
+        "max": 40,
+        "defaultValue": 3
+      }
+    ],
+    "resources": [
+      {
+        "id": "fw-koin",
+        "name": "FW Koin",
+        "description": "Mata uang aplikasi FW. Didapat dari reward beresin quest, dipakai belanja di toko rahasia.",
+        "min": 0,
+        "initialValue": 0
+      },
+      {
+        "id": "uang",
+        "name": "Uang Kas",
+        "description": "Duit cash di rekening atau dompet (dalam satuan juta rupiah).",
+        "min": 0,
+        "initialValue": 8
+      }
+    ],
+    "relationships": [
+      {
+        "id": "tarik",
+        "name": "Ketertarikan",
+        "description": "Seberapa naksir, penasaran, dan terpesona si target sama Dimas.",
+        "min": -10,
+        "max": 10,
+        "defaultValue": 0
+      },
+      {
+        "id": "percaya",
+        "name": "Kepercayaan",
+        "description": "Seberapa percaya target sama Dimas. Bakal kegerus kalau lo mulai manfaatin dia buat duit atau kerjaan.",
+        "min": -10,
+        "max": 10,
+        "defaultValue": 0
+      }
+    ],
+    "items": [
+      {
+        "id": "item:ponsel",
+        "name": "Ponsel Dimas",
+        "description": "HP andalan Dimas. Orang lain cuma liat layar biasa, tapi di mata lo, ini portal aplikasi FW.",
+        "stackable": false,
+        "consumable": false,
+        "effects": [],
+        "tags": ["ponsel"]
+      },
+      {
+        "id": "item:kontak-anonim",
+        "name": "Kontak Cewek Anonim",
+        "description": "Bukti obrolan di radar anonim sukses dan dia mau diajak ketemuan. Pakai item ini buat ngebuka Kafe Bawah Tanah.",
+        "stackable": false,
+        "consumable": true,
+        "effects": [
+          { "type": "SET_FLAG", "target": "arc_kenalan", "value": true },
+          {
+            "type": "ADD_FACT",
+            "text": "Seorang cewek dewasa setuju ketemuan sama Dimas. Tahap kenalan resmi terbuka."
+          }
+        ],
+        "tags": ["tonggak"]
+      },
+      {
+        "id": "item:kunci-apartemen",
+        "name": "Kunci Apartemen Sudirman",
+        "description": "Kartu akses apartemen privat setelah target setuju jadi FWB atau ONS. Pakai item ini buat ngebuka Apartemen Sudirman.",
+        "stackable": false,
+        "consumable": true,
+        "effects": [
+          { "type": "SET_FLAG", "target": "arc_fwb", "value": true },
+          {
+            "type": "ADD_FACT",
+            "text": "Seorang cewek dewasa setuju jadi partner ranjang FWB/ONS Dimas."
+          }
+        ],
+        "tags": ["tonggak"]
+      },
+      {
+        "id": "item:struk-hadiah",
+        "name": "Struk Belanjaan & Transferan",
+        "description": "Struk bukti target mulai royal beliin barang atau minjemin duit. Pakai item ini buat ngebuka tahap pemanfaatan materi.",
+        "stackable": false,
+        "consumable": true,
+        "effects": [
+          { "type": "SET_FLAG", "target": "arc_manfaat", "value": true },
+          {
+            "type": "ADD_FACT",
+            "text": "Target mulai royal ngasih pinjaman duit dan beliin barang mewah buat Dimas."
+          }
+        ],
+        "tags": ["tonggak"]
+      },
+      {
+        "id": "item:jadwal-kerja",
+        "name": "Jadwal Harem Kerja",
+        "description": "Buku agenda cewek-cewek lo yang udah sukarela bantuin urusan bisnis lo. Pakai item ini buat ngebuka tahap harem kerja.",
+        "stackable": false,
+        "consumable": true,
+        "effects": [
+          { "type": "SET_FLAG", "target": "arc_harem", "value": true },
+          {
+            "type": "ADD_FACT",
+            "text": "Cewek-cewek partner Dimas sepakat berbagi tugas ngebantuin urusan kerja dan bisnisnya."
+          }
+        ],
+        "tags": ["tonggak"]
+      },
+      {
+        "id": "item:akses-studio",
+        "name": "Akses Studio Konten",
+        "description": "Kartu VIP studio konten Jaksel setelah partner lo ngenalin ke lingkaran kreator. Pakai item ini buat ngebuka Studio Konten.",
+        "stackable": false,
+        "consumable": true,
+        "effects": [
+          { "type": "SET_FLAG", "target": "arc_pengaruh", "value": true },
+          {
+            "type": "ADD_FACT",
+            "text": "Dimas berhasil nembus sirkel kreator konten dan selebgram Jaksel."
+          }
+        ],
+        "tags": ["tonggak"]
+      },
+      {
+        "id": "item:kartu-fraksi",
+        "name": "Kartu Nama Fraksi",
+        "description": "Kartu nama eksklusif dari politisi fiktif yang mau aliansi intim. Pakai item ini buat ngebuka Kantor Fraksi.",
+        "stackable": false,
+        "consumable": true,
+        "effects": [
+          { "type": "SET_FLAG", "target": "arc_politisi", "value": true },
+          {
+            "type": "ADD_FACT",
+            "text": "Dimas menjalin aliansi rahasia dengan politisi wanita berkuasa."
+          }
+        ],
+        "tags": ["tonggak"]
+      },
+      {
+        "id": "item:undangan-panggung",
+        "name": "Undangan Panggung VIP",
+        "description": "Undangan acara gala bergengsi. Pakai item ini buat ngebuka akses ke lingkaran model top dan selebriti papan atas.",
+        "stackable": false,
+        "consumable": true,
+        "effects": [
+          { "type": "SET_FLAG", "target": "arc_puncak", "value": true },
+          {
+            "type": "ADD_FACT",
+            "text": "Dimas diundang ke lingkaran elit model papan atas dan selebriti papan atas."
+          }
+        ],
+        "tags": ["tonggak"]
+      },
+      {
+        "id": "item:mandat-sirkel",
+        "name": "Mandat Sirkel Senayan",
+        "description": "Surat kepercayaan dari bos mafia malam Senayan. Pakai item ini buat ngebuka Gudang Senayan dan jaringan bawah tanah.",
+        "stackable": false,
+        "consumable": true,
+        "effects": [
+          { "type": "SET_FLAG", "target": "arc_mafia", "value": true },
+          {
+            "type": "ADD_FACT",
+            "text": "Dimas resmi memegang mandat Sirkel Senayan dan memimpin jaringan mafia malam."
+          }
+        ],
+        "tags": ["tonggak"]
+      },
+      {
+        "id": "item:skrip-chat",
+        "name": "Skrip Chat Maut",
+        "description": "Contekan chat manis nan manipulatif buat bikin target luluh seketika. Kepotong 3 FW koin pas dipakai.",
+        "stackable": true,
+        "maxStack": 10,
+        "consumable": true,
+        "effects": [
+          {
+            "type": "RESOURCE_CHANGE",
+            "target": "fw-koin",
+            "operation": "SUBTRACT",
+            "value": 3
+          },
+          {
+            "type": "ADD_FACT",
+            "text": "Skrip chat maut FW sudah dipakai di adegan ini dan efeknya tuntas."
+          }
+        ],
+        "tags": ["toko"]
+      },
+      {
+        "id": "item:paket-anon",
+        "name": "Paket Radar Prioritas",
+        "description": "Booster sinyal FW biar chat anonim lo langsung nongol paling atas di HP target. Kepotong 3 FW koin pas dipakai.",
+        "stackable": true,
+        "maxStack": 10,
+        "consumable": true,
+        "effects": [
+          {
+            "type": "RESOURCE_CHANGE",
+            "target": "fw-koin",
+            "operation": "SUBTRACT",
+            "value": 3
+          },
+          {
+            "type": "ADD_FACT",
+            "text": "Paket radar prioritas FW sudah dipakai di adegan ini dan efeknya tuntas."
+          }
+        ],
+        "tags": ["toko"]
+      },
+      {
+        "id": "item:voucher-kafe",
+        "name": "Voucher Traktiran Kafe",
+        "description": "Voucher kencan kafe SCBD biar lo keliatan royal tanpa tekor uang pribadi. Kepotong 4 FW koin pas dipakai.",
+        "stackable": true,
+        "maxStack": 10,
+        "consumable": true,
+        "effects": [
+          {
+            "type": "RESOURCE_CHANGE",
+            "target": "fw-koin",
+            "operation": "SUBTRACT",
+            "value": 4
+          },
+          {
+            "type": "ADD_FACT",
+            "text": "Voucher kafe FW sudah dipakai buat nraktir target di adegan ini."
+          }
+        ],
+        "tags": ["toko"]
+      },
+      {
+        "id": "item:kartu-hotel",
+        "name": "Kartu Reservasi Hotel",
+        "description": "Akses kamar hotel mewah buat eksekusi malam panjang bareng partner yang udah luluh. Kepotong 6 FW koin pas dipakai.",
+        "stackable": true,
+        "maxStack": 10,
+        "consumable": true,
+        "effects": [
+          {
+            "type": "RESOURCE_CHANGE",
+            "target": "fw-koin",
+            "operation": "SUBTRACT",
+            "value": 6
+          },
+          {
+            "type": "ADD_FACT",
+            "text": "Kamar hotel mewah FW sudah direservasi buat adegan ranjang malam ini."
+          }
+        ],
+        "tags": ["toko"]
+      },
+      {
+        "id": "item:serum-otot",
+        "name": "Serum Otot FW",
+        "description": "Bikin badan lo makin kekar, tegap, dan atletis secara permanen (+1 Kekuatan). Kepotong 8 FW koin pas dipakai.",
+        "stackable": true,
+        "maxStack": 10,
+        "consumable": true,
+        "effects": [
+          {
+            "type": "RESOURCE_CHANGE",
+            "target": "fw-koin",
+            "operation": "SUBTRACT",
+            "value": 8
+          },
+          {
+            "type": "ATTRIBUTE_CHANGE",
+            "target": "strength",
+            "operation": "ADD",
+            "value": 1
+          }
+        ],
+        "tags": ["toko", "atribut"]
+      },
+      {
+        "id": "item:modul-logika",
+        "name": "Modul Otak Cerdas",
+        "description": "Bikin pikiran lo makin licin, taktis, dan jago manipulasi (+1 Kecerdasan). Kepotong 8 FW koin pas dipakai.",
+        "stackable": true,
+        "maxStack": 10,
+        "consumable": true,
+        "effects": [
+          {
+            "type": "RESOURCE_CHANGE",
+            "target": "fw-koin",
+            "operation": "SUBTRACT",
+            "value": 8
+          },
+          {
+            "type": "ATTRIBUTE_CHANGE",
+            "target": "intelligence",
+            "operation": "ADD",
+            "value": 1
+          }
+        ],
+        "tags": ["toko", "atribut"]
+      },
+      {
+        "id": "item:setelan-rapi",
+        "name": "Setelan Eksekutif SCBD",
+        "description": "Upgrade outfit berkelas yang naikin aura ganteng dan percaya diri lo (+1 Karisma). Kepotong 8 FW koin pas dipakai.",
+        "stackable": true,
+        "maxStack": 10,
+        "consumable": true,
+        "effects": [
+          {
+            "type": "RESOURCE_CHANGE",
+            "target": "fw-koin",
+            "operation": "SUBTRACT",
+            "value": 8
+          },
+          {
+            "type": "ATTRIBUTE_CHANGE",
+            "target": "charisma",
+            "operation": "ADD",
+            "value": 1
+          }
+        ],
+        "tags": ["toko", "atribut"]
+      },
+      {
+        "id": "item:jimat-lift",
+        "name": "Jimat Hoki SCBD",
+        "description": "Bikin timing dan keberuntungan lo selalu pas di momen-momen krusial (+1 Keberuntungan). Kepotong 10 FW koin pas dipakai.",
+        "stackable": true,
+        "maxStack": 10,
+        "consumable": true,
+        "effects": [
+          {
+            "type": "RESOURCE_CHANGE",
+            "target": "fw-koin",
+            "operation": "SUBTRACT",
+            "value": 10
+          },
+          {
+            "type": "ATTRIBUTE_CHANGE",
+            "target": "luck",
+            "operation": "ADD",
+            "value": 1
+          }
+        ],
+        "tags": ["toko", "atribut"]
+      },
+      {
+        "id": "item:suplemen-ukuran",
+        "name": "Suplemen Monster FW",
+        "description": "Nambah panjang dan tebal ukuran senjata ranjang lo secara permanen (+1 Ukuran). Kepotong 12 FW koin pas dipakai.",
+        "stackable": true,
+        "maxStack": 10,
+        "consumable": true,
+        "effects": [
+          {
+            "type": "RESOURCE_CHANGE",
+            "target": "fw-koin",
+            "operation": "SUBTRACT",
+            "value": 12
+          },
+          {
+            "type": "ATTRIBUTE_CHANGE",
+            "target": "size",
+            "operation": "ADD",
+            "value": 1
+          }
+        ],
+        "tags": ["toko", "atribut"]
+      }
+    ],
+    "player": {
+      "name": "Dimas",
+      "description": "Mas-mas IT 27 tahun di SCBD. Penampilan biasa aja khas staf IT kantoran, tapi punya ambisi liar yang mulai bangkit.",
+      "background": "Kerja IT support di Menara Kencana, ngekos di Setiabudi, nggak punya nama ataupun pacar.",
+      "personality": "Awalnya pendiam dan gampang salting di depan cewek cakep, tapi otaknya cepat belajar dan berani ambil risiko.",
+      "role": "Staf IT SCBD",
+      "pronoun": "masculine",
+      "age": "27",
+      "goal": "Keluar dari nasib medioker lewat quest FW dan bangun kerajaan penakluk sendiri.",
+      "fear": "Ketahuan rekan kantor, quest gagal berujung malu besar, atau balik jadi pecundang.",
+      "attributes": {},
+      "resources": {}
+    },
+    "npcs": [],
+    "startingInventory": [{ "itemId": "item:ponsel", "quantity": 1 }],
+    "worldMap": {
+      "locations": [
+        {
+          "id": "loc:kost",
+          "name": "Kost Melati",
+          "aliases": ["kost", "melati", "kosan"],
+          "summary": "Kamar kosan sempit di Setiabudi tempat awal mula Dimas kesetrum dan dapat aplikasi FW.",
+          "npcIds": []
+        },
+        {
+          "id": "loc:menara",
+          "name": "Menara Kencana",
+          "aliases": ["menara", "kantor", "kantor dimas"],
+          "summary": "Gedung perkantoran megah SCBD tempat Dimas sehari-hari berkutat dengan tiket IT.",
+          "npcIds": []
+        },
+        {
+          "id": "loc:kafe",
+          "name": "Kafe Bawah Tanah",
+          "aliases": ["kafe", "bawah tanah", "basement cafe"],
+          "summary": "Kafe remang-remang di basement SCBD buat kencan santai abis jam kantor.",
+          "npcIds": [],
+          "requiredFlag": "arc_kenalan"
+        },
+        {
+          "id": "loc:apartemen",
+          "name": "Apartemen Sudirman",
+          "aliases": ["apartemen", "unit apartemen"],
+          "summary": "Unit apartemen privat di Sudirman buat eksekusi hubungan FWB atau ONS.",
+          "npcIds": [],
+          "requiredFlag": "arc_fwb"
+        },
+        {
+          "id": "loc:studio",
+          "name": "Studio Konten",
+          "aliases": ["studio", "studio kreator"],
+          "summary": "Studio estetik di Jaksel buat nongkrong bareng cewek selebgram dan kreator konten.",
+          "npcIds": [],
+          "requiredFlag": "arc_pengaruh"
+        },
+        {
+          "id": "loc:fraksi",
+          "name": "Kantor Fraksi",
+          "aliases": ["fraksi", "kantor politik"],
+          "summary": "Ruko fraksi politik fiktif tempat lobi kekuasaan dan aliansi elite berlangsung.",
+          "npcIds": [],
+          "requiredFlag": "arc_politisi"
+        },
+        {
+          "id": "loc:gudang",
+          "name": "Gudang Senayan",
+          "aliases": ["gudang", "gudang senayan"],
+          "summary": "Gudang markas Sirkel Senayan buat mengendalikan bisnis malam dan setoran mafia.",
+          "npcIds": [],
+          "requiredFlag": "arc_mafia"
+        }
+      ],
+      "connections": [
+        { "fromId": "loc:kost", "toId": "loc:menara" },
+        { "fromId": "loc:menara", "toId": "loc:kafe" },
+        { "fromId": "loc:menara", "toId": "loc:apartemen" },
+        { "fromId": "loc:menara", "toId": "loc:studio" },
+        { "fromId": "loc:menara", "toId": "loc:fraksi" },
+        { "fromId": "loc:menara", "toId": "loc:gudang" },
+        { "fromId": "loc:kafe", "toId": "loc:apartemen" },
+        { "fromId": "loc:apartemen", "toId": "loc:studio" },
+        { "fromId": "loc:studio", "toId": "loc:fraksi" },
+        { "fromId": "loc:studio", "toId": "loc:gudang" }
+      ],
+      "flags": {
+        "arc_kenalan": false,
+        "arc_fwb": false,
+        "arc_manfaat": false,
+        "arc_harem": false,
+        "arc_pengaruh": false,
+        "arc_politisi": false,
+        "arc_puncak": false,
+        "arc_mafia": false
+      }
+    }
+  }
+}

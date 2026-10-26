@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "kind": "svg",
+  "title": "assets/covers/archive.svg",
+  "entry": "assets/covers/archive.svg",
+  "renderer": "svg",
+  "status": "complete",
+  "exports": [
+    "svg",
+    "zip"
+  ],
+  "createdAt": "2026-10-20T07:39:39.669Z",
+  "updatedAt": "2026-10-20T07:39:39.669Z",
+  "metadata": {
+    "inferred": true
+  }
+}

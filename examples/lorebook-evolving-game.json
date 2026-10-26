@@ -1,0 +1,196 @@
+{
+  "format": "fworld-template",
+  "version": 1,
+  "exportedAt": "2026-10-26T00:00:00.000Z",
+  "game": {
+    "title": "Dari Gang ke Balai Kota",
+    "description": "Drama kriminal perkotaan fiktif di Kota Arunika: dari penagih jalanan, masa tahanan, jaringan pelabuhan, sampai politik kota. Semua tokoh, tempat, dan organisasi adalah fiksi.",
+    "genre": "Drama kriminal perkotaan",
+    "tone": "Realistis, tegang, dan membumi",
+    "language": "Indonesian",
+    "ageRating": "adult-18-plus",
+    "scenario": {
+      "setting": "Kota Arunika, kota pelabuhan fiktif. Kampung Tegal berbatasan dengan Lapas Arunika, Rumah Singgah, Dermaga Timur, dan Balai Kota. Kekerasan, utang, dan izin usaha adalah bagian hidup sehari-hari, dan setiap perbuatan meninggalkan catatan.",
+      "startingSituation": "Raka masih menjadi penagih iuran di Kampung Tegal. Ia memegang ponsel lama, punya sedikit uang, dan belum dipercaya siapa pun di luar gang.",
+      "worldRules": "Cerita bergerak hanya lewat pilihan pemain dan konsekuensi yang sudah terjadi. Hukum, utang, dan kesetiaan tetap berlaku: tindakan kekerasan bisa berujung laporan polisi, tahanan, atau kehilangan kepercayaan. Masa lalu tidak hilang; catatan lama tetap bisa ditemukan dan dipakai orang lain. Promosi hanya mungkin setelah peristiwa pendukungnya terjadi, dan kesempatan bisa juga gagal atau ditolak. Jangan menghakimi pemain; tunjukkan akibat sosial dan hukumnya.",
+      "additionalContext": "Item tonggak yang sudah ditulis di katalog game (pemain belum memilikinya): item:catatan-residivis (Catatan residivis), item:mandat-keluarga (Mandat keluarga), item:mandat-politik (Mandat politik). Berikan item:catatan-residivis hanya setelah cerita menetapkan hukuman kedua dan pembebasan Raka, bukan sekadar penangkapan pertama; memakainya menandai arc_residivis. Berikan item:mandat-keluarga hanya setelah Raka diterima di organisasi fiksi Keluarga Hitam; memakainya menandai arc_mafia. Berikan item:mandat-politik hanya setelah dukungan warga dan partai fiksi mapan pada tahap mafia; memakainya menandai arc_politisi, bukan kemenangan pemilihan. Gunakan ADD_ITEM dengan id tersebut untuk menyerahkan item tonggak, jangan membuat definisi baru. Untuk benda lain yang baru muncul dalam cerita, gunakan REGISTER_ITEM sesuai instruksi sistem."
+    },
+    "startingLocationId": "loc:kampung",
+    "lorebookRefs": [{ "packId": "fworld-evolving-story", "version": 1 }],
+    "attributes": [
+      {
+        "id": "nyali",
+        "name": "Nyali",
+        "description": "Keberanian menghadapi risiko langsung.",
+        "min": 0,
+        "max": 10,
+        "defaultValue": 5
+      },
+      {
+        "id": "akal",
+        "name": "Akal",
+        "description": "Kemampuan membaca situasi dan menyusun rencana.",
+        "min": 0,
+        "max": 10,
+        "defaultValue": 5
+      },
+      {
+        "id": "karisma",
+        "name": "Karisma",
+        "description": "Daya pengaruh saat berbicara dan bernegosiasi.",
+        "min": 0,
+        "max": 10,
+        "defaultValue": 5
+      }
+    ],
+    "resources": [
+      {
+        "id": "uang",
+        "name": "Uang",
+        "description": "Uang tunai yang bisa dipakai tanpa jejak.",
+        "min": 0,
+        "initialValue": 100
+      },
+      {
+        "id": "pengaruh",
+        "name": "Pengaruh",
+        "description": "Seberapa jauh nama Raka diperhitungkan di kota.",
+        "min": 0,
+        "max": 100,
+        "initialValue": 0
+      }
+    ],
+    "relationships": [
+      {
+        "id": "percaya",
+        "name": "Percaya",
+        "description": "Tingkat kepercayaan orang lain kepada Raka.",
+        "min": -10,
+        "max": 10,
+        "defaultValue": 0
+      }
+    ],
+    "items": [
+      {
+        "id": "item:ponsel",
+        "name": "Ponsel",
+        "description": "Ponsel lama dengan nomor baru. Dipakai menghubungi kontak yang belum tentu aman.",
+        "stackable": false,
+        "consumable": false,
+        "effects": [],
+        "tags": ["komunikasi"]
+      },
+      {
+        "id": "item:catatan-residivis",
+        "name": "Catatan residivis",
+        "description": "Salinan berkas yang membuktikan Raka menjalani hukuman kedua. Memakainya mencatat tonggak residivis dan membuka Rumah Singgah.",
+        "stackable": false,
+        "consumable": true,
+        "effects": [
+          { "type": "SET_FLAG", "target": "arc_residivis", "value": true },
+          {
+            "type": "ADD_FACT",
+            "text": "Raka telah kembali setelah menjalani hukuman kedua."
+          }
+        ],
+        "tags": ["dokumen", "tonggak"]
+      },
+      {
+        "id": "item:mandat-keluarga",
+        "name": "Mandat keluarga",
+        "description": "Surat mandat dari Keluarga Hitam. Memakainya mencatat tonggak mafia dan membuka Dermaga Timur.",
+        "stackable": false,
+        "consumable": true,
+        "effects": [
+          { "type": "SET_FLAG", "target": "arc_mafia", "value": true },
+          {
+            "type": "ADD_FACT",
+            "text": "Raka diterima sebagai anggota Keluarga Hitam."
+          }
+        ],
+        "tags": ["dokumen", "tonggak"]
+      },
+      {
+        "id": "item:mandat-politik",
+        "name": "Mandat politik",
+        "description": "Surat dukungan politik kota. Memakainya mencatat tonggak politisi dan membuka Balai Kota.",
+        "stackable": false,
+        "consumable": true,
+        "effects": [
+          { "type": "SET_FLAG", "target": "arc_politisi", "value": true },
+          {
+            "type": "ADD_FACT",
+            "text": "Raka telah masuk ke politik kota, bukan memenangkan pemilihan."
+          }
+        ],
+        "tags": ["dokumen", "tonggak"]
+      }
+    ],
+    "player": {
+      "name": "Raka",
+      "description": "Pemuda Kampung Tegal yang cepat membaca orang dan sulit menolak tantangan.",
+      "background": "Tumbuh di gang pelabuhan, putus sekolah, dan bekerja sebagai penagih iuran kampung.",
+      "personality": "Tenang di depan orang, keras saat merasa disudutkan.",
+      "goal": "Mencapai hidup yang stabil dan diperhitungkan di kotanya.",
+      "fear": "Kembali ke sel tanpa ada yang menunggu di luar.",
+      "attributes": {},
+      "resources": {}
+    },
+    "npcs": [],
+    "startingInventory": [{ "itemId": "item:ponsel", "quantity": 1 }],
+    "worldMap": {
+      "locations": [
+        {
+          "id": "loc:kampung",
+          "name": "Kampung Tegal",
+          "aliases": ["Tegal", "kampung"],
+          "summary": "Kampung padat tempat pekerja pelabuhan tinggal dan saling menjaga rahasia kecil.",
+          "npcIds": []
+        },
+        {
+          "id": "loc:lapas",
+          "name": "Lapas Arunika",
+          "aliases": ["lapas", "penjara Arunika"],
+          "summary": "Lapas tua di pinggir kota yang menyimpan berkas kepulangan narapidana.",
+          "npcIds": []
+        },
+        {
+          "id": "loc:rumah-singgah",
+          "name": "Rumah Singgah",
+          "aliases": ["singgah"],
+          "summary": "Rumah kontrakan di gang belakang yang menampung orang baru keluar dari lapas.",
+          "npcIds": [],
+          "requiredFlag": "arc_residivis"
+        },
+        {
+          "id": "loc:dermaga",
+          "name": "Dermaga Timur",
+          "aliases": ["dermaga", "pelabuhan timur"],
+          "summary": "Dermaga barang tempat manifes kargo menentukan siapa yang berkuasa di pelabuhan.",
+          "npcIds": [],
+          "requiredFlag": "arc_mafia"
+        },
+        {
+          "id": "loc:balai-kota",
+          "name": "Balai Kota",
+          "aliases": ["balai kota", "kantor wali kota"],
+          "summary": "Gedung administrasi tempat izin, arsip dewan, dan janji kampanye disimpan.",
+          "npcIds": [],
+          "requiredFlag": "arc_politisi"
+        }
+      ],
+      "connections": [
+        { "fromId": "loc:kampung", "toId": "loc:lapas" },
+        { "fromId": "loc:kampung", "toId": "loc:rumah-singgah" },
+        { "fromId": "loc:lapas", "toId": "loc:rumah-singgah" },
+        { "fromId": "loc:rumah-singgah", "toId": "loc:dermaga" },
+        { "fromId": "loc:dermaga", "toId": "loc:balai-kota" }
+      ],
+      "flags": {
+        "arc_residivis": false,
+        "arc_mafia": false,
+        "arc_politisi": false
+      }
+    }
+  }
+}

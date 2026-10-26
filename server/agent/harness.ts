@@ -31,6 +31,7 @@ import {
 } from "./context.js";
 import type { MemoryHit, MemorySearch } from "./knowledge.js";
 import type { AgentValidation } from "./runtime.js";
+import { publicItemEffects } from "../item-projection.js";
 
 const MAX_MEMORY_RESULTS = 5;
 const MAX_MEMORY_CHARS = 4_000;
@@ -117,7 +118,7 @@ function itemDetails(session: GameSession, itemId: string) {
     session.state.inventory.find((entry) => entry.itemId === itemId)
       ?.quantity ?? 0;
   if (quantity <= 0) throw new Error("Item tidak ada di inventory session.");
-  return { ...item, quantity };
+  return { ...item, effects: publicItemEffects(item.effects), quantity };
 }
 
 function boundedMemoryHits(
@@ -197,6 +198,7 @@ export function createNarratorHarness(input: {
     session,
     input.input.playerAction,
     input.input.worldMap,
+    input.input.movement,
   );
   const actorScopedLore = (entries: EffectContext["loreEntries"] | undefined) =>
     (entries ?? []).filter(
@@ -546,24 +548,43 @@ export function createNarratorHarness(input: {
         }
       }
     } else if (response?.type === "narrative") {
+      const canonicalLoreId = (loreId: string): string | undefined => {
+        const resolved = discoveryLoreIdsByHandle.get(loreId);
+        if (resolved !== undefined) return resolved;
+        return allowlistedDiscoveredLoreIds.has(loreId) ? loreId : undefined;
+      };
       const containsDiscovery = response.effects.some(
-        (effect) => effect.type === "DISCOVER_LORE",
+        (effect) =>
+          effect.type === "DISCOVER_LORE" ||
+          (effect.type === "REGISTER_ITEM" &&
+            effect.effects.some((nested) => nested.type === "DISCOVER_LORE")),
       );
       const effects: typeof response.effects = [];
       let unavailableDiscovery = false;
       for (const effect of response.effects) {
-        if (effect.type !== "DISCOVER_LORE") {
-          effects.push(effect);
+        if (effect.type === "DISCOVER_LORE") {
+          const loreId = canonicalLoreId(effect.loreId);
+          if (loreId === undefined) {
+            unavailableDiscovery = true;
+            continue;
+          }
+          effects.push({ ...effect, loreId });
           continue;
         }
-        const loreId = discoveryLoreIdsByHandle.get(effect.loreId);
-        if (loreId !== undefined) {
-          effects.push({ ...effect, loreId });
-        } else if (allowlistedDiscoveredLoreIds.has(effect.loreId)) {
-          effects.push(effect);
-        } else {
-          unavailableDiscovery = true;
+        if (effect.type === "REGISTER_ITEM") {
+          const nestedEffects = effect.effects.map((nested) => {
+            if (nested.type !== "DISCOVER_LORE") return nested;
+            const loreId = canonicalLoreId(nested.loreId);
+            if (loreId === undefined) {
+              unavailableDiscovery = true;
+              return nested;
+            }
+            return { ...nested, loreId };
+          });
+          effects.push({ ...effect, effects: nestedEffects });
+          continue;
         }
+        effects.push(effect);
       }
       if (unavailableDiscovery) {
         issue = DISCOVERY_REPAIR_ISSUE;

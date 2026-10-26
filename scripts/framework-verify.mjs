@@ -526,6 +526,9 @@ async function run() {
   });
 
   phase = "choices";
+  // Turn requests append the runtime item instructions to the system text, so
+  // the choices run has a distinct cache fingerprint and needs its own entry.
+  cachePlan = [() => cacheSuccess(70)];
   generationPlan = [
     () =>
       new Response(
@@ -726,9 +729,9 @@ async function run() {
       }
     }
   }
-  assert.equal(cacheCounts.create, 3);
+  assert.equal(cacheCounts.create, 4);
   assert.equal(cacheCreateFailures, 1);
-  assert.equal(cacheCounts.reuse, 3);
+  assert.equal(cacheCounts.reuse, 2);
   assert.equal(cacheCounts.invalidate, 0);
   assert.equal(bypassReasons.provider_rejected, 3);
   assert.equal(bypassReasons.repair, 1);

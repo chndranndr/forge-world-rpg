@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { get } from "node:http";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,6 +12,7 @@ let databaseApi;
 let turnApi;
 let worldApi;
 let engineApi;
+let mainApi;
 
 test.before(async () => {
   vite = await createServer({
@@ -18,11 +20,12 @@ test.before(async () => {
     server: { middlewareMode: true, hmr: false },
     appType: "custom",
   });
-  [databaseApi, turnApi, worldApi, engineApi] = await Promise.all([
+  [databaseApi, turnApi, worldApi, engineApi, mainApi] = await Promise.all([
     vite.ssrLoadModule("/server/db.ts"),
     vite.ssrLoadModule("/server/turn.ts"),
     vite.ssrLoadModule("/shared/world.ts"),
     vite.ssrLoadModule("/shared/engine.ts"),
+    vite.ssrLoadModule("/server/main.ts"),
   ]);
 });
 
@@ -73,6 +76,8 @@ function withDb(t) {
     rmSync(directory, { recursive: true, force: true });
   });
   return {
+    directory,
+    databasePath,
     get db() {
       return db;
     },
@@ -179,6 +184,43 @@ async function run(db, input) {
     providerKey,
   });
   return waitForRun(db, input.sessionId, input.requestId);
+}
+
+async function openWorldServer(t, fixture) {
+  const server = mainApi.createHttpServer(
+    { current: fixture.db, path: fixture.databasePath },
+    {
+      development: true,
+      allowedHosts: ["*"],
+      backupDirectory: join(fixture.directory, "backups"),
+      envFilePath: join(fixture.directory, ".env"),
+    },
+  );
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  return `http://127.0.0.1:${server.address().port}`;
+}
+
+function getJson(url) {
+  return new Promise((resolve, reject) => {
+    get(url, { headers: { Origin: "http://127.0.0.1:5173" } }, (response) => {
+      let body = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk) => {
+        body += chunk;
+      });
+      response.on("end", () => {
+        try {
+          resolve({ status: response.statusCode, value: JSON.parse(body) });
+        } catch (error) {
+          reject(error);
+        }
+      });
+    }).on("error", reject);
+  });
 }
 
 function registrationProposal(id = "stranger-1", name = "Lina") {
@@ -504,6 +546,473 @@ test("a zero-NPC session registers, reuses, scopes, persists, exports, and prese
       (entry) => entry.npcId === "stranger-1",
     ).values.trust,
     5,
+  );
+});
+
+test("an addressed arrival turn commits with the encounter NPC in the world view", async (t) => {
+  const fixture = withDb(t);
+  const db = fixture.db;
+  const game = definition("dynamic-npc-arrival-game");
+  game.npcs.push({
+    id: "plaza-guard",
+    name: "Garda",
+    personality: ["formal"],
+    goals: ["keep the plaza calm"],
+    privateKnowledge: [],
+    initialRelationships: {},
+  });
+  game.worldMap.locations[0].npcIds = ["plaza-guard"];
+  const sessionId = "dynamic-npc-arrival-session";
+  startSession(db, game, sessionId);
+
+  const responses = [
+    registrationProposal(),
+    { narrative: "Ren reaches the market.", effects: [] },
+    {
+      narrative: "Ren returns to the plaza; Lina points toward the road.",
+      effects: [],
+    },
+    { narrative: "Lina repeats the directions from the gate.", effects: [] },
+  ];
+  stubProvider(t, responses, (prompt, _body, requestNumber) => {
+    if (requestNumber === 2) {
+      assert.deepEqual(prompt.context.actorScope, {
+        kind: "npc",
+        npcId: "stranger-1",
+      });
+      assert.ok(
+        prompt.context.activeNpcs.some(({ id }) => id === "stranger-1"),
+        "destination NPC must be a scene participant",
+      );
+      assert.deepEqual(prompt.context.state.world.movement, {
+        kind: "allowed",
+        fromId: "loc:market",
+        toId: "loc:plaza",
+      });
+    }
+    if (requestNumber === 3) {
+      assert.deepEqual(prompt.context.actorScope, {
+        kind: "npc",
+        npcId: "stranger-1",
+      });
+      assert.ok(
+        prompt.recentMessages.some(
+          (message) =>
+            message.content ===
+            "Ren returns to the plaza; Lina points toward the road.",
+        ),
+        "principal history must include the arrival exchange",
+      );
+    }
+  });
+
+  const registered = await run(db, {
+    sessionId,
+    requestId: "dynamic-npc-arrival-register",
+    work: { kind: "turn", input: "I greet the new courier." },
+  });
+  assert.equal(
+    registered.status,
+    "committed",
+    JSON.stringify(registered.error),
+  );
+
+  const away = await run(db, {
+    sessionId,
+    requestId: "dynamic-npc-arrival-away",
+    work: { kind: "turn", input: "Travel to Market." },
+  });
+  assert.equal(away.status, "committed", JSON.stringify(away.error));
+  assert.deepEqual(db.getSession(sessionId).state.world.activeCharacters, [
+    "player",
+  ]);
+
+  const arrival = await run(db, {
+    sessionId,
+    requestId: "dynamic-npc-arrival-addressed",
+    work: {
+      kind: "turn",
+      input: "I ask Lina about the road as we travel back to the Plaza.",
+    },
+  });
+  assert.equal(arrival.status, "committed", JSON.stringify(arrival.error));
+
+  const committed = db.getSession(sessionId);
+  assert.equal(committed.state.world.locationId, "loc:plaza");
+  assert.ok(committed.state.world.activeCharacters.includes("stranger-1"));
+  assert.deepEqual(committed.state.world.npcPresence["stranger-1"], {
+    locationId: "loc:plaza",
+  });
+
+  assert.deepEqual(
+    arrival.result.messages.map(({ knownBy }) => knownBy),
+    [
+      ["player", "stranger-1"],
+      ["player", "stranger-1"],
+    ],
+  );
+  assert.ok(
+    arrival.result.messages.every(
+      (message) => !message.knownBy.includes("plaza-guard"),
+    ),
+    "destination bystanders must not receive the exchange",
+  );
+  assert.ok(
+    db
+      .getRecentHistory(sessionId, 24, "stranger-1")
+      .some(
+        (message) =>
+          message.content ===
+          "Ren returns to the plaza; Lina points toward the road.",
+      ),
+    "arrival exchange must be in the principal's history",
+  );
+  assert.ok(
+    db
+      .searchMemory(sessionId, "Lina points", "stranger-1")
+      .some(
+        (hit) =>
+          hit.kind === "message" &&
+          hit.excerpt.includes("Lina points toward the road"),
+      ),
+    "arrival exchange must be searchable by the principal",
+  );
+  assert.ok(
+    db
+      .searchMemory(sessionId, "Lina points", "plaza-guard")
+      .every((hit) => !hit.excerpt.includes("Lina points toward the road")),
+    "bystanders must not search the exchange",
+  );
+
+  const followUp = await run(db, {
+    sessionId,
+    requestId: "dynamic-npc-arrival-follow-up",
+    work: { kind: "turn", input: "I ask Lina about the road we discussed." },
+  });
+  assert.equal(followUp.status, "committed", JSON.stringify(followUp.error));
+
+  const base = await openWorldServer(t, fixture);
+  const world = await getJson(`${base}/api/sessions/${sessionId}/world`);
+  assert.equal(world.status, 200);
+  assert.equal(world.value.location.id, "loc:plaza");
+  assert.ok(world.value.people.some(({ id }) => id === "stranger-1"));
+  assert.ok(
+    world.value.people.every(
+      (person) => !Object.hasOwn(person, "privateKnowledge"),
+    ),
+  );
+});
+
+test("an off-scene registered NPC can be reencountered at a different location", async (t) => {
+  const fixture = withDb(t);
+  const db = fixture.db;
+  const game = definition("dynamic-npc-offscene-game");
+  game.npcs.push({
+    id: "plaza-guard",
+    name: "Garda",
+    personality: ["formal"],
+    goals: ["keep the plaza calm"],
+    privateKnowledge: [],
+    initialRelationships: {},
+  });
+  game.worldMap.locations[0].npcIds = ["plaza-guard"];
+  const sessionId = "dynamic-npc-offscene-session";
+  startSession(db, game, sessionId);
+
+  const responses = [
+    registrationProposal(),
+    { narrative: "Ren reaches the market.", effects: [] },
+    {
+      narrative: "Lina steps out of the market crowd.",
+      effects: [{ type: "NPC_PRESENCE", npcId: "stranger-1", present: true }],
+    },
+    { narrative: "Lina answers quietly.", effects: [] },
+  ];
+  stubProvider(t, responses, (prompt, _body, requestNumber) => {
+    if (requestNumber === 0) {
+      assert.equal(
+        "knownNpcIdentities" in prompt.context,
+        false,
+        "identity roster must be omitted when empty",
+      );
+      return;
+    }
+    if (requestNumber === 1 || requestNumber === 2) {
+      assert.deepEqual(prompt.context.knownNpcIdentities, [
+        { id: "stranger-1", name: "Lina" },
+      ]);
+      assert.deepEqual(prompt.context.actorScope, {
+        kind: "player-narrator",
+      });
+      assert.equal(
+        prompt.context.activeNpcs.some(({ id }) => id === "stranger-1"),
+        false,
+      );
+      assert.equal(prompt.context.npcKnowledge, null);
+      const serialized = JSON.stringify(prompt);
+      assert.equal(serialized.includes("LINA_SECRET"), false);
+      assert.equal(serialized.includes("privateKnowledge"), false);
+    }
+    if (requestNumber === 3) {
+      assert.equal("knownNpcIdentities" in prompt.context, false);
+      assert.deepEqual(prompt.context.actorScope, {
+        kind: "npc",
+        npcId: "stranger-1",
+      });
+      assert.ok(prompt.context.npcKnowledge);
+      assert.ok(
+        prompt.context.npcKnowledge.privateFactsKnown.some(({ text }) =>
+          text.includes("LINA_SECRET"),
+        ),
+        "next turn must expose the reencountered NPC's known facts",
+      );
+      assert.equal(
+        JSON.stringify(prompt).includes("PLAYER_ONLY_SECRET"),
+        false,
+      );
+      assert.ok(
+        prompt.recentMessages.some(
+          (message) =>
+            message.content ===
+            "Lina, step out of the market crowd and talk to me.",
+        ),
+        "next turn must recall the reencounter action",
+      );
+      assert.ok(
+        prompt.recentMessages.some(
+          (message) =>
+            message.content === "Lina steps out of the market crowd.",
+        ),
+        "next turn must recall the reencounter narration",
+      );
+    }
+  });
+
+  const registered = await run(db, {
+    sessionId,
+    requestId: "dynamic-npc-offscene-register",
+    work: { kind: "turn", input: "I greet the new courier." },
+  });
+  assert.equal(
+    registered.status,
+    "committed",
+    JSON.stringify(registered.error),
+  );
+
+  const seededSession = db.getSession(sessionId);
+  const seededState = structuredClone(seededSession.state);
+  seededState.facts.push({
+    id: "lina-secret",
+    text: "LINA_SECRET: only Lina knows the market password.",
+    visibility: "private",
+    knownBy: ["stranger-1"],
+    createdAt: "2026-10-13T00:00:00.000Z",
+    source: "story",
+  });
+  db.updateSession(sessionId, { state: seededState }, seededSession.revision);
+
+  const away = await run(db, {
+    sessionId,
+    requestId: "dynamic-npc-offscene-away",
+    work: { kind: "turn", input: "Travel to Market." },
+  });
+  assert.equal(away.status, "committed", JSON.stringify(away.error));
+  const market = db.getSession(sessionId);
+  assert.deepEqual(market.state.world.activeCharacters, ["player"]);
+  assert.deepEqual(market.state.world.npcPresence["stranger-1"], {
+    locationId: "loc:plaza",
+  });
+
+  const reencounter = await run(db, {
+    sessionId,
+    requestId: "dynamic-npc-offscene-reencounter",
+    work: {
+      kind: "turn",
+      input: "Lina, step out of the market crowd and talk to me.",
+    },
+  });
+  assert.equal(
+    reencounter.status,
+    "committed",
+    JSON.stringify(reencounter.error),
+  );
+  const committed = db.getSession(sessionId);
+  assert.equal(committed.state.world.locationId, "loc:market");
+  assert.deepEqual(committed.state.world.npcPresence["stranger-1"], {
+    locationId: "loc:market",
+    present: true,
+  });
+  assert.ok(committed.state.world.activeCharacters.includes("stranger-1"));
+  assert.deepEqual(
+    worldApi.sceneParticipants(
+      committed.worldMap,
+      "loc:market",
+      committed.state.world.npcPresence,
+      committed.definitionSnapshot.npcs.map((npc) => npc.id),
+    ),
+    ["player", "stranger-1"],
+  );
+  const reencounterMessages = reencounter.result.messages.filter(
+    (message) => message.role === "PLAYER" || message.role === "NARRATOR",
+  );
+  assert.deepEqual(
+    reencounterMessages.map((message) => message.knownBy),
+    [
+      ["player", "stranger-1"],
+      ["player", "stranger-1"],
+    ],
+  );
+  assert.ok(
+    reencounter.result.messages.every((message) =>
+      message.knownBy.includes("stranger-1"),
+    ),
+    "reencounter, including its system event, must reach the new participant",
+  );
+  assert.ok(
+    reencounter.result.messages.every(
+      (message) => !message.knownBy.includes("plaza-guard"),
+    ),
+    "mapped bystander must not receive the reencounter",
+  );
+  assert.ok(
+    db
+      .getRecentHistory(sessionId, 24, "stranger-1")
+      .some(
+        (message) => message.content === "Lina steps out of the market crowd.",
+      ),
+    "reencounter narration must be in the principal's history",
+  );
+
+  const followUp = await run(db, {
+    sessionId,
+    requestId: "dynamic-npc-offscene-follow-up",
+    work: { kind: "turn", input: "I ask Lina about the market password." },
+  });
+  assert.equal(followUp.status, "committed", JSON.stringify(followUp.error));
+  assert.ok(
+    db
+      .searchMemory(sessionId, "market password", "stranger-1")
+      .some(
+        (hit) => hit.kind === "fact" && hit.excerpt.includes("LINA_SECRET"),
+      ),
+  );
+});
+
+test("origin-fallback travel keeps destination presence targets out of the audience", async (t) => {
+  const fixture = withDb(t);
+  const db = fixture.db;
+  const game = definition("dynamic-npc-scene-gate-game");
+  game.npcs.push(
+    {
+      id: "lina",
+      name: "Lina",
+      personality: ["watchful"],
+      goals: ["keep the gate safe"],
+      privateKnowledge: ["Lina's private gate note."],
+      initialRelationships: {},
+    },
+    {
+      id: "market-guard",
+      name: "Garda",
+      personality: ["formal"],
+      goals: ["keep the market calm"],
+      privateKnowledge: [],
+      initialRelationships: {},
+    },
+  );
+  game.worldMap.locations[0].npcIds = ["lina"];
+  game.worldMap.locations[1].npcIds = ["market-guard"];
+  const sessionId = "dynamic-npc-scene-gate-session";
+  startSession(db, game, sessionId);
+  const initial = db.getSession(sessionId);
+  const state = structuredClone(initial.state);
+  state.world.npcPresence = {
+    "market-guard": { locationId: "loc:market" },
+  };
+  state.world.activeCharacters = worldApi.sceneParticipants(
+    game.worldMap,
+    state.world.locationId,
+    state.world.npcPresence,
+    game.npcs.map((npc) => npc.id),
+  );
+  db.updateSession(sessionId, { state }, initial.revision);
+
+  stubProvider(
+    t,
+    [
+      {
+        narrative:
+          "Lina shares her private gate note as Ren heads to the market.",
+        effects: [
+          { type: "NPC_PRESENCE", npcId: "market-guard", present: true },
+        ],
+      },
+    ],
+    (prompt) => {
+      assert.deepEqual(prompt.context.actorScope, {
+        kind: "npc",
+        npcId: "lina",
+      });
+      assert.ok(prompt.context.activeNpcs.some(({ id }) => id === "lina"));
+      assert.equal(
+        prompt.context.activeNpcs.some(({ id }) => id === "market-guard"),
+        false,
+      );
+      assert.deepEqual(prompt.context.knownNpcIdentities, [
+        { id: "market-guard", name: "Garda" },
+      ]);
+      assert.match(JSON.stringify(prompt), /Lina's private gate note/);
+    },
+  );
+
+  const travel = await run(db, {
+    sessionId,
+    requestId: "dynamic-npc-scene-gate-travel",
+    work: {
+      kind: "turn",
+      input: "I ask Lina about the gate as we travel to the Market.",
+    },
+  });
+  assert.equal(travel.status, "committed", JSON.stringify(travel.error));
+
+  const committed = db.getSession(sessionId);
+  assert.equal(committed.state.world.locationId, "loc:market");
+  assert.deepEqual(committed.state.world.npcPresence["market-guard"], {
+    locationId: "loc:market",
+    present: true,
+  });
+  assert.ok(committed.state.world.activeCharacters.includes("market-guard"));
+  assert.ok(!committed.state.world.activeCharacters.includes("lina"));
+  assert.deepEqual(
+    travel.result.messages.map((message) => message.knownBy),
+    [
+      ["player", "lina"],
+      ["player", "lina"],
+      ["player", "lina"],
+    ],
+  );
+  assert.ok(
+    travel.result.messages.every(
+      (message) => !message.knownBy.includes("market-guard"),
+    ),
+  );
+  assert.ok(
+    !db
+      .getRecentHistory(sessionId, 24, "market-guard")
+      .some((message) => message.content.includes("private gate note")),
+  );
+  assert.ok(
+    !db
+      .searchMemory(sessionId, "private gate note", "market-guard")
+      .some((hit) => hit.excerpt.includes("private gate note")),
+  );
+  assert.ok(
+    db
+      .searchMemory(sessionId, "private gate note", "lina")
+      .some(
+        (hit) =>
+          hit.kind === "message" && hit.excerpt.includes("private gate note"),
+      ),
   );
 });
 

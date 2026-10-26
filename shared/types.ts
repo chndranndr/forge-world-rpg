@@ -84,7 +84,12 @@ export type RegisterNpcEffect = {
   goals: string[];
 };
 
-export type TurnEffect = ItemEffect | RegisterNpcEffect;
+export type RegisterItemEffect = ItemDefinition & {
+  type: "REGISTER_ITEM";
+  quantity: number;
+};
+
+export type TurnEffect = ItemEffect | RegisterNpcEffect | RegisterItemEffect;
 
 export interface ItemDefinition {
   id: string;

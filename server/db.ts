@@ -18,10 +18,9 @@ import {
   validateDefinitionUpdate,
   validateExportBundle,
   validatePlayability,
+  validateSessionSnapshot,
 } from "../shared/validation.js";
 import {
-  EXPORT_FORMAT,
-  EXPORT_VERSION,
   type AgentTrace,
   type AgentTraceCacheReason,
   type AgentTraceEvent,
@@ -918,36 +917,27 @@ function assertPlainArray(
   }
 }
 
-function withoutLorebookRefs<T extends GameDefinition | GameSession>(
-  value: T,
-): Omit<T, "lorebookRefs"> {
-  const { lorebookRefs: _lorebookRefs, ...rest } = value;
-  return rest;
-}
+type SessionValidationView = Pick<
+  ExportBundle,
+  "game" | "session" | "messages"
+>;
 
-function makeBundle(
+function makeSessionValidationView(
   game: GameDefinition,
   session: GameSession,
   messages: Message[],
-): ExportBundle {
+): SessionValidationView {
   const validationMap = session.worldMap ?? game.worldMap;
-  const validationGame = withoutLorebookRefs(
-    validationMap === undefined ? game : { ...game, worldMap: validationMap },
-  );
-  const validationSnapshot = withoutLorebookRefs({
-    ...session.definitionSnapshot,
-    ...(validationMap === undefined ? {} : { worldMap: validationMap }),
-  });
-  const validationSession = withoutLorebookRefs({
-    ...session,
-    definitionSnapshot: validationSnapshot,
-  });
   return {
-    format: EXPORT_FORMAT,
-    version: EXPORT_VERSION,
-    exportedAt: new Date().toISOString(),
-    game: validationGame,
-    session: validationSession,
+    game:
+      validationMap === undefined ? game : { ...game, worldMap: validationMap },
+    session: {
+      ...session,
+      definitionSnapshot:
+        validationMap === undefined
+          ? session.definitionSnapshot
+          : { ...session.definitionSnapshot, worldMap: validationMap },
+    },
     messages,
   };
 }
@@ -998,7 +988,7 @@ function validateSessionDocument(
     ai,
     nextSequence: 0,
   };
-  validateExportBundle(makeBundle(definition, stateOnly, []));
+  validateSessionSnapshot(makeSessionValidationView(definition, stateOnly, []));
   if (messages.length) {
     const maxSequence = messages.reduce(
       (max, message) => Math.max(max, message.sequence),
@@ -1010,8 +1000,8 @@ function validateSessionDocument(
   } else if (session.nextSequence !== 0) {
     throw new ValidationError("nextSequence tidak sesuai messages.");
   }
-  const checked = validateExportBundle(
-    makeBundle(
+  const checked = validateSessionSnapshot(
+    makeSessionValidationView(
       definition,
       { ...stateOnly, nextSequence: session.nextSequence },
       messages,
@@ -1075,8 +1065,8 @@ function validateMessages(
     -1,
   );
   const candidate = { ...session, nextSequence: maxSequence + 1 };
-  return validateExportBundle(
-    makeBundle(session.definitionSnapshot, candidate, messages),
+  return validateSessionSnapshot(
+    makeSessionValidationView(session.definitionSnapshot, candidate, messages),
   ).messages;
 }
 
@@ -1999,7 +1989,9 @@ export class GameDatabase {
     }
     const stateOnly = { ...session, nextSequence: 0 };
     try {
-      validateExportBundle(makeBundle(definitionSnapshot, stateOnly, []));
+      validateSessionSnapshot(
+        makeSessionValidationView(definitionSnapshot, stateOnly, []),
+      );
     } catch (error) {
       throw new CorruptDatabaseError(
         `Session state tidak valid: ${error instanceof Error ? error.message : String(error)}`,
@@ -3245,7 +3237,11 @@ export class GameDatabase {
     return {
       entries: all.map(({ entry }) => ({
         ...entry,
-        body: localIds.has(entry.id) ? "" : truncateUtf8(entry.body, 1_200),
+        body:
+          localIds.has(entry.id) &&
+          !(entry.visibility === "discovery" && discovered.has(entry.id))
+            ? ""
+            : truncateUtf8(entry.body, 1_200),
       })),
       omitted,
     };
@@ -4214,8 +4210,8 @@ export class GameDatabase {
   #validateSessionState(session: GameSession): void {
     const stateOnly = { ...session, nextSequence: 0 };
     try {
-      validateExportBundle(
-        makeBundle(session.definitionSnapshot, stateOnly, []),
+      validateSessionSnapshot(
+        makeSessionValidationView(session.definitionSnapshot, stateOnly, []),
       );
     } catch (error) {
       throw new ValidationError(

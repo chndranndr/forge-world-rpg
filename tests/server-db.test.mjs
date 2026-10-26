@@ -1149,3 +1149,109 @@ test("session deletion checks revision and running state, then cascades all sess
   );
   raw.close();
 });
+
+test("fresh saved-world sessions leave progressed playthroughs and history unchanged", (t) => {
+  const { db, databasePath, track } = withDb(t);
+  const created = db.createGame(definition("independent-world"));
+  assert.equal(created.revision, 1);
+  assert.equal(
+    created.resources.find((resource) => resource.id === "yen").initialValue,
+    100,
+  );
+
+  const first = db.startSavedSession({
+    gameId: created.id,
+    expectedGameRevision: created.revision,
+    name: "First journey",
+    ai,
+    sessionId: "independent-first",
+  });
+  assert.equal(first.revision, 1);
+  assert.equal(first.nextSequence, 0);
+  assert.equal(first.state.resources.yen, 100);
+
+  const progressed = structuredClone(first.state);
+  progressed.resources.yen = 25;
+  progressed.world.scene = "At the harbor";
+  commit(
+    db,
+    first,
+    "first-journey",
+    [message(first.id, 0, "The first journey reached the harbor.")],
+    { text: "done" },
+    progressed,
+  );
+
+  const firstBefore = db.getSession(first.id);
+  const firstHistory = db.listMessages(first.id).messages;
+  assert.equal(firstBefore.nextSequence, 1);
+  assert.equal(firstHistory.length, 1);
+  assert.equal(
+    firstHistory[0].content,
+    "The first journey reached the harbor.",
+  );
+
+  const revised = definition("independent-world");
+  revised.title = "A revised world";
+  const saved = db.updateGame(created.id, revised, created.revision);
+  assert.equal(saved.revision, 2);
+  assert.equal(db.getGame(created.id).revision, saved.revision);
+  const gameBeforeStart = db.getGame(created.id);
+
+  const second = db.startSavedSession({
+    gameId: created.id,
+    expectedGameRevision: saved.revision,
+    name: "Second journey",
+    ai,
+    sessionId: "independent-second",
+  });
+  assert.notEqual(second.id, first.id);
+  assert.equal(second.gameId, first.gameId);
+  assert.equal(second.gameId, created.id);
+  assert.equal(second.revision, 1);
+  assert.equal(second.nextSequence, 0);
+  assert.equal(second.state.resources.yen, 100);
+  assert.equal(
+    second.state.world.scene,
+    definition().scenario.startingSituation,
+  );
+  assert.equal(second.definitionSnapshot.title, "A revised world");
+  assert.equal(second.definitionSnapshot.id, created.id);
+  assert.deepEqual(db.listMessages(second.id).messages, []);
+  assert.equal(db.listMessages(second.id).hasMore, false);
+
+  assert.deepEqual(db.getSession(first.id), firstBefore);
+  assert.deepEqual(db.listMessages(first.id).messages, firstHistory);
+  assert.equal(db.getSession(first.id).state.resources.yen, 25);
+  assert.equal(db.getSession(first.id).state.world.scene, "At the harbor");
+  assert.equal(
+    db.getSession(first.id).definitionSnapshot.title,
+    "Lantern Cafe",
+  );
+  assert.deepEqual(db.getGame(created.id), gameBeforeStart);
+  assert.equal(db.getGame(created.id).revision, saved.revision);
+  assert.equal(db.getGame(created.id).title, "A revised world");
+
+  db.close();
+  const reopened = new api.GameDatabase(databasePath);
+  track(reopened);
+
+  const firstAfter = reopened.getSession(first.id);
+  const secondAfter = reopened.getSession(second.id);
+  assert.deepEqual(firstAfter, firstBefore);
+  assert.deepEqual(secondAfter, second);
+  assert.deepEqual(reopened.listMessages(first.id).messages, firstHistory);
+  assert.deepEqual(reopened.listMessages(second.id).messages, []);
+
+  assert.equal(firstAfter.state.resources.yen, 25);
+  assert.equal(firstAfter.state.world.scene, "At the harbor");
+  assert.equal(firstAfter.definitionSnapshot.title, "Lantern Cafe");
+  assert.equal(firstAfter.revision, 2);
+  assert.equal(firstAfter.nextSequence, 1);
+  assert.equal(secondAfter.state.resources.yen, 100);
+  assert.equal(secondAfter.definitionSnapshot.title, "A revised world");
+  assert.equal(secondAfter.revision, 1);
+  assert.equal(secondAfter.nextSequence, 0);
+  assert.deepEqual(reopened.getGame(created.id), gameBeforeStart);
+  assert.equal(reopened.listSessions(created.id).length, 2);
+});

@@ -1,0 +1,403 @@
+{
+  "format": "fworld-lorebook",
+  "version": 1,
+  "pack": {
+    "id": "fworld-fw-scbd",
+    "version": 2,
+    "name": "FW di SCBD",
+    "description": "Kisah Dimas, mas-mas IT medioker di SCBD yang mendadak kesetrum pas lagi coli di kosan, sampai HP-nya memunculkan aplikasi misterius FW. Dari sekadar cari kenalan anonim dan partner FWB, merembet manfaatin cewek buat uang dan armada kerja, hingga naik takhta jadi bos mafia perkotaan."
+  },
+  "entries": [
+    {
+      "id": "world:sudirman",
+      "kind": "world",
+      "name": "SCBD Sudirman",
+      "aliases": ["Sudirman", "kawasan SCBD", "kawasan ini"],
+      "summary": "Kawasan elit segitiga emas Jakarta: gedung kaca menjulang, pekerja berdasi, kafe estetik, dan gang kosan sempit di belakangnya.",
+      "body": "SCBD di cerita ini adalah rimba beton penuh kontras. Siang hari dipadati eksekutif muda ber-lanyard dan mobil mewah, malamnya jadi arena perputaran uang cepat, kencan rahasia, dan ambisi liar. Di balik kemilaunya, terselip kamar kosan Setiabudi, unit apartemen privat, hingga gudang gelap tempat sirkel malam berkuasa.",
+      "tags": ["kota", "latar", "scbd"],
+      "visibility": "public",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original-fw-scbd",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "loc:kost",
+      "kind": "location",
+      "name": "Kost Melati",
+      "aliases": ["kost", "melati", "kosan"],
+      "parentId": "world:sudirman",
+      "summary": "Kamar kosan sempit 3x3 di gang Setiabudi, saksi bisu Dimas kesetrum pas lagi coli sendirian.",
+      "body": "Kamar pengap berdinding triplek dengan kasur busa kempes dan tumpukan kabel charger murah. Di colokan dinding yang gosong inilah Dimas kesetrum listrik sampai pingsan, sebelum akhirnya bangun dan mendapati ponselnya cuma menyisakan aplikasi aneh bernama FW.",
+      "tags": ["kost", "awal", "setiabudi"],
+      "visibility": "public",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original-fw-scbd",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "loc:menara",
+      "kind": "location",
+      "name": "Menara Kencana",
+      "aliases": ["menara", "kantor", "kantor dimas"],
+      "parentId": "world:sudirman",
+      "summary": "Gedung perkantoran megah di jantung SCBD tempat Dimas sehari-hari cuma jadi kacung IT.",
+      "body": "Gedung kaca 40 lantai yang dingin dan angkuh. Dimas mendekam di lantai 27, berkutat benerin printer ngadat, kabel LAN putus, dan reset password atasan. Bagi orang-orang kantoran di sini, Dimas cuma staf IT kuper yang nggak pernah dilirik cewek.",
+      "tags": ["kantor", "scbd", "kerja"],
+      "visibility": "public",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original-fw-scbd",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "loc:kafe",
+      "kind": "location",
+      "name": "Kafe Bawah Tanah",
+      "aliases": ["kafe", "bawah tanah", "basement cafe"],
+      "parentId": "world:sudirman",
+      "summary": "Kafe remang-remang di basement SCBD, spot sempurna buat janji temu pertama abis jam ngantor.",
+      "body": "Aroma kopi bercampur wangi parfum mahal dan musik lo-fi pelan. Meja-meja sudut yang temaram jadi lokasi favorit buat ngobrol santai tanpa takut ketahuan rekan sekantor. Datang ke sini baru langkah awal; cewek yang diajak belum tentu mau lanjut jalan bareng.",
+      "tags": ["kafe", "kencan", "santai"],
+      "visibility": "public",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original-fw-scbd",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "loc:apartemen",
+      "kind": "location",
+      "name": "Apartemen Sudirman",
+      "aliases": ["apartemen", "unit apartemen"],
+      "parentId": "world:sudirman",
+      "summary": "Unit apartemen harian privat di Sudirman buat hubungan santai tanpa ikatan (FWB atau ONS).",
+      "body": "Kamar ber-AC dingin dengan kasur king size dan pemandangan city light Jakarta dari jendela kaca besar. Resepsionisnya tutup mulut dan lift hanya bisa diakses kartu khusus. Tempat obrolan cair berubah jadi desahan intim begitu pintu terkunci rapat.",
+      "tags": ["apartemen", "privat", "ranjang"],
+      "visibility": "public",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original-fw-scbd",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "loc:studio",
+      "kind": "location",
+      "name": "Studio Konten",
+      "aliases": ["studio", "studio kreator"],
+      "parentId": "world:sudirman",
+      "summary": "Studio estetik di kawasan Jaksel tempat para selebgram dan kreator bikin konten medsos.",
+      "body": "Penuh ring light, mic podcast mahal, sofa beludru, dan cermin full body buat mirror selfie. Di sinilah Dimas mulai masuk ke lingkaran para cewek kreator konten yang haus perhatian dan gampang dipengaruhi kalau tau cara mainnya.",
+      "tags": ["studio", "kreator", "jaksel"],
+      "visibility": "public",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original-fw-scbd",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "loc:fraksi",
+      "kind": "location",
+      "name": "Kantor Fraksi",
+      "aliases": ["fraksi", "kantor politik"],
+      "parentId": "world:sudirman",
+      "summary": "Ruko konsultan dan tim sukses politisi fiktif, sarang lobi kekuasaan dan intrik politik.",
+      "body": "Ruangan berkarpet tebal dengan aroma kopi arabika mahal dan asap cerutu. Di sini orang-orang berdasi merancang manuver politik dan anggaran. Pintu masuk Dimas buat menggaet politisi wanita yang punya pengaruh besar di kota.",
+      "tags": ["politik", "fraksi", "lobi"],
+      "visibility": "public",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original-fw-scbd",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "loc:gudang",
+      "kind": "location",
+      "name": "Gudang Senayan",
+      "aliases": ["gudang", "gudang senayan"],
+      "parentId": "world:sudirman",
+      "summary": "Gudang tertutup di Senayan, markas operasional Sirkel Senayan buat mengatur bisnis malam.",
+      "body": "Gerbang besi kokoh dengan kamera pengawas tersembunyi. Di dalamnya tersimpan tumpukan barang dagangan, brankas kas, dan ruang privat tempat para bos mafia membagi jatah setoran mingguan. Di sini mandat lo berlaku mutlak.",
+      "tags": ["gudang", "senayan", "mafia"],
+      "visibility": "public",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original-fw-scbd",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "item:ponsel",
+      "kind": "item",
+      "name": "Ponsel Dimas",
+      "aliases": ["hp", "telepon", "ponsel"],
+      "summary": "HP Android Dimas yang ketempelan aplikasi aneh FW setelah kejadian kesetrum.",
+      "body": "Casingnya agak baret dan ada retakan halus di sudut layar. Di mata orang lain layarnya tampak normal, tapi pas Dimas yang megang, yang muncul cuma antarmuka hitam pekat berlogo 'FW' yang ngasih quest harian penakluk cewek.",
+      "tags": ["ponsel", "fw", "gadget"],
+      "visibility": "public",
+      "metadata": { "itemId": "item:ponsel" },
+      "provenance": {
+        "sourceId": "fworld-original-fw-scbd",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "faction:sirkel-senayan",
+      "kind": "faction",
+      "name": "Sirkel Senayan",
+      "aliases": ["sirkel", "mafia senayan"],
+      "summary": "Jaringan mafia bawah tanah fiktif yang menguasai bisnis hiburan malam dan uang abu-abu.",
+      "body": "Mereka bukan preman jalanan murahan, melainkan sindikat rapi yang memegang lisensi kargo, klub malam, dan setoran keamanan. Mereka baru melirik Dimas saat bisnis dan jaringan ceweknya mulai menghasilkan cuan berlimpah.",
+      "tags": ["jaringan", "fiksi", "sirkel"],
+      "visibility": "narrator",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original-fw-scbd",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "other:app-fw",
+      "kind": "other",
+      "name": "Aplikasi FW",
+      "aliases": ["aplikasi FW", "FW", "sistem FW"],
+      "summary": "Aplikasi misterius di HP Dimas yang ngasih quest harian, reward koin, dan toko rahasia.",
+      "body": "Aplikasi ini nggak bisa dihapus dan cuma Dimas yang bisa liat. Tiap hari bakal ngedrop quest baru: cari kenalan anonim, kencan, FWB, manfaatin duit dan tenaga cewek, sampai ngebangun kerajaan mafia. Berhasil dapat 5 FW koin; kalau gagal, saldo koin dipotong 2 atau kena hukuman naratif yang bikin malu di kehidupan nyata.",
+      "tags": ["fw", "quest", "sistem"],
+      "visibility": "narrator",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original-fw-scbd",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "other:tangga-wanita",
+      "kind": "other",
+      "name": "Tangga Target Cewek",
+      "aliases": ["tangga", "tier cewek", "target cewek"],
+      "summary": "Perkembangan target cewek FW dari level karyawati biasa sampai selebriti papan atas.",
+      "body": "Semua target adalah wanita dewasa fiktif (21+). Di awal cerita Dimas cuma ketemu karyawati SCBD, freelancer, atau mahasiswi akhir. Begitu reputasinya naik, target berkembang ke kreator konten dan selebgram, lalu politisi wanita, hingga puncaknya model top dan artis internasional. Cewek yang sama bisa berkembang kariernya lewat catatan fakta cerita.",
+      "tags": ["cewek", "tahap", "target"],
+      "visibility": "narrator",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original-fw-scbd",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "activity:quest-harian",
+      "kind": "activity",
+      "name": "Layar Quest FW",
+      "aliases": ["layar quest", "misi harian"],
+      "summary": "Dashboard misi di HP Dimas: satu quest per hari, timer, dan status saldo FW koin.",
+      "body": "Layar aplikasi nampilin target yang harus lo taklukin hari ini. Nggak ada tombol lewati atau curang; lo harus nyelesaiin quest aktif ini dulu sebelum sistem ngebuka hari berikutnya.",
+      "tags": ["quest", "fw", "misi"],
+      "visibility": "discovery",
+      "metadata": {
+        "discoverAt": ["loc:kost"],
+        "discoveryKeywords": ["quest", "aplikasi", "fw"]
+      },
+      "provenance": {
+        "sourceId": "fworld-original-fw-scbd",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "activity:kontak-anonim",
+      "kind": "activity",
+      "name": "Kanal Chat Anonim",
+      "aliases": ["kanal anonim", "radar anonim"],
+      "summary": "Fitur radar di FW buat nyari kontak cewek di sekitaran Sudirman secara anonim mirip Telegram.",
+      "body": "Berisi deretan profil cewek dengan foto tersamar dan jarak lokasi. Tempat Dimas melempar umpan obrolan pertama buat ngetes apakah si target tertarik buat diajak ketemuan langsung.",
+      "tags": ["anonim", "kontak", "chat"],
+      "visibility": "discovery",
+      "metadata": {
+        "discoverAt": ["loc:kost", "loc:menara"],
+        "discoveryKeywords": ["anonim", "kontak", "kanal"]
+      },
+      "provenance": {
+        "sourceId": "fworld-original-fw-scbd",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "activity:kencan",
+      "kind": "activity",
+      "name": "Momen Kencan Sudut Kafe",
+      "aliases": ["kencan kafe", "meja sudut"],
+      "summary": "Momen nongkrong berdua di kafe SCBD buat nguji kecocokan dan bikin target makin penasaran.",
+      "body": "Pertarungan karisma dan gaya bicara. Di meja sudut kafe ini, Dimas harus bisa bikin si cewek merasa nyaman dan tertarik sebelum ngajak melangkah ke tempat yang lebih sepi.",
+      "tags": ["kencan", "kafe", "obrolan"],
+      "visibility": "discovery",
+      "metadata": {
+        "discoverAt": ["loc:kafe"],
+        "discoveryKeywords": ["kencan", "meja", "jalan"]
+      },
+      "provenance": {
+        "sourceId": "fworld-original-fw-scbd",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "activity:pola-manfaat",
+      "kind": "activity",
+      "name": "Catatan Hadiah & Pinjaman",
+      "aliases": ["catatan pinjaman", "pola manfaat"],
+      "summary": "Bukti cewek target mulai royal: sukarela minjemin uang, bayarin belanjaan, atau beliin barang.",
+      "body": "Bukan pemaksaan, tapi kelihaian Dimas memainkan emosi cewek sampai mereka sendiri yang berinisiatif ngasih modal dan fasilitas demi nyenengin Dimas.",
+      "tags": ["pinjam", "hadiah", "cuan"],
+      "visibility": "discovery",
+      "metadata": {
+        "discoverAt": ["loc:apartemen"],
+        "discoveryKeywords": ["pinjam", "hadiah", "struk"],
+        "requiredFlag": "arc_fwb"
+      },
+      "provenance": {
+        "sourceId": "fworld-original-fw-scbd",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "activity:jadwal-kerja",
+      "kind": "activity",
+      "name": "Agenda Harem Kerja",
+      "aliases": ["jadwal bantuan", "agenda harem"],
+      "summary": "Manajemen cewek-cewek lo yang sukarela bantuin urusan kantor, konten, dan operasional bisnis.",
+      "body": "Bukan sekadar teman ranjang, tapi armada kerja serbabisa. Ada yang bantuin bikin konten, ngurus keuangan, sampai ngebuka relasi baru buat bisnis Dimas yang kian membesar.",
+      "tags": ["kerja", "jadwal", "harem"],
+      "visibility": "discovery",
+      "metadata": {
+        "discoverAt": ["loc:apartemen", "loc:studio"],
+        "discoveryKeywords": ["jadwal", "bantuan"],
+        "requiredFlag": "arc_manfaat"
+      },
+      "provenance": {
+        "sourceId": "fworld-original-fw-scbd",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "activity:sirkel",
+      "kind": "activity",
+      "name": "Buku Kas Sirkel Senayan",
+      "aliases": ["buku potongan", "kas sirkel"],
+      "summary": "Buku catatan pembagian jatah kas dan mandat bisnis malam di Senayan.",
+      "body": "Catatan hitam di atas putih tentang aliran dana, izin usaha malam, dan setoran perlindungan. Bukti sah kalau Dimas sudah diakui sebagai salah satu pengendali jaringan mafia kota.",
+      "tags": ["sirkel", "catatan", "mafia"],
+      "visibility": "discovery",
+      "metadata": {
+        "discoverAt": ["loc:gudang"],
+        "discoveryKeywords": ["sirkel", "mandat", "potongan"],
+        "requiredFlag": "arc_mafia"
+      },
+      "provenance": {
+        "sourceId": "fworld-original-fw-scbd",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    }
+  ],
+  "links": [
+    {
+      "fromId": "activity:quest-harian",
+      "toId": "loc:kost",
+      "relation": "LOCATED_IN"
+    },
+    {
+      "fromId": "activity:kontak-anonim",
+      "toId": "loc:kost",
+      "relation": "LOCATED_IN"
+    },
+    {
+      "fromId": "activity:kontak-anonim",
+      "toId": "loc:menara",
+      "relation": "LOCATED_IN"
+    },
+    {
+      "fromId": "activity:kencan",
+      "toId": "loc:kafe",
+      "relation": "LOCATED_IN"
+    },
+    {
+      "fromId": "activity:pola-manfaat",
+      "toId": "loc:apartemen",
+      "relation": "LOCATED_IN"
+    },
+    {
+      "fromId": "activity:jadwal-kerja",
+      "toId": "loc:apartemen",
+      "relation": "LOCATED_IN"
+    },
+    {
+      "fromId": "activity:jadwal-kerja",
+      "toId": "loc:studio",
+      "relation": "LOCATED_IN"
+    },
+    {
+      "fromId": "activity:sirkel",
+      "toId": "loc:gudang",
+      "relation": "LOCATED_IN"
+    },
+    {
+      "fromId": "faction:sirkel-senayan",
+      "toId": "loc:gudang",
+      "relation": "LOCATED_IN"
+    },
+    {
+      "fromId": "other:app-fw",
+      "toId": "item:ponsel",
+      "relation": "RELATED_TO"
+    },
+    {
+      "fromId": "other:tangga-wanita",
+      "toId": "other:app-fw",
+      "relation": "RELATED_TO"
+    }
+  ]
+}

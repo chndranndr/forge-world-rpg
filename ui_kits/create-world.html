@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Buat dunia - Fworld</title>
+  <meta name="description" content="Buat dunia Fworld dari template pesisir, hutan, atau halaman kosong.">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/tokens.css">
+  <link rel="stylesheet" href="assets/app.css">
+  <script src="assets/app.js" defer></script>
+</head>
+<body class="create-page">
+  <a class="skip-link" href="#main">Langsung ke isi</a>
+
+  <div class="shell">
+    <aside class="rail texture texture--leather" aria-label="Navigasi utama">
+      <a class="rail__brand" href="index.html" aria-label="Fworld, beranda prototipe">
+        <span class="brand-mark" aria-hidden="true">F</span>
+        <span>
+          <span class="brand-word">Fworld</span>
+          <span class="brand-sub">Ruang cerita</span>
+        </span>
+      </a>
+
+      <nav class="rail__nav" aria-label="Jelajahi">
+        <p class="rail__label">Jelajahi</p>
+        <a class="nav-link" href="library.html">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-library"></use></svg>
+          Perpustakaan
+          <span class="nav-link__count">06</span>
+        </a>
+        <a class="nav-link" href="settings.html">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-settings"></use></svg>
+          Pengaturan
+        </a>
+      </nav>
+
+      <div class="rail__recent">
+        <p class="rail__label">Dunia terakhir</p>
+        <a class="recent-link" href="session.html">
+          <span class="recent-link__title">Lentera di Hutan</span>
+          <span class="recent-link__meta">Sesi 4 &middot; 2 jam lalu</span>
+        </a>
+        <a class="recent-link" href="world.html">
+          <span class="recent-link__title">Pesisir Utara</span>
+          <span class="recent-link__meta">Sesi 12 &middot; kemarin</span>
+        </a>
+        <a class="recent-link" href="world.html">
+          <span class="recent-link__title">Arsip Hujan</span>
+          <span class="recent-link__meta">Sesi 2 &middot; 3 hari lalu</span>
+        </a>
+      </div>
+
+      <div class="rail__foot">
+        <p class="status-line">
+          <span class="status-dot status-dot--ok" aria-hidden="true"></span>
+          Backend lokal aktif
+        </p>
+        <p class="rail__version">Fworld 0.9 &middot; prototipe</p>
+      </div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <a class="topbar__back" href="library.html" aria-label="Kembali ke perpustakaan">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-arrow-left"></use></svg>
+        </a>
+        <p class="topbar__title">Buat dunia</p>
+        <div class="topbar__actions">
+          <a class="icon-btn" href="settings.html" aria-label="Pengaturan">
+            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-settings"></use></svg>
+          </a>
+        </div>
+      </header>
+
+      <main id="main" class="page">
+        <div class="page__inner">
+          <nav class="crumbs" aria-label="Jejak navigasi">
+            <a href="library.html">
+              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-arrow-left"></use></svg>
+              Perpustakaan
+            </a>
+            <span aria-hidden="true">/</span>
+            <span aria-current="page">Buat dunia</span>
+          </nav>
+
+          <header class="page-head create-head">
+            <p class="eyebrow">Buat dunia</p>
+            <div class="page-head__row">
+              <div>
+                <h1 class="page-title">Mulai dari halaman baru.</h1>
+                <p class="page-lede">Pilih titik awal yang sudah teruji, atau mulai dari kanvas kosong. Semua isi tetap bisa diubah di Workshop sebelum sesi pertama.</p>
+              </div>
+              <p class="mono faint">2 siap &middot; 1 segera</p>
+            </div>
+          </header>
+
+          <form class="create-form" data-create-form>
+            <section class="create-section" aria-labelledby="template-title" data-od-id="template-chooser">
+              <div class="section-head">
+                <div>
+                  <h2 class="section-title" id="template-title">Pilih titik awal</h2>
+                  <p class="field__hint">Template mengisi latar, tokoh, dan aturan dasar. Kamu tidak harus memakai semuanya.</p>
+                </div>
+                <span class="section-meta">Langkah 1 dari 1</span>
+              </div>
+
+              <div class="template-grid" role="radiogroup" aria-labelledby="template-title">
+                <label class="template-card" data-template-card>
+                  <input class="template-card__input" type="radio" name="template" value="coast" checked>
+                  <span class="template-card__still">
+                    <img src="assets/covers/coast.svg" alt="Pesisir berbatu saat senja dengan mercusuar kecil di kejauhan." width="600" height="400">
+                    <span class="template-card__badge badge badge--ready"><span class="badge__dot" aria-hidden="true"></span>Siap</span>
+                    <span class="template-card__check" aria-hidden="true">
+                      <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-check"></use></svg>
+                    </span>
+                  </span>
+                  <span class="template-card__body">
+                    <span class="template-card__kicker">Template 01</span>
+                    <span class="template-card__title">Perjalanan pesisir</span>
+                    <span class="template-card__desc">Dermaga, mercusuar, dan rahasia air pasang. Nada tenang dengan satu misteri yang tumbuh pelan.</span>
+                    <span class="template-card__foot">
+                      <span class="tag">Pesisir</span>
+                      <span class="tag">Misteri</span>
+                      <span class="template-card__meta">6 tokoh &middot; 1 peta</span>
+                    </span>
+                  </span>
+                </label>
+
+                <label class="template-card template-card--soon">
+                  <input class="template-card__input" type="radio" name="template" value="lantern" disabled>
+                  <span class="template-card__still">
+                    <img src="assets/covers/lantern.svg" alt="Hutan berkabut dengan lentera kecil di antara pepohonan." width="600" height="400">
+                    <span class="template-card__badge badge badge--neutral"><span class="badge__dot" aria-hidden="true"></span>Segera</span>
+                  </span>
+                  <span class="template-card__body">
+                    <span class="template-card__kicker">Template 02</span>
+                    <span class="template-card__title">Lentera di hutan</span>
+                    <span class="template-card__desc">Jalur lama, penjaga hutan, dan cahaya yang berpindah. Masih disiapkan untuk rilis produksi.</span>
+                    <span class="template-card__foot">
+                      <span class="tag">Fantasi</span>
+                      <span class="tag">Perjalanan</span>
+                      <span class="template-card__meta">Belum tersedia</span>
+                    </span>
+                  </span>
+                </label>
+
+                <label class="template-card" data-template-card>
+                  <input class="template-card__input" type="radio" name="template" value="blank">
+                  <span class="template-card__still template-card__still--blank" aria-hidden="true">
+                    <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-plus"></use></svg>
+                    <span class="template-card__badge badge badge--neutral"><span class="badge__dot" aria-hidden="true"></span>Kosong</span>
+                    <span class="template-card__check" aria-hidden="true">
+                      <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-check"></use></svg>
+                    </span>
+                  </span>
+                  <span class="template-card__body">
+                    <span class="template-card__kicker">Template 03</span>
+                    <span class="template-card__title">Dunia kosong</span>
+                    <span class="template-card__desc">Tentukan sendiri latar, tokoh, dan aturannya. Cocok bila kamu sudah punya cerita di kepala.</span>
+                    <span class="template-card__foot">
+                      <span class="tag">Bebas</span>
+                      <span class="tag">Dari nol</span>
+                      <span class="template-card__meta">Tanpa contoh</span>
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </section>
+
+            <aside class="create-note">
+              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-notes"></use></svg>
+              <p><strong>Editor tetap tempat dunia dibentuk.</strong> Template hanya mengisi halaman awal; semua bagian bisa diubah sebelum cerita dimulai.</p>
+            </aside>
+
+            <div class="create-bar">
+              <div class="create-bar__selection">
+                <p class="create-bar__label">Dipilih</p>
+                <p class="create-bar__name" data-create-name>Perjalanan pesisir</p>
+                <p class="create-bar__hint" data-create-hint>Pesisir, misteri, 6 tokoh siap disunting.</p>
+              </div>
+              <div class="create-bar__actions">
+                <a class="btn btn--ghost" href="library.html">Batal</a>
+                <a class="btn btn--primary" href="editor.html" data-create-submit>Buat dunia</a>
+              </div>
+            </div>
+          </form>
+        </div>
+      </main>
+
+      <nav class="tabbar" aria-label="Navigasi bawah">
+        <a class="tabbar__link" href="library.html" aria-current="page">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-library"></use></svg>
+          Perpustakaan
+        </a>
+        <a class="tabbar__link" href="settings.html">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-settings"></use></svg>
+          Pengaturan
+        </a>
+      </nav>
+    </div>
+  </div>
+</body>
+</html>

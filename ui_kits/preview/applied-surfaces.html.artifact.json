@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "kind": "html",
+  "title": "preview/applied-surfaces.html",
+  "entry": "preview/applied-surfaces.html",
+  "renderer": "html",
+  "status": "complete",
+  "exports": [
+    "html",
+    "pdf",
+    "zip"
+  ],
+  "createdAt": "2026-10-20T07:43:08.057Z",
+  "updatedAt": "2026-10-20T07:43:08.057Z",
+  "metadata": {
+    "inferred": true,
+    "reconciled": true
+  }
+}

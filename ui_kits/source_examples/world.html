@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Pesisir Utara — Fworld</title>
+  <meta name="description" content="Dunia Pesisir Utara: lanjutkan sesi terakhir, mulai sesi baru, dan kelola lorebook.">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/tokens.css">
+  <link rel="stylesheet" href="assets/app.css">
+  <script src="assets/app.js" defer></script>
+</head>
+<body class="world-page">
+  <a class="skip-link" href="#main">Langsung ke isi</a>
+
+  <div class="shell">
+    <aside class="rail texture texture--leather" aria-label="Navigasi utama">
+      <a class="rail__brand" href="index.html" aria-label="Fworld, beranda prototipe">
+        <span class="brand-mark" aria-hidden="true">F</span>
+        <span>
+          <span class="brand-word">Fworld</span>
+          <span class="brand-sub">Ruang cerita</span>
+        </span>
+      </a>
+
+      <nav class="rail__nav" aria-label="Jelajahi">
+        <p class="rail__label">Jelajahi</p>
+        <a class="nav-link" href="library.html">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-library"></use></svg>
+          Perpustakaan
+          <span class="nav-link__count">06</span>
+        </a>
+        <a class="nav-link" href="settings.html">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-settings"></use></svg>
+          Pengaturan
+        </a>
+      </nav>
+
+      <div class="rail__recent">
+        <p class="rail__label">Dunia terakhir</p>
+        <a class="recent-link" href="session.html">
+          <span class="recent-link__title">Lentera di Hutan</span>
+          <span class="recent-link__meta">Sesi 4 · 2 jam lalu</span>
+        </a>
+        <a class="recent-link" href="world.html">
+          <span class="recent-link__title">Pesisir Utara</span>
+          <span class="recent-link__meta">Sesi 12 · kemarin</span>
+        </a>
+        <a class="recent-link" href="world.html">
+          <span class="recent-link__title">Arsip Hujan</span>
+          <span class="recent-link__meta">Sesi 2 · 3 hari lalu</span>
+        </a>
+      </div>
+
+      <div class="rail__foot">
+        <p class="status-line">
+          <span class="status-dot status-dot--ok" aria-hidden="true"></span>
+          Backend lokal aktif
+        </p>
+        <p class="rail__version">Fworld 0.9 · prototipe</p>
+      </div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <a class="topbar__back" href="library.html" aria-label="Kembali ke perpustakaan">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-arrow-left"></use></svg>
+        </a>
+        <p class="topbar__title">Dunia</p>
+        <div class="topbar__actions">
+          <a class="icon-btn" href="settings.html" aria-label="Pengaturan">
+            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-settings"></use></svg>
+          </a>
+        </div>
+      </header>
+
+      <main id="main" class="page">
+        <div class="page__inner">
+          <nav class="crumbs" aria-label="Jejak navigasi">
+            <a href="library.html">
+              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-arrow-left"></use></svg>
+              Perpustakaan
+            </a>
+            <span aria-hidden="true">/</span>
+            <span aria-current="page">Pesisir Utara</span>
+          </nav>
+
+          <header class="world-hero">
+            <div class="world-hero__cover">
+              <div class="cover cover--frame">
+                <img src="assets/covers/coast.svg" alt="Pesisir berbatu saat senja dengan mercusuar kecil di kejauhan." width="1200" height="800">
+              </div>
+            </div>
+
+            <div class="world-hero__body">
+              <p class="eyebrow">Dunia</p>
+              <h1 class="world-hero__title">Pesisir Utara</h1>
+              <p class="world-hero__meta">
+                <span class="badge badge--active"><span class="badge__dot" aria-hidden="true"></span>Aktif</span>
+                <span>Petualangan</span>
+                <span class="meta-dot" aria-hidden="true"></span>
+                <span>terakhir dimainkan kemarin</span>
+              </p>
+              <p class="world-hero__desc">Sebuah pesisir yang hidup dari cerita nelayan dan janji yang tidak pernah ditepati. Mercusuar tua masih menyala, tetapi kapal-kapal berhenti berlabuh sejak musim lalu.</p>
+              <p class="world-hero__note">Nada: tenang, gelisah, sedikit melankolis · Bahasa Indonesia · 12 giliran tersimpan</p>
+
+              <div class="world-hero__actions">
+                <a class="btn btn--primary" href="session.html">
+                  Lanjutkan sesi terakhir
+                  <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-play"></use></svg>
+                </a>
+                <button class="btn btn--secondary" type="button" data-open="sheet-new-session">
+                  <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-plus"></use></svg>
+                  Sesi baru
+                </button>
+                <div class="menu-wrap">
+                  <button class="icon-btn" type="button" aria-label="Menu dunia Pesisir Utara" aria-haspopup="menu" data-menu="menu-dunia">
+                    <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-more"></use></svg>
+                  </button>
+                  <div class="menu" id="menu-dunia" role="menu" aria-label="Pesisir Utara">
+                    <a class="menu__item" role="menuitem" href="editor.html">
+                      <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-edit"></use></svg>
+                      Edit dunia
+                    </a>
+                    <button class="menu__item" type="button" role="menuitem" data-open="dialog-duplicate">
+                      <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-copy"></use></svg>
+                      Duplikat dunia
+                    </button>
+                    <button class="menu__item" type="button" role="menuitem" data-toast="Template diekspor (contoh).">
+                      <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-download"></use></svg>
+                      Export template
+                    </button>
+                    <div class="menu__sep" role="separator"></div>
+                    <button class="menu__item menu__item--danger" type="button" role="menuitem" data-open="dialog-delete-world">
+                      <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-trash"></use></svg>
+                      Hapus dunia
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </header>
+
+          <div class="summary-strip" aria-label="Ringkasan dunia">
+            <div class="summary-strip__item">
+              <span class="summary-strip__value">04</span>
+              <span class="summary-strip__label">Sesi</span>
+            </div>
+            <div class="summary-strip__item">
+              <span class="summary-strip__value">34</span>
+              <span class="summary-strip__label">Giliran</span>
+            </div>
+            <div class="summary-strip__item">
+              <span class="summary-strip__value">06</span>
+              <span class="summary-strip__label">Tokoh</span>
+            </div>
+            <div class="summary-strip__item">
+              <span class="summary-strip__value">v3</span>
+              <span class="summary-strip__label">Lorebook</span>
+            </div>
+          </div>
+
+          <div class="world-body">
+            <div class="world-main">
+              <section aria-labelledby="sesi-title">
+                <div class="section-head">
+                  <div>
+                    <h2 class="section-title" id="sesi-title">Sesi</h2>
+                    <p class="section-meta">
+                      <span>4 sesi</span>
+                      <span class="meta-dot" aria-hidden="true"></span>
+                      <span>pin lebih dulu, lalu yang terbaru</span>
+                    </p>
+                  </div>
+                  <button class="btn btn--secondary btn--sm" type="button" data-open="sheet-new-session">
+                    <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-plus"></use></svg>
+                    Sesi baru
+                  </button>
+                </div>
+
+                <ul class="session-list">
+                  <li class="session-row" id="sesi-4">
+                    <button class="session-row__pin" type="button" aria-pressed="true" aria-label="Lepas pin Sesi 4 — Mercusuar sebelum fajar" data-pin>
+                      <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-pin"></use></svg>
+                    </button>
+                    <div class="session-row__body">
+                      <div class="session-row__head">
+                        <h3 class="session-row__title"><a href="session.html">Sesi 4 — Mercusuar sebelum fajar</a></h3>
+                        <span class="badge badge--active"><span class="badge__dot" aria-hidden="true"></span>Aktif</span>
+                      </div>
+                      <p class="session-row__excerpt">“Air pasang membawa sesuatu yang tidak kami undang.”</p>
+                      <p class="session-row__meta">
+                        <span>2 jam lalu</span>
+                        <span class="meta-dot" aria-hidden="true"></span>
+                        <span>Giliran 12</span>
+                        <span class="meta-dot" aria-hidden="true"></span>
+                        <span>Dermaga Utara</span>
+                      </p>
+                    </div>
+                    <div class="session-row__actions">
+                      <div class="menu-wrap">
+                        <button class="icon-btn icon-btn--sm" type="button" aria-label="Menu Sesi 4" aria-haspopup="menu" data-menu="menu-sesi-4">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-more"></use></svg>
+                        </button>
+                        <div class="menu" id="menu-sesi-4" role="menu" aria-label="Sesi 4 — Mercusuar sebelum fajar">
+                          <button class="menu__item" type="button" role="menuitem" data-toast="Ganti nama tersedia di prototipe penuh.">
+                            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-edit"></use></svg>
+                            Ganti nama
+                          </button>
+                          <button class="menu__item" type="button" role="menuitem" data-toast="Sesi disematkan (contoh).">
+                            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-pin"></use></svg>
+                            Pin
+                          </button>
+                          <button class="menu__item" type="button" role="menuitem" data-toast="Save sesi diekspor (contoh).">
+                            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-download"></use></svg>
+                            Export save
+                          </button>
+                          <div class="menu__sep" role="separator"></div>
+                          <button class="menu__item menu__item--danger" type="button" role="menuitem" data-open="dialog-delete-session">
+                            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-trash"></use></svg>
+                            Hapus sesi
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+
+                  <li class="session-row" id="sesi-3">
+                    <button class="session-row__pin" type="button" aria-pressed="false" aria-label="Pin Sesi 3 — Surat dari Kapten Mira" data-pin>
+                      <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-pin"></use></svg>
+                    </button>
+                    <div class="session-row__body">
+                      <div class="session-row__head">
+                        <h3 class="session-row__title"><a href="session.html">Sesi 3 — Surat dari Kapten Mira</a></h3>
+                      </div>
+                      <p class="session-row__excerpt">Peta itu masih terlipat di saku jaketmu, dengan satu nama yang tidak kamu kenali.</p>
+                      <p class="session-row__meta">
+                        <span>kemarin</span>
+                        <span class="meta-dot" aria-hidden="true"></span>
+                        <span>Giliran 14</span>
+                        <span class="meta-dot" aria-hidden="true"></span>
+                        <span>Kedai Pelabuhan</span>
+                      </p>
+                    </div>
+                    <div class="session-row__actions">
+                      <div class="menu-wrap">
+                        <button class="icon-btn icon-btn--sm" type="button" aria-label="Menu Sesi 3" aria-haspopup="menu" data-menu="menu-sesi-3">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-more"></use></svg>
+                        </button>
+                        <div class="menu" id="menu-sesi-3" role="menu" aria-label="Sesi 3 — Surat dari Kapten Mira">
+                          <button class="menu__item" type="button" role="menuitem" data-toast="Ganti nama tersedia di prototipe penuh.">
+                            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-edit"></use></svg>
+                            Ganti nama
+                          </button>
+                          <button class="menu__item" type="button" role="menuitem" data-toast="Sesi disematkan (contoh).">
+                            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-pin"></use></svg>
+                            Pin
+                          </button>
+                          <button class="menu__item" type="button" role="menuitem" data-toast="Save sesi diekspor (contoh).">
+                            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-download"></use></svg>
+                            Export save
+                          </button>
+                          <div class="menu__sep" role="separator"></div>
+                          <button class="menu__item menu__item--danger" type="button" role="menuitem" data-open="dialog-delete-session">
+                            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-trash"></use></svg>
+                            Hapus sesi
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+
+                  <li class="session-row" id="sesi-2">
+                    <button class="session-row__pin" type="button" aria-pressed="false" aria-label="Pin Sesi 2 — Rumah jaga yang kosong" data-pin>
+                      <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-pin"></use></svg>
+                    </button>
+                    <div class="session-row__body">
+                      <div class="session-row__head">
+                        <h3 class="session-row__title"><a href="session.html">Sesi 2 — Rumah jaga yang kosong</a></h3>
+                      </div>
+                      <p class="session-row__excerpt">Pintunya tidak terkunci. Di dalam, dua cangkir masih hangat.</p>
+                      <p class="session-row__meta">
+                        <span>3 hari lalu</span>
+                        <span class="meta-dot" aria-hidden="true"></span>
+                        <span>Giliran 08</span>
+                        <span class="meta-dot" aria-hidden="true"></span>
+                        <span>Rumah jaga</span>
+                      </p>
+                    </div>
+                    <div class="session-row__actions">
+                      <div class="menu-wrap">
+                        <button class="icon-btn icon-btn--sm" type="button" aria-label="Menu Sesi 2" aria-haspopup="menu" data-menu="menu-sesi-2">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-more"></use></svg>
+                        </button>
+                        <div class="menu" id="menu-sesi-2" role="menu" aria-label="Sesi 2 — Rumah jaga yang kosong">
+                          <button class="menu__item" type="button" role="menuitem" data-toast="Ganti nama tersedia di prototipe penuh.">
+                            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-edit"></use></svg>
+                            Ganti nama
+                          </button>
+                          <button class="menu__item" type="button" role="menuitem" data-toast="Sesi disematkan (contoh).">
+                            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-pin"></use></svg>
+                            Pin
+                          </button>
+                          <button class="menu__item" type="button" role="menuitem" data-toast="Save sesi diekspor (contoh).">
+                            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-download"></use></svg>
+                            Export save
+                          </button>
+                          <div class="menu__sep" role="separator"></div>
+                          <button class="menu__item menu__item--danger" type="button" role="menuitem" data-open="dialog-delete-session">
+                            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-trash"></use></svg>
+                            Hapus sesi
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+
+                  <li class="session-row" id="sesi-1">
+                    <button class="session-row__pin" type="button" aria-pressed="false" aria-label="Pin Sesi 1 — Kedatangan" data-pin>
+                      <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-pin"></use></svg>
+                    </button>
+                    <div class="session-row__body">
+                      <div class="session-row__head">
+                        <h3 class="session-row__title"><a href="session.html">Sesi 1 — Kedatangan</a></h3>
+                      </div>
+                      <p class="session-row__excerpt">Perahu meninggalkanmu di dermaga tanpa upacara, lalu berbalik ke arah kabut.</p>
+                      <p class="session-row__meta">
+                        <span>1 minggu lalu</span>
+                        <span class="meta-dot" aria-hidden="true"></span>
+                        <span>Giliran 06</span>
+                        <span class="meta-dot" aria-hidden="true"></span>
+                        <span>Dermaga</span>
+                      </p>
+                    </div>
+                    <div class="session-row__actions">
+                      <div class="menu-wrap">
+                        <button class="icon-btn icon-btn--sm" type="button" aria-label="Menu Sesi 1" aria-haspopup="menu" data-menu="menu-sesi-1">
+                          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-more"></use></svg>
+                        </button>
+                        <div class="menu" id="menu-sesi-1" role="menu" aria-label="Sesi 1 — Kedatangan">
+                          <button class="menu__item" type="button" role="menuitem" data-toast="Ganti nama tersedia di prototipe penuh.">
+                            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-edit"></use></svg>
+                            Ganti nama
+                          </button>
+                          <button class="menu__item" type="button" role="menuitem" data-toast="Sesi disematkan (contoh).">
+                            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-pin"></use></svg>
+                            Pin
+                          </button>
+                          <button class="menu__item" type="button" role="menuitem" data-toast="Save sesi diekspor (contoh).">
+                            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-download"></use></svg>
+                            Export save
+                          </button>
+                          <div class="menu__sep" role="separator"></div>
+                          <button class="menu__item menu__item--danger" type="button" role="menuitem" data-open="dialog-delete-session">
+                            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-trash"></use></svg>
+                            Hapus sesi
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+                </ul>
+              </section>
+            </div>
+
+            <aside class="world-aside" aria-label="Lorebook dan data dunia">
+              <section class="aside-block" aria-labelledby="lore-title">
+                <div class="aside-block__head">
+                  <h2 class="aside-block__title" id="lore-title">Lorebook</h2>
+                  <span class="badge badge--ready"><span class="badge__dot" aria-hidden="true"></span>Terpasang</span>
+                </div>
+                <p class="lore-name">Pesisir Utara — Inti</p>
+                <p class="lore-meta">
+                  <span>versi 3</span>
+                  <span>18 entri</span>
+                  <span>CC BY 4.0</span>
+                  <span>diperbarui 6 hari lalu</span>
+                </p>
+                <p class="lore-desc">Mercusuar, keluarga penjaga, dan perjanjian lama dengan laut. Versi ini dipin ke semua sesi aktif.</p>
+                <div class="mini-actions">
+                  <button class="btn btn--ghost btn--sm" type="button" data-open="sheet-lore">
+                    <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-layers"></use></svg>
+                    Lihat isi
+                  </button>
+                  <a class="btn btn--ghost btn--sm" href="editor.html#lorebook">
+                    <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-edit"></use></svg>
+                    Kelola
+                  </a>
+                </div>
+              </section>
+
+              <section class="aside-block" aria-labelledby="template-title">
+                <div class="aside-block__head">
+                  <h2 class="aside-block__title" id="template-title">Template &amp; data</h2>
+                </div>
+                <div class="kv-list">
+                  <div class="kv-list__row">
+                    <span class="kv-list__key">Template</span>
+                    <span class="kv-list__value">pesisir-utara</span>
+                  </div>
+                  <div class="kv-list__row">
+                    <span class="kv-list__key">Terakhir diekspor</span>
+                    <span class="kv-list__value">belum pernah</span>
+                  </div>
+                </div>
+                <div class="mini-actions">
+                  <button class="btn btn--ghost btn--sm" type="button" data-toast="Template disimpan (contoh).">
+                    <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-download"></use></svg>
+                    Simpan sebagai template
+                  </button>
+                  <button class="btn btn--ghost btn--sm" type="button" data-open="dialog-duplicate">
+                    <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-copy"></use></svg>
+                    Duplikat
+                  </button>
+                </div>
+              </section>
+
+              <section class="aside-block" aria-labelledby="profil-title">
+                <div class="aside-block__head">
+                  <h2 class="aside-block__title" id="profil-title">Profil AI</h2>
+                </div>
+                <div class="kv-list">
+                  <div class="kv-list__row">
+                    <span class="kv-list__key">Narator</span>
+                    <span class="kv-list__value">Tenang · bawaan</span>
+                  </div>
+                  <div class="kv-list__row">
+                    <span class="kv-list__key">Model</span>
+                    <span class="kv-list__value">local/narrator-8b</span>
+                  </div>
+                </div>
+                <div class="mini-actions">
+                  <a class="btn btn--ghost btn--sm" href="settings.html#profil-ai">Kelola profil</a>
+                </div>
+              </section>
+            </aside>
+          </div>
+        </div>
+      </main>
+
+      <nav class="tabbar" aria-label="Navigasi bawah">
+        <a class="tabbar__link" href="library.html">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-library"></use></svg>
+          Perpustakaan
+        </a>
+        <a class="tabbar__link" href="settings.html">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-settings"></use></svg>
+          Pengaturan
+        </a>
+      </nav>
+    </div>
+  </div>
+
+  <div class="scrim" data-scrim></div>
+
+  <div class="sheet sheet--right" id="sheet-new-session" role="dialog" aria-modal="true" aria-labelledby="new-session-title" aria-hidden="true">
+    <div class="sheet__head">
+      <div>
+        <p class="sheet__eyebrow">Pesisir Utara</p>
+        <h2 class="sheet__title" id="new-session-title">Sesi baru</h2>
+      </div>
+      <button class="icon-btn" type="button" aria-label="Tutup" data-close>
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-close"></use></svg>
+      </button>
+    </div>
+    <div class="sheet__body">
+      <div class="kv-list">
+        <div class="kv-list__row">
+          <span class="kv-list__key">Dunia</span>
+          <span class="kv-list__value">Pesisir Utara</span>
+        </div>
+        <div class="kv-list__row">
+          <span class="kv-list__key">Pemain</span>
+          <span class="kv-list__value">Ari</span>
+        </div>
+        <div class="kv-list__row">
+          <span class="kv-list__key">Lorebook</span>
+          <span class="kv-list__value">Pesisir Utara — Inti · v3</span>
+        </div>
+        <div class="kv-list__row">
+          <span class="kv-list__key">Sesi tersimpan</span>
+          <span class="kv-list__value">4</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field__label" for="nama-sesi">Nama sesi <span class="field__optional">opsional</span></label>
+        <input class="input" id="nama-sesi" type="text" value="Sesi 5 — Dermaga Utara">
+        <p class="field__hint">Dipakai hanya di daftar sesi. Kamu bisa menggantinya nanti.</p>
+      </div>
+
+      <div class="field">
+        <label class="field__label" for="profil-sesi">Profil AI</label>
+        <div class="select-wrap">
+          <select class="select" id="profil-sesi">
+            <option>Tenang · bawaan</option>
+            <option>Ringkas</option>
+            <option>Sinematik</option>
+          </select>
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+        </div>
+        <p class="field__hint"><a href="settings.html#profil-ai">Kelola profil</a></p>
+      </div>
+
+      <p class="dialog__note">Sesi baru memakai template tersimpan. Sesi lama tidak berubah.</p>
+    </div>
+    <div class="sheet__foot">
+      <button class="btn btn--ghost" type="button" data-close>Batal</button>
+      <a class="btn btn--primary" href="session.html">Mulai sesi</a>
+    </div>
+  </div>
+
+  <div class="sheet sheet--right" id="sheet-lore" role="dialog" aria-modal="true" aria-labelledby="lore-sheet-title" aria-hidden="true">
+    <div class="sheet__head">
+      <div>
+        <p class="sheet__eyebrow">Lorebook · v3</p>
+        <h2 class="sheet__title" id="lore-sheet-title">Pesisir Utara — Inti</h2>
+      </div>
+      <button class="icon-btn" type="button" aria-label="Tutup" data-close>
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-close"></use></svg>
+      </button>
+    </div>
+    <div class="sheet__body">
+      <p class="lore-desc">Entri yang dipin ke sesi ini. Versi lore tidak berubah setelah diterbitkan; perubahan dibuat sebagai versi baru.</p>
+      <div class="table-list">
+        <div class="table-row">
+          <div>
+            <p class="table-row__label">Mercusuar tua</p>
+            <p class="table-row__id">lore_mercusuar_01</p>
+          </div>
+          <span class="badge badge--ready"><span class="badge__dot" aria-hidden="true"></span>Terpin</span>
+          <span class="mono faint">4e</span>
+        </div>
+        <div class="table-row">
+          <div>
+            <p class="table-row__label">Keluarga penjaga</p>
+            <p class="table-row__id">lore_penjaga_02</p>
+          </div>
+          <span class="badge badge--ready"><span class="badge__dot" aria-hidden="true"></span>Terpin</span>
+          <span class="mono faint">6e</span>
+        </div>
+        <div class="table-row">
+          <div>
+            <p class="table-row__label">Perjanjian air pasang</p>
+            <p class="table-row__id">lore_pasang_03</p>
+          </div>
+          <span class="badge badge--ready"><span class="badge__dot" aria-hidden="true"></span>Terpin</span>
+          <span class="mono faint">5e</span>
+        </div>
+        <div class="table-row">
+          <div>
+            <p class="table-row__label">Nama-nama kapal</p>
+            <p class="table-row__id">lore_kapal_04</p>
+          </div>
+          <span class="badge badge--neutral"><span class="badge__dot" aria-hidden="true"></span>Cadangan</span>
+          <span class="mono faint">3e</span>
+        </div>
+      </div>
+    </div>
+    <div class="sheet__foot">
+      <button class="btn btn--ghost" type="button" data-close>Tutup</button>
+      <a class="btn btn--secondary" href="editor.html#lorebook">Kelola lorebook</a>
+    </div>
+  </div>
+
+  <div class="dialog" id="dialog-duplicate" role="dialog" aria-modal="true" aria-labelledby="duplicate-title" aria-hidden="true">
+    <h2 class="dialog__title" id="duplicate-title">Duplikat “Pesisir Utara”?</h2>
+    <p class="dialog__body">Salinan berisi definisi dunia, atribut, NPC, dan pin lorebook. <strong>Sesi dan riwayat cerita tidak ikut disalin.</strong></p>
+    <p class="dialog__note">Salinan akan muncul di perpustakaan sebagai draft baru.</p>
+    <div class="dialog__actions">
+      <button class="btn btn--ghost" type="button" data-close>Batal</button>
+      <button class="btn btn--primary" type="button" data-confirm-action="Dunia diduplikasi sebagai draft baru (contoh).">Duplikat dunia</button>
+    </div>
+  </div>
+
+  <div class="dialog" id="dialog-delete-session" role="dialog" aria-modal="true" aria-labelledby="delete-session-title" aria-hidden="true">
+    <h2 class="dialog__title" id="delete-session-title">Hapus sesi ini?</h2>
+    <p class="dialog__body">Riwayat giliran pada sesi ini akan hilang. Dunia, lorebook, dan sesi lain tetap utuh.</p>
+    <p class="dialog__note">Export save lebih dulu bila kamu ingin menyimpannya.</p>
+    <div class="dialog__actions">
+      <button class="btn btn--ghost" type="button" data-close>Batal</button>
+      <button class="btn btn--secondary" type="button" data-toast="Save sesi diekspor (contoh).">Export save</button>
+      <button class="btn btn--danger" type="button" data-confirm-action="Sesi dihapus. Dunia tetap utuh." data-remove="#sesi-4">Hapus sesi</button>
+    </div>
+  </div>
+
+  <div class="dialog" id="dialog-delete-world" role="dialog" aria-modal="true" aria-labelledby="delete-world-title" aria-hidden="true">
+    <h2 class="dialog__title" id="delete-world-title">Hapus “Pesisir Utara”?</h2>
+    <p class="dialog__body">Dunia, empat sesi, dan seluruh riwayatnya akan dihapus dari perangkat ini. Tindakan ini tidak bisa dibatalkan.</p>
+    <p class="dialog__note">Template dan lorebook yang sudah diekspor tetap aman.</p>
+    <div class="dialog__actions">
+      <button class="btn btn--ghost" type="button" data-close>Batal</button>
+      <button class="btn btn--secondary" type="button" data-toast="Backup dunia dibuat (contoh).">Backup dulu</button>
+      <button class="btn btn--danger" type="button" data-confirm-action="Dunia dihapus dari perpustakaan.">Hapus dunia</button>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,322 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-26T11:32:04+07:00",
+  "title": "Design System: Fworld",
+  "extensions": {
+    "colorMeta": {
+      "forest-night": {
+        "role": "neutral",
+        "displayName": "Forest night",
+        "canonical": "oklch(0.17 0.012 160)",
+        "tonalRamp": [
+          "oklch(0.15 0.012 160)",
+          "oklch(0.25 0.012 160)",
+          "oklch(0.35 0.012 160)",
+          "oklch(0.45 0.012 160)",
+          "oklch(0.55 0.012 160)",
+          "oklch(0.65 0.012 160)",
+          "oklch(0.8 0.012 160)",
+          "oklch(0.95 0.012 160)"
+        ]
+      },
+      "forest-surface": {
+        "role": "neutral",
+        "displayName": "Forest surface",
+        "canonical": "oklch(0.215 0.014 160)",
+        "tonalRamp": [
+          "oklch(0.15 0.014 160)",
+          "oklch(0.25 0.014 160)",
+          "oklch(0.35 0.014 160)",
+          "oklch(0.45 0.014 160)",
+          "oklch(0.55 0.014 160)",
+          "oklch(0.65 0.014 160)",
+          "oklch(0.8 0.014 160)",
+          "oklch(0.95 0.014 160)"
+        ]
+      },
+      "forest-raised": {
+        "role": "neutral",
+        "displayName": "Raised forest",
+        "canonical": "oklch(0.25 0.014 160)",
+        "tonalRamp": [
+          "oklch(0.15 0.014 160)",
+          "oklch(0.25 0.014 160)",
+          "oklch(0.35 0.014 160)",
+          "oklch(0.45 0.014 160)",
+          "oklch(0.55 0.014 160)",
+          "oklch(0.65 0.014 160)",
+          "oklch(0.8 0.014 160)",
+          "oklch(0.95 0.014 160)"
+        ]
+      },
+      "forest-deep": {
+        "role": "neutral",
+        "displayName": "Deep forest",
+        "canonical": "oklch(0.135 0.01 160)",
+        "tonalRamp": [
+          "oklch(0.15 0.01 160)",
+          "oklch(0.25 0.01 160)",
+          "oklch(0.35 0.01 160)",
+          "oklch(0.45 0.01 160)",
+          "oklch(0.55 0.01 160)",
+          "oklch(0.65 0.01 160)",
+          "oklch(0.8 0.01 160)",
+          "oklch(0.95 0.01 160)"
+        ]
+      },
+      "forest-border": {
+        "role": "neutral",
+        "displayName": "Forest border",
+        "canonical": "oklch(0.32 0.012 160)",
+        "tonalRamp": [
+          "oklch(0.15 0.012 160)",
+          "oklch(0.25 0.012 160)",
+          "oklch(0.35 0.012 160)",
+          "oklch(0.45 0.012 160)",
+          "oklch(0.55 0.012 160)",
+          "oklch(0.65 0.012 160)",
+          "oklch(0.8 0.012 160)",
+          "oklch(0.95 0.012 160)"
+        ]
+      },
+      "warm-linen": {
+        "role": "neutral",
+        "displayName": "Warm linen",
+        "canonical": "oklch(0.93 0.01 90)",
+        "tonalRamp": [
+          "oklch(0.15 0.01 90)",
+          "oklch(0.25 0.01 90)",
+          "oklch(0.35 0.01 90)",
+          "oklch(0.45 0.01 90)",
+          "oklch(0.55 0.01 90)",
+          "oklch(0.65 0.01 90)",
+          "oklch(0.8 0.01 90)",
+          "oklch(0.95 0.01 90)"
+        ]
+      },
+      "muted-linen": {
+        "role": "neutral",
+        "displayName": "Muted linen",
+        "canonical": "oklch(0.72 0.015 90)",
+        "tonalRamp": [
+          "oklch(0.15 0.015 90)",
+          "oklch(0.25 0.015 90)",
+          "oklch(0.35 0.015 90)",
+          "oklch(0.45 0.015 90)",
+          "oklch(0.55 0.015 90)",
+          "oklch(0.65 0.015 90)",
+          "oklch(0.8 0.015 90)",
+          "oklch(0.95 0.015 90)"
+        ]
+      },
+      "aged-brass": {
+        "role": "primary",
+        "displayName": "Aged brass",
+        "canonical": "oklch(0.78 0.11 75)",
+        "tonalRamp": [
+          "oklch(0.15 0.11 75)",
+          "oklch(0.25 0.11 75)",
+          "oklch(0.35 0.11 75)",
+          "oklch(0.45 0.11 75)",
+          "oklch(0.55 0.11 75)",
+          "oklch(0.65 0.11 75)",
+          "oklch(0.8 0.11 75)",
+          "oklch(0.95 0.11 75)"
+        ]
+      },
+      "brass-ink": {
+        "role": "neutral",
+        "displayName": "Brass ink",
+        "canonical": "oklch(0.2 0.02 75)",
+        "tonalRamp": [
+          "oklch(0.15 0.02 75)",
+          "oklch(0.25 0.02 75)",
+          "oklch(0.35 0.02 75)",
+          "oklch(0.45 0.02 75)",
+          "oklch(0.55 0.02 75)",
+          "oklch(0.65 0.02 75)",
+          "oklch(0.8 0.02 75)",
+          "oklch(0.95 0.02 75)"
+        ]
+      },
+      "story-gold": {
+        "role": "primary",
+        "displayName": "Warm story gold",
+        "canonical": "oklch(0.885 0.06 85)",
+        "tonalRamp": [
+          "oklch(0.15 0.06 85)",
+          "oklch(0.25 0.06 85)",
+          "oklch(0.35 0.06 85)",
+          "oklch(0.45 0.06 85)",
+          "oklch(0.55 0.06 85)",
+          "oklch(0.65 0.06 85)",
+          "oklch(0.8 0.06 85)",
+          "oklch(0.95 0.06 85)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Newsreader",
+        "purpose": "Page and world headings."
+      },
+      "body": {
+        "displayName": "Public Sans",
+        "purpose": "Controls and general interface copy."
+      },
+      "story": {
+        "displayName": "Newsreader narrative",
+        "purpose": "Long-form story prose and dialogue."
+      },
+      "label": {
+        "displayName": "IBM Plex Mono",
+        "purpose": "Compact section labels and status metadata."
+      }
+    },
+    "shadows": [
+      {
+        "name": "raised-surface",
+        "value": "0 1px 0 rgb(0 0 0 / 0.45), 0 12px 28px rgb(0 0 0 / 0.28)",
+        "purpose": "Low lift for controls or surfaces that need separation."
+      },
+      {
+        "name": "sunken-well",
+        "value": "inset 0 2px 6px rgb(0 0 0 / 0.45)",
+        "purpose": "Recessed dark fields."
+      },
+      {
+        "name": "scene-edge",
+        "value": "inset 0 1px #ffffff08",
+        "purpose": "Subtle inner edge on the story scene."
+      },
+      {
+        "name": "paper-editor-legacy",
+        "value": "0 1px 0 rgb(80 60 30 / 0.1), 0 18px 38px rgb(60 44 26 / 0.16)",
+        "purpose": "Existing Editor-only light treatment; not a shared-surface direction."
+      }
+    ],
+    "motion": [
+      {
+        "name": "quick-state",
+        "value": "160ms cubic-bezier(0.22, 0.61, 0.36, 1)",
+        "purpose": "Fast control feedback."
+      },
+      {
+        "name": "standard-state",
+        "value": "200ms cubic-bezier(0.22, 0.61, 0.36, 1)",
+        "purpose": "Standard interface transitions."
+      },
+      {
+        "name": "scene-transition",
+        "value": "520ms cubic-bezier(0.22, 0.61, 0.36, 1)",
+        "purpose": "Longer scene transition where motion is enabled."
+      }
+    ],
+    "breakpoints": [
+      { "name": "top-rail", "value": "1199px" },
+      { "name": "bottom-rail", "value": "899px" },
+      { "name": "wide-editor-preview", "value": "1600px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Brass action with a small inset highlight.",
+      "html": "<button class=\"ds-primary\" type=\"button\">Save</button>",
+      "css": ".ds-primary { min-height: 46px; padding: 0 18px; border: 1px solid var(--accent); border-radius: var(--radius-ctl); background: var(--accent); color: var(--accent-ink); font: 600 14px/1.55 var(--font-ui); box-shadow: inset 0 1px #fff5; transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease); } .ds-primary:hover:not(:disabled) { background: var(--accent-hi); border-color: var(--accent-hi); } .ds-primary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }"
+    },
+    {
+      "name": "Quiet button",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "Low-emphasis bordered control that gains a tonal fill on hover.",
+      "html": "<button class=\"ds-quiet\" type=\"button\">Back</button>",
+      "css": ".ds-quiet { min-height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: var(--radius-ctl); background: transparent; color: var(--muted); font: 400 14px/1.55 var(--font-ui); } .ds-quiet:hover:not(:disabled) { background: var(--surface2); color: var(--fg); } .ds-quiet:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }"
+    },
+    {
+      "name": "Active navigation item",
+      "kind": "nav",
+      "refersTo": "nav-active",
+      "description": "Raised forest surface with a narrow inset brass state marker.",
+      "html": "<button class=\"ds-nav-active\" type=\"button\" aria-current=\"page\">Library</button>",
+      "css": ".ds-nav-active { min-height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: var(--radius-ctl); background: var(--surface2); color: var(--fg); text-align: left; font: 400 14px/1.55 var(--font-ui); box-shadow: inset 2px 0 var(--brass), inset 0 1px #ffffff12; } .ds-nav-active:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }"
+    },
+    {
+      "name": "Dark text field",
+      "kind": "input",
+      "refersTo": "text-field",
+      "description": "Raised dark field with a clear shared focus ring.",
+      "html": "<label class=\"ds-field\">Search<input type=\"text\" value=\"\" /></label>",
+      "css": ".ds-field { display: grid; gap: 6px; margin: 14px 0 8px; color: var(--fg); font: 500 14px/1.4 var(--font-ui); } .ds-field input { display: block; width: 100%; min-height: 44px; margin-top: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-ctl); background: var(--surface2); color: var(--fg); font: 400 14px/1.55 var(--font-ui); } .ds-field input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }"
+    },
+    {
+      "name": "World tile",
+      "kind": "card",
+      "refersTo": "world-card",
+      "description": "Quiet at rest; gains a tonal surface and a slight lift on hover.",
+      "html": "<article class=\"ds-world\"><h3>World title</h3><p>Saved world</p></article>",
+      "css": ".ds-world { min-width: 0; padding: 8px 8px 14px; border: 1px solid transparent; border-radius: var(--radius-panel); color: var(--fg); } .ds-world:hover { background: var(--surface); border-color: var(--line); transform: translateY(-1px); } .ds-world h3 { margin: 12px 0 3px; font: 500 23px var(--font-display); overflow-wrap: anywhere; } .ds-world p { margin: 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }"
+    },
+    {
+      "name": "Story scene",
+      "kind": "custom",
+      "refersTo": "story-scene",
+      "description": "Deep forest reading surface with literary narrative type.",
+      "html": "<article class=\"ds-scene\"><h2>Scene title</h2><p class=\"ds-narration\">Narrative text</p></article>",
+      "css": ".ds-scene { max-width: 760px; margin: 34px auto; padding: 44px 52px; border: 1px solid var(--line); background: var(--scene); color: var(--fg); box-shadow: inset 0 1px #ffffff08; } .ds-scene h2 { margin: 12px 0; font: 500 42px/1.1 var(--font-display); } .ds-narration { margin-top: 30px; color: var(--brass-soft); font: italic 20px/1.8 var(--font-display); }"
+    },
+    {
+      "name": "Action composer",
+      "kind": "custom",
+      "refersTo": "session-composer",
+      "description": "A bordered action area with an inset, vertically resizable text field.",
+      "html": "<form class=\"ds-composer\"><label for=\"ds-action\">Your action</label><textarea id=\"ds-action\"></textarea><button class=\"ds-primary\" type=\"button\">Send</button></form>",
+      "css": ".ds-composer { display: grid; gap: 4px; max-width: 760px; margin: 0 auto; padding: 20px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); font: 500 14px/1.4 var(--font-ui); } .ds-composer textarea { display: block; width: 100%; min-height: 90px; margin-top: 12px; padding: 12px; resize: vertical; border: 1px solid var(--line); border-radius: 0; background: var(--scene); color: var(--fg); box-shadow: inset 0 2px 6px #0007; font: 400 14px/1.55 var(--font-ui); } .ds-composer textarea:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; } .ds-composer .ds-primary { justify-self: end; margin-top: 12px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "A field journal in lamplight",
+    "overview": "Fworld's implemented interface pairs deep forest-dark surfaces with an aged-brass accent. Newsreader gives world titles and story prose a literary cadence; Public Sans keeps controls and forms direct; IBM Plex Mono marks compact metadata. The atmosphere comes from restrained material cues and clear state changes, not decorative clutter.\n\nThe confirmed shared direction is dark forest and brass across every page. The current library, settings, and story surfaces use that palette, but the Editor still uses a warm-paper treatment. That page-by-page split conflicts with PRODUCT.md. Treat the paper Editor as a documented implementation exception, not as a second approved theme or a pattern for new work. This document records the current CSS and the confirmed common direction; it does not change the UI.",
+    "keyCharacteristics": [
+      "Deep forest surfaces, warm linen text, and restrained aged-brass actions.",
+      "Literary Newsreader narrative, practical Public Sans controls, and compact mono labels.",
+      "Tactile depth through tonal layers and inset wells, with visible focus states.",
+      "One shared dark palette is the target; the paper Editor is a known mismatch."
+    ],
+    "rules": [
+      {
+        "name": "The One Palette Rule",
+        "body": "Use the same dark forest and aged-brass palette across every page; do not create page-specific light and dark themes.",
+        "section": "colors"
+      },
+      {
+        "name": "The Reading-Tool Split",
+        "body": "Keep Newsreader for display and story content, Public Sans for interface controls, and IBM Plex Mono for compact metadata.",
+        "section": "typography"
+      },
+      {
+        "name": "The Tactile-Depth Rule",
+        "body": "Let tonal forest surfaces and borders carry most separation; reserve raised shadows for elements that need lift.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Focus Ring Rule",
+        "body": "Keyboard focus remains visible; never remove the brass outline without an equally clear replacement.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do use the shared dark forest and aged-brass palette on every page.",
+      "Do keep story typography, interface typography, and mono metadata in their established roles.",
+      "Do preserve the visible focus ring and comfortable 44px control targets.",
+      "Do use tonal layering before adding heavier shadows."
+    ],
+    "donts": [
+      "Don't extend the Editor's light-paper treatment to other pages; it is a current mismatch, not a second theme.",
+      "Don't create a page-by-page light/dark split.",
+      "Don't introduce a new accent color without an explicit system-level decision."
+    ]
+  }
+}

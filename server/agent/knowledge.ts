@@ -7,7 +7,7 @@ import type {
 import { resolveMovement } from "../../shared/world.js";
 import type { MovementCandidate } from "../../shared/world.js";
 import type { GameDatabase, StoredSession } from "../db.js";
-import { selectPrincipalNpc } from "./context.js";
+import { resolveNarratorScene } from "./context.js";
 import type { NarratorRunKind } from "./context.js";
 
 export interface MemoryHit {
@@ -41,6 +41,7 @@ export interface NarratorKnowledge {
   worldMap?: WorldMap;
   movement?: MovementCandidate;
   principalNpcId?: string;
+  sceneLocationId?: string;
   lore: LoreEntry[];
   storySummaries: StorySummary[];
   searchMemory: MemorySearch;
@@ -58,10 +59,11 @@ export function loadNarratorKnowledge(input: {
     kind === "turn"
       ? resolveMovement(worldMap, session.state.world, playerAction)
       : undefined;
-  const principalNpcId =
+  const scene =
     kind === "turn"
-      ? selectPrincipalNpc(session, playerAction, worldMap)
+      ? resolveNarratorScene(session, playerAction, worldMap, movement)
       : undefined;
+  const principalNpcId = scene?.principalNpcId;
   const history = db.getRecentHistory(session.id, 24, principalNpcId);
   const loreRefs =
     session.lorebookRefs ?? session.definitionSnapshot.lorebookRefs ?? [];
@@ -112,6 +114,7 @@ export function loadNarratorKnowledge(input: {
     ...(worldMap ? { worldMap } : {}),
     ...(movement ? { movement } : {}),
     ...(principalNpcId ? { principalNpcId } : {}),
+    ...(scene ? { sceneLocationId: scene.locationId } : {}),
     lore: loreEntries,
     storySummaries,
     searchMemory,

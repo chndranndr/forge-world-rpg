@@ -30,6 +30,7 @@ interface GameLibraryProps {
   loadError: string | null;
   onRefresh: () => Promise<void>;
   onCreateWorld: () => void;
+  onNewSession: (gameId: string) => void;
   onOpenWorld: (gameId: string) => void;
   onOpenEditor: (gameId: string) => void;
   onStartSession: (sessionId: string) => void;
@@ -62,6 +63,7 @@ export default function GameLibrary({
   loading,
   onRefresh,
   onCreateWorld,
+  onNewSession,
   onOpenWorld,
   onOpenEditor,
   onStartSession,
@@ -181,27 +183,13 @@ export default function GameLibrary({
       .toLowerCase()
       .includes(query);
   });
-  const featured = latestOverall(entries ?? []);
-  const featuredGame = featured?.game ?? sortedEntries[0]?.game;
-  const featuredSession = featured?.session;
-  const featuredState = featuredSession?.value.state;
-  const featuredMeta = featuredSession
-    ? [
-        featuredGame?.value.genre,
-        featuredState?.world.location,
-        featuredState?.world.scene,
-      ]
+  const resume = latestOverall(entries ?? []);
+  const resumeState = resume?.session.value.state;
+  const resumeMeta = resume
+    ? [resumeState?.world.location, resumeState?.world.time]
         .filter((part): part is string => Boolean(part && part.trim()))
         .join(" · ") || "Sesi tersimpan."
-    : featuredGame
-      ? [
-          featuredGame.value.genre,
-          statusOf(featuredGame.value, 0),
-          relativeTime(featuredGame.value.updatedAt),
-        ]
-          .filter((part): part is string => Boolean(part && part.trim()))
-          .join(" · ")
-      : "";
+    : "";
 
   return (
     <section aria-label="Perpustakaan game">
@@ -248,45 +236,37 @@ export default function GameLibrary({
         </article>
       )}
 
-      {entries && entries.length > 0 && featuredGame && (
+      {entries && entries.length > 0 && (
         <>
-          <article
-            className="feature"
-            aria-label={
-              featuredSession
-                ? "Lanjutkan cerita"
-                : `Dunia ${featuredGame.value.title}`
-            }
-          >
-            <img
-              src={storyIllustration(featuredGame.value)}
-              width={900}
-              height={600}
-              alt=""
-            />
-            <div className="feature-copy">
-              <span className="eyebrow">
-                {featuredSession ? "Sedang dibuka" : "Dunia tersimpan"}
-              </span>
-              <h2>{featuredGame.value.title}</h2>
-              <p>{featuredMeta}</p>
+          {resume && (
+            <article className="library-resume" aria-label="Lanjutkan cerita">
+              <img
+                src={storyIllustration(resume.game.value)}
+                width={900}
+                height={600}
+                alt=""
+                loading="lazy"
+              />
+              <div className="library-resume-copy">
+                <span className="eyebrow">Terakhir dimainkan</span>
+                <h2>{resume.game.value.title}</h2>
+                <p>{resume.session.value.name?.trim() || "Sesi tanpa nama"}</p>
+                <p className="hint">{resumeMeta}</p>
+              </div>
               <button
                 type="button"
-                className="primary"
-                onClick={() => {
-                  if (featuredSession) onStartSession(featuredSession.value.id);
-                  else onOpenWorld(featuredGame.value.id);
-                }}
+                className="quiet library-resume-action"
+                onClick={() => onStartSession(resume.session.value.id)}
               >
-                {featuredSession ? "Lanjutkan cerita" : "Buka dunia"}
+                Lanjutkan sesi
               </button>
-            </div>
-          </article>
+            </article>
+          )}
 
           <div className="section-head">
             <div>
-              <span className="eyebrow">Dunia kamu</span>
-              <h2>Perjalanan yang tersimpan.</h2>
+              <span className="eyebrow">Koleksi</span>
+              <h2>Dunia tersimpan</h2>
               <p className="hint" role="status" aria-live="polite">
                 {query
                   ? `${visible.length} dari ${sortedEntries.length} dunia`
@@ -314,9 +294,6 @@ export default function GameLibrary({
                   Hapus pencarian
                 </button>
               )}
-              <button type="button" className="quiet" onClick={onCreateWorld}>
-                Dunia baru
-              </button>
             </div>
           </div>
 
@@ -339,7 +316,6 @@ export default function GameLibrary({
               const game = record.value;
               const sessions = sortedSessions(entry);
               const latest = latestSession(entry);
-              const olderSessions = sessions.slice(1);
               return (
                 <article key={game.id} className="world">
                   <button
@@ -361,6 +337,17 @@ export default function GameLibrary({
                     {game.genre || "Tanpa genre"} ·{" "}
                     {relativeTime(latest?.value.updatedAt ?? game.updatedAt)}
                   </p>
+                  <div className="world-session-actions">
+                    <span className="hint">{entry.sessions.length} sesi</span>
+                    <button
+                      type="button"
+                      className="quiet"
+                      aria-label={`Sesi baru untuk ${game.title}`}
+                      onClick={() => onNewSession(game.id)}
+                    >
+                      Sesi baru
+                    </button>
+                  </div>
                   <details className="world-menu">
                     <summary aria-label={`Menu ${game.title}`}>⋮</summary>
                     <div className="world-menu-content">
@@ -385,17 +372,18 @@ export default function GameLibrary({
                       </button>
                     </div>
                   </details>
-                  {olderSessions.length > 0 && (
+                  {sessions.length > 0 && (
                     <details className="world-sessions">
                       <summary>{sessions.length} sesi</summary>
                       <ul>
-                        {olderSessions.map((session) => (
+                        {sessions.map((session) => (
                           <li key={session.value.id}>
                             <button
                               type="button"
                               onClick={() => onStartSession(session.value.id)}
                             >
-                              Sesi · {relativeTime(session.value.updatedAt)}
+                              {session.value.name?.trim() || "Sesi tanpa nama"}{" "}
+                              · {relativeTime(session.value.updatedAt)}
                             </button>
                           </li>
                         ))}

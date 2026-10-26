@@ -621,7 +621,7 @@ label.button:hover {
 
 .feature h2,
 .scene h2,
-.paper h2 {
+.editor-workshop h2 {
   font: 500 34px/1.1 var(--display);
   margin: 12px 0;
   text-wrap: balance;
@@ -882,6 +882,69 @@ label.button:hover {
 .library-loading {
   color: var(--muted);
   font: 14px var(--mono);
+}
+
+.top:has(.library-create-world) {
+  align-items: center;
+}
+
+.library-resume {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 32px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.library-resume > img {
+  display: block;
+  width: 88px;
+  height: auto;
+  aspect-ratio: 3 / 2;
+  object-fit: cover;
+  border-radius: var(--radius);
+}
+
+.library-resume-copy {
+  min-width: 0;
+}
+
+.library-resume-copy .eyebrow {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.library-resume-copy h2 {
+  margin: 0 0 6px;
+  font: 500 25px/1.15 var(--display);
+  overflow-wrap: anywhere;
+}
+
+.library-resume-copy p {
+  margin: 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.library-resume-action {
+  margin: 0;
+}
+
+.world-session-actions {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.world-session-actions .quiet {
+  min-height: 38px;
+  padding: 0 10px;
 }
 
 /* ==========================================================================
@@ -2027,315 +2090,313 @@ label.button:hover {
   }
 }
 
-/* Paper surface: editor. */
-
-.paper {
-  color-scheme: light;
-  max-width: 760px;
-  background: var(--paper);
-  color: var(--paper-ink);
-  padding: clamp(22px, 4vw, 34px);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-paper);
+/* Dark editor surface. */
+.editor-workshop {
+  color-scheme: dark;
+  min-width: 0;
+  color: var(--fg);
 }
 
-.paper.editor-paper {
-  max-width: 900px;
+.editor-workshop .eyebrow {
+  color: var(--accent);
 }
 
-.paper .eyebrow {
-  color: var(--paper-green);
-}
-
-.paper h1,
-.paper h2,
-.paper h3,
-.paper h4 {
+.editor-workshop h1,
+.editor-workshop h2,
+.editor-workshop h3,
+.editor-workshop h4 {
   font-family: var(--display);
   font-weight: 500;
-  color: var(--paper-ink);
+  color: var(--fg);
 }
 
-.paper p {
-  color: var(--paper-ink);
+.editor-workshop .hint,
+.editor-workshop small {
+  color: var(--muted);
 }
 
-.paper a {
-  color: var(--paper-green);
+.editor-workshop a {
+  color: var(--accent);
 }
 
-.paper .hint,
-.paper small {
-  color: #6b6f63;
-}
-
-.paper button,
-.paper label.button {
+.editor-workshop
+  button:not(.primary):not(.quiet):not(.editor-section-tab):not(
+    .editor-issue-link
+  ) {
   min-height: 44px;
   padding: 0 14px;
-  border: 1px solid var(--paper-line-strong);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
-  background: #fbf8f1;
-  color: var(--paper-ink);
+  background: var(--surface-2);
+  color: var(--fg);
 }
 
-.paper button:hover:not(:disabled),
-.paper label.button:hover {
-  background: #f3eee2;
-  border-color: #8a8e80;
+.editor-workshop
+  button:not(.primary):not(.quiet):not(.editor-section-tab):not(
+    .editor-issue-link
+  ):hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--surface-3);
 }
 
-.paper button.primary {
-  background: var(--brass);
-  border-color: var(--brass);
-  color: var(--brass-ink);
-  font-weight: 600;
-  box-shadow: inset 0 1px #fff5;
-}
-
-.paper button.primary:hover:not(:disabled) {
-  background: var(--brass-hover);
-  border-color: var(--brass-hover);
-}
-
-.paper label {
+.editor-workshop label:not(.button) {
   display: grid;
   gap: 4px;
+  margin: 14px 0 8px;
+  color: var(--fg);
   font-size: 14px;
   font-weight: 500;
-  margin: 14px 0 8px;
-  color: var(--paper-ink);
 }
 
-.paper input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
-.paper textarea,
-.paper select {
+.editor-workshop
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.editor-workshop textarea,
+.editor-workshop select {
   display: block;
   width: 100%;
   min-height: 44px;
   margin-top: 6px;
   padding: 10px 12px;
-  color: var(--paper-ink);
-  background: var(--paper-input);
-  border: 1px solid var(--paper-line-strong);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
-  box-shadow: inset 0 2px 5px #0000000f;
+  background: var(--surface-2);
+  color: var(--fg);
 }
 
-.paper textarea {
+.editor-workshop textarea {
   min-height: 98px;
   resize: vertical;
 }
 
-.paper input[readonly] {
-  background: #f1ede2;
-  color: #6b6f63;
+.editor-workshop input[readonly] {
+  background: var(--surface-3);
+  color: var(--muted);
 }
 
-.paper input[type="checkbox"],
-.paper input[type="radio"] {
+.editor-workshop input[type="checkbox"],
+.editor-workshop input[type="radio"] {
   width: 18px;
   height: 18px;
-  vertical-align: middle;
   margin-right: 8px;
-  accent-color: var(--paper-green);
+  accent-color: var(--accent);
+  vertical-align: middle;
 }
 
-.paper .card,
-.paper .entity {
-  border-color: var(--paper-line);
-  background: #fffdf8;
-  color: var(--paper-ink);
+.editor-workshop .card,
+.editor-workshop .entity,
+.editor-workshop .editor-entity {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--fg);
 }
 
-.paper .card {
-  border: 1px solid var(--paper-line);
-  border-radius: var(--radius-lg);
-  padding: 18px;
-  margin: 16px 0;
+.editor-workshop .card {
   display: grid;
   gap: 12px;
+  margin: 16px 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
 }
 
-.paper .card h2,
-.paper .card h3 {
+.editor-workshop .card h2,
+.editor-workshop .card h3 {
   margin: 0;
 }
 
-.paper details.card {
+.editor-workshop details.card {
+  display: block;
+  margin: 0;
+  padding: 0;
   border: 0;
-  border-bottom: 1px solid var(--paper-line);
+  border-bottom: 1px solid var(--border);
   border-radius: 0;
   background: none;
-  padding: 0;
-  margin: 0;
-  display: block;
 }
 
-.paper details.card > summary {
-  cursor: pointer;
-  min-height: 58px;
+.editor-workshop details.card > summary {
   display: flex;
   align-items: center;
+  min-height: 58px;
   padding: 18px 0;
+  cursor: pointer;
   font-family: var(--display);
   font-size: 21px;
   font-weight: 500;
   list-style: none;
 }
 
-.paper details.card > summary::-webkit-details-marker {
+.editor-workshop details.card > summary::-webkit-details-marker {
   display: none;
 }
 
-.paper details.card > summary::after {
+.editor-workshop details.card > summary::after {
   content: "+";
   margin-left: auto;
-  color: #8a8e80;
+  color: var(--muted);
   font-family: var(--ui);
   font-size: 18px;
 }
 
-.paper details.card[open] > summary::after {
+.editor-workshop details.card[open] > summary::after {
   content: "−";
 }
 
-.paper details.card > *:not(summary) {
+.editor-workshop details.card > *:not(summary) {
   margin-bottom: 8px;
 }
 
-.paper .entity {
-  border-left: 2px solid var(--paper-line);
-  padding: 0 0 16px 16px;
-  margin-bottom: 18px;
+.editor-workshop .entity {
   display: grid;
   gap: 8px;
+  margin-bottom: 18px;
+  padding: 0 0 16px 16px;
+  border-left: 2px solid var(--border);
   background: none;
 }
 
-.paper .entity .row h3 {
+.editor-workshop .entity .row h3 {
   margin: 0;
 }
 
-.paper .badge {
+.editor-workshop .badge {
   display: inline-block;
   padding: 3px 12px;
+  border: 1px solid var(--border-strong);
   border-radius: 999px;
+  color: var(--fg);
   font-size: 13px;
-  border: 1px solid var(--paper-line-strong);
-  color: var(--paper-ink);
 }
 
-.paper .badge-draft {
-  color: #8a5a33;
-  background: #f6ede4;
-  border-color: #dcc3a8;
+.editor-workshop .badge-draft {
+  border-color: var(--border);
+  background: var(--surface-2);
+  color: var(--muted);
 }
 
-.paper .badge-ready {
-  color: #2f5a3f;
-  background: #e7efe4;
-  border-color: #b9cbb6;
+.editor-workshop .badge-ready,
+.editor-workshop .check-badge {
+  border-color: var(--border);
+  background: var(--surface-2);
+  color: var(--ok-fg);
 }
 
-.paper .error,
-.paper .error-list {
-  color: var(--paper-danger);
-  background: var(--paper-danger-bg);
-  border: 1px solid var(--paper-danger-line);
-  border-radius: 6px;
-  padding: 12px;
+.editor-workshop .error,
+.editor-workshop .error-list {
   margin: 8px 0;
+  padding: 12px;
+  border: 1px solid var(--danger-line);
+  border-radius: 6px;
+  background: var(--danger-bg);
+  color: var(--danger-fg);
 }
 
-.paper .error-list {
+.editor-workshop .error-list {
   padding-left: 32px;
 }
 
-.paper .stat-row,
-.paper .inventory-row,
-.paper .fact-row,
-.paper .person-row,
-.paper .world-details > div {
-  border-color: var(--paper-line);
+.editor-workshop .stat-row,
+.editor-workshop .inventory-row,
+.editor-workshop .fact-row,
+.editor-workshop .person-row,
+.editor-workshop .world-details > div {
+  border-color: var(--border);
 }
 
-.paper .avatar {
-  background: #e7e2d5;
-  color: var(--paper-ink);
-  border-color: var(--paper-line);
+.editor-workshop .avatar {
+  border-color: var(--border);
+  background: var(--surface-2);
+  color: var(--fg);
 }
 
-.paper .stat-row meter {
-  accent-color: var(--paper-green);
+.editor-workshop .stat-row meter {
+  accent-color: var(--accent);
 }
 
-.paper .check-badge {
-  color: #2f5a3f;
-  background: #e7efe4;
-  border-color: #b9cbb6;
-}
-
-.paper .sticky-actions {
+.editor-workshop .sticky-actions {
   position: sticky;
+  z-index: 2;
   bottom: 0;
-  background: var(--paper);
-  border-top: 1px solid var(--paper-line);
-  padding: 14px 0 calc(14px + env(safe-area-inset-bottom));
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
   margin-top: 24px;
+  padding: 14px 0 calc(14px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: var(--bg);
 }
 
-.paper .sticky-actions button {
+.editor-workshop .sticky-actions button {
   flex: 1;
   min-width: 120px;
 }
 
-.paper .editor-intro {
+.editor-workshop .editor-intro {
   margin-top: 18px;
 }
 
-.paper .editor-intro h2 {
+.editor-workshop .editor-intro h2 {
   margin: 8px 0 12px;
   font-size: clamp(30px, 4vw, 38px);
 }
 
-.paper .editor-intro p {
-  color: #6b6f63;
+.editor-workshop .editor-intro p {
+  line-height: 1.55;
 }
 
-.paper .editor-toolbar {
+.editor-workshop .editor-toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
   align-items: center;
+  gap: 8px;
   padding-bottom: 14px;
-  border-bottom: 1px solid var(--paper-line);
+  border-bottom: 1px solid var(--border);
 }
 
-.paper .footer-note {
-  color: #6b6f63;
-  border-color: var(--paper-line);
+.editor-workshop .footer-note {
+  border-color: var(--border);
+  color: var(--muted);
 }
 
-.paper .world-details dt {
-  color: #6b6f63;
+.editor-workshop .world-details dt {
+  color: var(--muted);
 }
 
-.paper .fact-list,
-.paper .person-copy p,
-.paper .inventory-row p {
-  color: var(--paper-ink);
+.editor-workshop .fact-list,
+.editor-workshop .person-copy p,
+.editor-workshop .inventory-row p {
+  color: var(--fg);
 }
 
-.paper .visually-hidden,
-.paper .sr {
-  position: absolute;
+dialog.editor-workshop,
+.editor-workshop dialog {
+  color-scheme: dark;
+  border-color: var(--border-strong);
+  background: var(--surface);
+  color: var(--fg);
 }
 
-/* Native confirmation dialogs inherit the paper surface. */
+.editor-workshop dialog h2,
+.editor-workshop dialog h3 {
+  color: var(--fg);
+}
+
+.editor-workshop dialog p,
+.editor-workshop dialog .hint {
+  color: var(--fg);
+}
+
+.editor-workshop dialog button:not(.primary):not(.quiet) {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+  color: var(--fg);
+}
+
+.editor-workshop dialog button:not(.primary):not(.quiet):hover:not(:disabled) {
+  background: var(--surface-3);
+}
+
+/* Shared native dialogs retain their existing surface; editor dialogs override it. */
 dialog {
   color-scheme: light;
   max-width: 440px;
@@ -2556,6 +2617,34 @@ html[data-text-size="large"] .message .story-prose {
     font-size: 37px;
   }
 
+  .top:has(.library-create-world) {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .top:has(.library-create-world) > div:first-child {
+    flex: 1 1 100%;
+  }
+
+  .library-create-world {
+    width: 100%;
+  }
+
+  .library-resume {
+    grid-template-columns: 64px minmax(0, 1fr);
+    align-items: start;
+    gap: 12px;
+  }
+
+  .library-resume > img {
+    width: 64px;
+  }
+
+  .library-resume-action {
+    grid-column: 2;
+    justify-self: start;
+  }
+
   .feature {
     grid-template-columns: 1fr;
     gap: 14px;
@@ -2605,10 +2694,6 @@ html[data-text-size="large"] .message .story-prose {
 
   .session-panel {
     padding: 24px 20px;
-  }
-
-  .paper {
-    border-radius: 6px;
   }
 }
 
@@ -3215,7 +3300,7 @@ html[data-text-size="large"] .message .story-prose {
     opacity: 1;
   }
 }
-/* Paper workshop: section rail, bounded form, and an optional live preview. */
+/* Editor workspace: section rail, bounded form, and optional live preview. */
 .main:has(.editor-workshop) {
   width: 100%;
   max-width: none;
@@ -3223,7 +3308,7 @@ html[data-text-size="large"] .message .story-prose {
   padding: 24px clamp(16px, 2.2vw, 36px) 56px;
 }
 
-.editor-workshop.paper {
+.editor-workshop {
   display: grid;
   grid-template-columns: 232px minmax(0, 1fr);
   gap: 20px;
@@ -3240,7 +3325,8 @@ html[data-text-size="large"] .message .story-prose {
   max-height: calc(100dvh - 32px);
   overflow-y: auto;
   padding: 24px 16px;
-  border-right: 1px solid var(--paper-line);
+  border-right: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .editor-back {
@@ -3272,7 +3358,7 @@ html[data-text-size="large"] .message .story-prose {
   gap: 4px;
 }
 
-.paper .editor-section-tab {
+.editor-workshop .editor-section-tab {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto 10px;
   align-items: center;
@@ -3280,19 +3366,21 @@ html[data-text-size="large"] .message .story-prose {
   width: 100%;
   min-height: 44px;
   padding: 8px 10px;
-  border-color: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--muted);
   background: transparent;
   text-align: left;
 }
 
-.paper .editor-section-tab:hover:not(:disabled) {
-  border-color: var(--paper-line);
-  background: #f7f2e8;
+.editor-workshop .editor-section-tab:hover:not(:disabled) {
+  border-color: var(--border);
+  background: var(--surface-2);
 }
 
-.paper .editor-section-tab[aria-selected="true"] {
-  border-color: var(--paper-line-strong);
-  background: #e8e2d5;
+.editor-workshop .editor-section-tab[aria-selected="true"] {
+  color: var(--fg);
+  background: var(--surface-3);
   font-weight: 700;
 }
 
@@ -3303,7 +3391,7 @@ html[data-text-size="large"] .message .story-prose {
 .editor-section-count {
   min-width: 22px;
   padding: 2px 6px;
-  border: 1px solid var(--paper-line-strong);
+  border: 1px solid var(--border-strong);
   border-radius: 999px;
   font-size: 12px;
   text-align: center;
@@ -3313,11 +3401,75 @@ html[data-text-size="large"] .message .story-prose {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #6c8a70;
+  background: var(--ok);
 }
 
 .editor-section-tab[data-status="attention"] .editor-section-dot {
-  background: var(--paper-danger);
+  background: var(--danger);
+}
+.editor-section-group {
+  display: grid;
+  gap: 4px;
+}
+
+.editor-section-group + .editor-section-group {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.editor-section-group-label {
+  margin: 4px 8px;
+  color: var(--muted);
+  font: 10px var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.editor-save-state {
+  margin: 0;
+  font: 12px var(--mono);
+}
+
+.editor-save-state[data-state="new"],
+.editor-save-state[data-state="dirty"] {
+  color: var(--accent);
+}
+
+.editor-save-state[data-state="saved"] {
+  color: var(--ok-fg);
+}
+
+.editor-start-hint {
+  padding: 10px 12px;
+  border-left: 2px solid var(--accent);
+  background: var(--accent-soft);
+}
+
+.editor-utilities,
+.editor-search,
+.editor-session-context,
+.editor-readiness {
+  margin: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.editor-workshop
+  :is(
+    .editor-utilities,
+    .editor-search,
+    .editor-session-context,
+    .editor-readiness
+  )
+  > summary {
+  min-height: 44px;
+  padding: 10px 0;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.editor-start-disabled {
+  color: var(--muted);
 }
 
 .editor-preview-toggle {
@@ -3342,6 +3494,7 @@ html[data-text-size="large"] .message .story-prose {
 }
 
 .editor-intro h2 {
+  color: var(--fg);
   margin: 0 0 10px;
   font-size: clamp(30px, 4vw, 42px);
   line-height: 1.08;
@@ -3352,37 +3505,12 @@ html[data-text-size="large"] .message .story-prose {
   line-height: 1.55;
 }
 
-.editor-unsaved-note {
-  padding: 12px 14px;
-  border-left: 1px solid var(--brass);
-  background: #ebe4d6;
-  font-weight: 600;
-}
-
-.editor-session-note {
-  margin: 18px 0;
-  padding: 14px 16px;
-  border: 1px solid var(--paper-line);
-  border-radius: var(--radius);
-  background: #ebe7dc;
-}
-
-.editor-session-note h2 {
-  margin: 0 0 6px;
-  font-size: 20px;
-}
-
-.editor-session-note p {
-  margin: 6px 0;
-  line-height: 1.5;
-}
-
 .editor-field-search {
   position: sticky;
   top: 8px;
   z-index: 2;
   padding: 8px 0;
-  background: var(--paper);
+  background: var(--bg);
 }
 
 .editor-error-list,
@@ -3395,12 +3523,14 @@ html[data-text-size="large"] .message .story-prose {
   margin: 6px 0;
 }
 
-.paper .editor-issue-link {
-  min-height: 32px;
+.editor-workshop .editor-issue-link {
+  display: block;
+  width: 100%;
+  min-height: 44px;
   padding: 4px 6px;
   border: 0;
   background: transparent;
-  color: var(--paper-danger);
+  color: var(--danger-fg);
   text-align: left;
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -3428,12 +3558,12 @@ html[data-text-size="large"] .message .story-prose {
 }
 
 .editor-entity {
-  border: 1px solid var(--paper-line);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 10px 14px 14px;
 }
 
-.paper .editor-entity-summary {
+.editor-workshop .editor-entity-summary {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -3450,7 +3580,7 @@ html[data-text-size="large"] .message .story-prose {
 
 .editor-entity-summary code {
   overflow-wrap: anywhere;
-  color: var(--paper-muted);
+  color: var(--muted);
   font-family: var(--font-mono);
   font-size: 12px;
 }
@@ -3458,7 +3588,7 @@ html[data-text-size="large"] .message .story-prose {
 .editor-entity-summary::after {
   content: "+";
   margin-left: auto;
-  color: var(--paper-muted);
+  color: var(--muted);
   font-family: var(--font-ui);
   font-size: 16px;
 }
@@ -3474,17 +3604,12 @@ html[data-text-size="large"] .message .story-prose {
   margin: 4px 0 12px;
 }
 
-.paper .editor-entity-actions button {
-  min-height: 38px;
-  padding: 4px 10px;
-}
-
-.paper .editor-effect {
+.editor-workshop .editor-effect {
   margin: 12px 0;
   padding: 12px;
-  border: 1px solid var(--paper-line);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: #f8f4eb;
+  background: var(--surface-2);
 }
 
 .editor-recipient-fields {
@@ -3493,7 +3618,7 @@ html[data-text-size="large"] .message .story-prose {
   gap: 2px 12px;
   margin: 10px 0;
   padding: 12px;
-  border: 1px solid var(--paper-line);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
 }
 
@@ -3502,7 +3627,7 @@ html[data-text-size="large"] .message .story-prose {
   font-weight: 600;
 }
 
-.paper label.editor-checkbox {
+.editor-workshop label.editor-checkbox {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -3510,7 +3635,7 @@ html[data-text-size="large"] .message .story-prose {
   margin: 2px 0;
 }
 
-.paper label.editor-checkbox input {
+.editor-workshop label.editor-checkbox input {
   flex: 0 0 auto;
   margin: 0;
 }
@@ -3522,7 +3647,7 @@ html[data-text-size="large"] .message .story-prose {
   max-height: calc(100dvh - 32px);
   overflow: auto;
   padding: 24px 18px;
-  border-left: 1px solid var(--paper-line);
+  border-left: 1px solid var(--border);
 }
 
 .editor-preview-content {
@@ -3531,9 +3656,9 @@ html[data-text-size="large"] .message .story-prose {
 
 .editor-world-card {
   overflow: hidden;
-  border: 1px solid var(--paper-line);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background: #fffdf8;
+  background: var(--surface);
 }
 
 .editor-world-card img {
@@ -3562,13 +3687,13 @@ html[data-text-size="large"] .message .story-prose {
 
 .editor-preview-counts > div {
   padding: 10px 12px;
-  border: 1px solid var(--paper-line);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: #fffdf8;
+  background: var(--surface-2);
 }
 
 .editor-preview-counts dt {
-  color: var(--paper-muted);
+  color: var(--muted);
   font-size: 12px;
 }
 
@@ -3592,10 +3717,10 @@ html[data-text-size="large"] .message .story-prose {
   justify-content: space-between;
   gap: 10px;
   padding: 10px 0;
-  border-bottom: 1px solid var(--paper-line);
+  border-bottom: 1px solid var(--border);
 }
 
-.paper .editor-actions {
+.editor-workshop .editor-actions {
   z-index: 2;
   margin-top: 24px;
 }
@@ -3647,22 +3772,22 @@ html[data-text-size="large"] .message .story-prose {
   :where(button, input, select, textarea, summary):focus-visible,
 .editor-preview-dialog
   :where(button, input, select, textarea, summary):focus-visible {
-  outline: 3px solid var(--paper-action);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
 }
 .editor-workshop [data-field-key][tabindex="-1"]:focus {
-  outline: 3px solid var(--paper-action);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
 }
 
 @media (min-width: 1600px) {
-  .editor-workshop.paper:has(.editor-preview-aside:not([hidden])) {
+  .editor-workshop:has(.editor-preview-aside:not([hidden])) {
     grid-template-columns: 232px minmax(0, 760px) minmax(220px, 260px);
   }
 }
 
 @media (max-width: 1599px) {
-  .editor-workshop.paper {
+  .editor-workshop {
     grid-template-columns: 232px minmax(0, 1fr);
   }
 
@@ -3671,7 +3796,7 @@ html[data-text-size="large"] .message .story-prose {
     position: static;
     max-height: none;
     border: 0;
-    border-top: 1px solid var(--paper-line);
+    border-top: 1px solid var(--border);
   }
 }
 
@@ -3680,7 +3805,7 @@ html[data-text-size="large"] .message .story-prose {
     padding: 14px 10px calc(96px + env(safe-area-inset-bottom));
   }
 
-  .editor-workshop.paper {
+  .editor-workshop {
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
   }
@@ -3730,7 +3855,7 @@ html[data-text-size="large"] .message .story-prose {
     flex: 1 1 72px;
   }
 
-  .paper .editor-actions {
+  .editor-workshop .editor-actions {
     bottom: calc(56px + env(safe-area-inset-bottom));
     padding-bottom: 14px;
   }

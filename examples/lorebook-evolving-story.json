@@ -1,0 +1,262 @@
+{
+  "format": "fworld-lorebook",
+  "version": 1,
+  "pack": {
+    "id": "fworld-evolving-story",
+    "version": 1,
+    "name": "Dari Gang ke Balai Kota",
+    "description": "Lorebook contoh untuk cerita berkembang preman, residivis, mafia, lalu politisi di Kota Arunika. Semua tokoh dan tempat fiktif."
+  },
+  "entries": [
+    {
+      "id": "world:arunika",
+      "kind": "world",
+      "name": "Kota Arunika",
+      "aliases": ["Arunika"],
+      "summary": "Kota pelabuhan fiktif dengan kampung padat, lapas tua, dan balai kota yang berjarak beberapa jalan.",
+      "body": "Arunika tumbuh dari pelabuhan kecil. Kampung Tegal menampung pekerja, Lapas Arunika berdiri di pinggir kota, dan Balai Kota mengatur izin dermaga.",
+      "tags": ["kota", "latar"],
+      "visibility": "public",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original-evolving-story",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "loc:kampung",
+      "kind": "location",
+      "name": "Kampung Tegal",
+      "aliases": ["Tegal", "kampung"],
+      "parentId": "world:arunika",
+      "summary": "Kampung padat tempat pekerja pelabuhan tinggal dan saling menjaga rahasia kecil.",
+      "body": "Gang sempit, warung 24 jam, dan buku iuran kampung. Warga mencatat siapa keluar-masuk, termasuk saat polisi datang.",
+      "tags": ["kampung", "permukiman"],
+      "visibility": "public",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original-evolving-story",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "loc:lapas",
+      "kind": "location",
+      "name": "Lapas Arunika",
+      "aliases": ["lapas", "penjara Arunika"],
+      "parentId": "world:arunika",
+      "summary": "Lapas tua di pinggir kota yang menyimpan berkas kepulangan narapidana.",
+      "body": "Blok B dipakai tahanan kasus kekerasan. Petugas mencatat kunjungan, dan berkas kepulangan hanya dibuka saat ada permintaan resmi.",
+      "tags": ["lapas", "hukum"],
+      "visibility": "public",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original-evolving-story",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "loc:rumah-singgah",
+      "kind": "location",
+      "name": "Rumah Singgah",
+      "aliases": ["singgah"],
+      "parentId": "world:arunika",
+      "summary": "Rumah kontrakan di gang belakang yang menampung orang baru keluar dari lapas.",
+      "body": "Pemiliknya menerima siapa pun yang membawa surat keluar lapas. Dapur dipakai bersama, dan tamu malam selalu dicatat.",
+      "tags": ["rumah", "singgah"],
+      "visibility": "public",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original-evolving-story",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "loc:dermaga",
+      "kind": "location",
+      "name": "Dermaga Timur",
+      "aliases": ["dermaga", "pelabuhan timur"],
+      "parentId": "world:arunika",
+      "summary": "Dermaga barang tempat manifes kargo menentukan siapa yang berkuasa di pelabuhan.",
+      "body": "Truk datang sebelum subuh. Manifest dermaga mencatat pemilik kargo, dan nama yang salah bisa membuat satu kontainer hilang.",
+      "tags": ["dermaga", "pelabuhan"],
+      "visibility": "public",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original-evolving-story",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "loc:balai-kota",
+      "kind": "location",
+      "name": "Balai Kota",
+      "aliases": ["balai kota", "kantor wali kota"],
+      "parentId": "world:arunika",
+      "summary": "Gedung administrasi tempat izin, arsip dewan, dan janji kampanye disimpan.",
+      "body": "Loket izin usaha ada di lantai satu; arsip dewan di lantai tiga. Petugas ramah hanya pada orang yang sudah punya pengaruh.",
+      "tags": ["pemerintahan", "kota"],
+      "visibility": "public",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original-evolving-story",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "item:ponsel",
+      "kind": "item",
+      "name": "Ponsel",
+      "aliases": ["telepon"],
+      "summary": "Ponsel lama dengan nomor baru, dipakai untuk menghubungi kontak yang belum tentu aman.",
+      "body": "Layarnya retak. Pesan masuk dari nomor tak dikenal sering hanya berisi waktu dan nama tempat.",
+      "tags": ["komunikasi"],
+      "visibility": "public",
+      "metadata": {
+        "itemId": "item:ponsel"
+      },
+      "provenance": {
+        "sourceId": "fworld-original-evolving-story",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "faction:keluarga-hitam",
+      "kind": "faction",
+      "name": "Keluarga Hitam",
+      "aliases": ["Hitam", "keluarga"],
+      "summary": "Jaringan pelabuhan yang mengatur kargo dan upeti, bukan sekadar geng jalanan.",
+      "body": "Mereka membagi hasil dermaga dengan pemilik truk dan petugas. Anggota baru harus membuktikan kesetiaan sebelum diberi mandat tertulis.",
+      "tags": ["pelabuhan", "jaringan"],
+      "visibility": "narrator",
+      "metadata": {},
+      "provenance": {
+        "sourceId": "fworld-original-evolving-story",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "activity:preman",
+      "kind": "activity",
+      "name": "Catatan iuran kampung",
+      "aliases": ["buku iuran"],
+      "summary": "Buku iuran kampung yang mencatat siapa membayar untuk keamanan gang.",
+      "body": "Halaman terakhir memuat nama pemuda yang mengumpulkan uang dan tanggal dua kali sebuah gang dibakar. Membacanya butuh izin warga.",
+      "tags": ["preman", "catatan"],
+      "visibility": "discovery",
+      "metadata": {
+        "discoverAt": ["loc:kampung"],
+        "discoveryKeywords": ["catatan", "buku iuran"]
+      },
+      "provenance": {
+        "sourceId": "fworld-original-evolving-story",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "activity:residivis",
+      "kind": "activity",
+      "name": "Berkas kepulangan",
+      "aliases": ["berkas lapas"],
+      "summary": "Berkas kepulangan yang mencatat dua masa tahanan dan alamat setelah bebas.",
+      "body": "Berkas menyebut Raka ditahan dua kali atas kasus yang sama. Catatan terakhir: kembali ke Rumah Singgah, tanpa pekerjaan resmi.",
+      "tags": ["residivis", "catatan"],
+      "visibility": "discovery",
+      "metadata": {
+        "discoverAt": ["loc:rumah-singgah"],
+        "discoveryKeywords": ["catatan", "berkas kepulangan"]
+      },
+      "provenance": {
+        "sourceId": "fworld-original-evolving-story",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "activity:mafia",
+      "kind": "activity",
+      "name": "Manifest dermaga",
+      "aliases": ["manifest kargo"],
+      "summary": "Salinan manifest yang mencantumkan pemilik kargo dan nama penyetor upeti.",
+      "body": "Manifest menandai tiga kontainer atas nama Keluarga Hitam. Satu baris ditulis tangan: mandat keluarga, bukan janji.",
+      "tags": ["mafia", "catatan"],
+      "visibility": "discovery",
+      "metadata": {
+        "discoverAt": ["loc:dermaga"],
+        "discoveryKeywords": ["catatan", "manifest dermaga"]
+      },
+      "provenance": {
+        "sourceId": "fworld-original-evolving-story",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    },
+    {
+      "id": "activity:politisi",
+      "kind": "activity",
+      "name": "Arsip dewan",
+      "aliases": ["arsip balai kota"],
+      "summary": "Salinan arsip dewan tentang izin dermaga dan penyandang dana kampanye.",
+      "body": "Arsip mencatat izin dermaga yang diperpanjang setelah sumbangan kampanye. Nama penerima manfaat tidak dicetak, hanya inisial.",
+      "tags": ["politik", "catatan"],
+      "visibility": "discovery",
+      "metadata": {
+        "discoverAt": ["loc:balai-kota"],
+        "discoveryKeywords": ["catatan", "arsip dewan"]
+      },
+      "provenance": {
+        "sourceId": "fworld-original-evolving-story",
+        "license": "CC0-1.0",
+        "canon": "original",
+        "era": "modern-fiction"
+      }
+    }
+  ],
+  "links": [
+    {
+      "fromId": "activity:preman",
+      "toId": "loc:kampung",
+      "relation": "LOCATED_IN"
+    },
+    {
+      "fromId": "activity:residivis",
+      "toId": "loc:rumah-singgah",
+      "relation": "LOCATED_IN"
+    },
+    {
+      "fromId": "activity:mafia",
+      "toId": "loc:dermaga",
+      "relation": "LOCATED_IN"
+    },
+    {
+      "fromId": "activity:politisi",
+      "toId": "loc:balai-kota",
+      "relation": "LOCATED_IN"
+    },
+    {
+      "fromId": "faction:keluarga-hitam",
+      "toId": "loc:dermaga",
+      "relation": "LOCATED_IN"
+    }
+  ]
+}

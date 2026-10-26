@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "kind": "html",
+  "title": "preview/typography.html",
+  "entry": "preview/typography.html",
+  "renderer": "html",
+  "status": "complete",
+  "exports": [
+    "html",
+    "pdf",
+    "zip"
+  ],
+  "createdAt": "2026-10-20T07:43:08.090Z",
+  "updatedAt": "2026-10-20T07:43:08.090Z",
+  "metadata": {
+    "inferred": true,
+    "reconciled": true
+  }
+}

@@ -287,9 +287,9 @@ try {
 
     activeLabel = `create-world ${viewport.width}x${viewport.height}`;
     await clickText(
-      "button",
-      libraryState.worldCount > 0 ? "Dunia baru" : "Buat dunia",
-      libraryState.worldCount > 0 ? "Dunia baru" : "Buat dunia",
+      ".top button.library-create-world",
+      "Buat dunia",
+      "Buat dunia",
     );
     await waitFor(
       "document.querySelector('section[aria-label=\"Buat dunia\"]') !== null",

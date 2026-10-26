@@ -6,7 +6,6 @@ let server;
 let agent;
 let contextModule;
 let runtimeModule;
-let narratorPrompt;
 
 test.before(async () => {
   server = await createServer({
@@ -16,7 +15,6 @@ test.before(async () => {
   agent = await server.ssrLoadModule("/server/agent.ts");
   contextModule = await server.ssrLoadModule("/server/agent/context.ts");
   runtimeModule = await server.ssrLoadModule("/server/agent/runtime.ts");
-  narratorPrompt = await server.ssrLoadModule("/shared/narrator-prompt.ts");
 });
 
 test.after(async () => {
@@ -255,8 +253,7 @@ function fakeStep(
 
 test("uses the session model, fixed request limits, compact context, and counts a JSON repair", async () => {
   const session = makeSession();
-  const customSystemPrompt = "Custom narrator system prompt for this session.";
-  session.ai.systemPrompt = customSystemPrompt;
+  session.ai.systemPrompt = "Custom narrator system prompt for this session.";
   const history = Array.from({ length: 30 }, (_, sequence) => ({
     id: `m-${sequence}`,
     sessionId: session.id,
@@ -292,7 +289,6 @@ test("uses the session model, fixed request limits, compact context, and counts 
     {
       generateText: async (options) => {
         calls += 1;
-        assert.equal(options.system, customSystemPrompt);
         assert.ok(
           estimatedChars >= options.system.length + options.prompt.length,
         );
@@ -1203,6 +1199,97 @@ test("fails before the provider when required context exceeds its limit", async 
   );
   assert.equal(providerCalled, false);
 });
+
+test("counts the runtime item instructions in a near-limit repaired turn", async () => {
+  const overheads = [];
+  await agent.runNarrator(makeInput(), {
+    generateText: async (options) => {
+      overheads.push(options.system.length + options.prompt.length);
+      return {
+        text: JSON.stringify({ narrative: "Hujan.", effects: [] }),
+        finishReason: "stop",
+      };
+    },
+  });
+  assert.equal(overheads.length, 1);
+  const session = makeSession();
+  session.definitionSnapshot.player.description = "x".repeat(
+    contextModule.MAX_CONTEXT_CHARS - overheads[0] - 2_000,
+  );
+  const lengths = [];
+  let estimatedChars = 0;
+  let telemetry;
+  const result = await agent.runNarrator(
+    makeInput({
+      session,
+      onContext: (value) => {
+        telemetry = value;
+      },
+      estimateTokens: (chars) => {
+        estimatedChars = chars;
+        return {
+          approximateTokens: Math.ceil(chars / 4),
+          method: "test-ratio",
+        };
+      },
+    }),
+    {
+      generateText: async (options) => {
+        const chars = options.system.length + options.prompt.length;
+        lengths.push(chars);
+        assert.match(options.system, /Dynamic items: REGISTER_ITEM/);
+        assert.ok(chars <= contextModule.MAX_CONTEXT_CHARS);
+        if (lengths.length === 1) {
+          return { text: "bukan json", finishReason: "stop" };
+        }
+        return {
+          text: JSON.stringify({ narrative: "Hujan turun.", effects: [] }),
+          finishReason: "stop",
+        };
+      },
+    },
+  );
+  assert.equal(lengths.length, 2);
+  assert.ok(lengths[1] > lengths[0]);
+  assert.ok(lengths[1] <= contextModule.MAX_CONTEXT_CHARS);
+  assert.ok(estimatedChars >= lengths[1]);
+  assert.equal(telemetry.contextChars, estimatedChars);
+  assert.equal(telemetry.tokenEstimateMethod, "test-ratio");
+  assert.equal(result.response.narrative, "Hujan turun.");
+});
+
+test("rejects an over-limit repair before a second provider call", async () => {
+  const overheads = [];
+  await agent.runNarrator(makeInput(), {
+    generateText: async (options) => {
+      overheads.push(options.system.length + options.prompt.length);
+      return {
+        text: JSON.stringify({ narrative: "Hujan.", effects: [] }),
+        finishReason: "stop",
+      };
+    },
+  });
+  const session = makeSession();
+  session.definitionSnapshot.player.description = "x".repeat(
+    contextModule.MAX_CONTEXT_CHARS - overheads[0] - 300,
+  );
+  let calls = 0;
+  await assert.rejects(
+    agent.runNarrator(makeInput({ session }), {
+      generateText: async () => {
+        calls += 1;
+        return { text: "x".repeat(4_000), finishReason: "stop" };
+      },
+    }),
+    (error) => {
+      assert.ok(error instanceof contextModule.NarratorContextError);
+      assert.ok(error.actualChars > error.maxChars);
+      assert.equal(error.maxChars, contextModule.MAX_CONTEXT_CHARS);
+      return true;
+    },
+  );
+  assert.equal(calls, 1);
+});
 test("only explicit NPC address grants private context or NPC-scoped tools", async () => {
   const session = makeSession();
   const npc = session.definitionSnapshot.npcs[0];
@@ -1395,6 +1482,144 @@ test("only explicit NPC address grants private context or NPC-scoped tools", asy
   await capture("I remember a story about Sava and the lighthouse.", false);
 });
 
+test("movement turns scope the principal and NPC tools to the allowed destination", async () => {
+  const session = makeSession();
+  session.state.world.locationId = "loc:cafe";
+  session.state.world.location = "Cafe Nami";
+  session.state.world.activeCharacters = ["player"];
+  session.state.world.npcPresence = { aiko: { locationId: "loc:harbor" } };
+  session.definitionSnapshot.npcs.push({
+    id: "bima",
+    name: "Bima",
+    personality: [],
+    goals: [],
+    privateKnowledge: ["Bima's private cargo lead."],
+    initialRelationships: {},
+  });
+  const worldMap = {
+    locations: [
+      { id: "loc:cafe", name: "Cafe Nami", aliases: ["cafe"], npcIds: [] },
+      { id: "loc:harbor", name: "Harbor", aliases: ["harbor"], npcIds: [] },
+    ],
+    connections: [{ fromId: "loc:cafe", toId: "loc:harbor" }],
+    flags: {},
+  };
+  const addressed =
+    "I ask Aiko about the lighthouse as we travel to the harbor.";
+  const allowed = { kind: "allowed", fromId: "loc:cafe", toId: "loc:harbor" };
+  const blocked = { kind: "blocked", fromId: "loc:cafe", toId: "loc:harbor" };
+
+  const capture = async ({
+    playerAction,
+    movement,
+    scoped,
+    destinationActive,
+  }) => {
+    let details;
+    const result = await agent.runNarrator(
+      makeInput({
+        session,
+        playerAction,
+        worldMap,
+        movement,
+        effectContext: { worldMap, loreEntries: [], playerAction },
+      }),
+      {
+        generateText: async (options) => {
+          const prompt = JSON.parse(options.prompt);
+          const localNpcIds = prompt.context.activeNpcs.map(({ id }) => id);
+          assert.equal(
+            localNpcIds.includes("aiko"),
+            destinationActive,
+            "scene participants must follow the effective location",
+          );
+          if (scoped) {
+            assert.deepEqual(prompt.context.actorScope, {
+              kind: "npc",
+              npcId: "aiko",
+            });
+            details = await Promise.resolve().then(() =>
+              options.tools.get_npc_details.execute({ npcId: "aiko" }),
+            );
+            await assert.rejects(
+              Promise.resolve().then(() =>
+                options.tools.get_npc_details.execute({ npcId: "bima" }),
+              ),
+              /interlocutor terpilih/,
+            );
+          } else {
+            assert.deepEqual(prompt.context.actorScope, {
+              kind: "player-narrator",
+            });
+            assert.equal(prompt.context.npcKnowledge, null);
+            const serialized = JSON.stringify(prompt);
+            for (const hidden of [
+              "She knows the lighthouse secret.",
+              "Bima's private cargo lead.",
+            ]) {
+              assert.equal(serialized.includes(hidden), false, hidden);
+            }
+            await assert.rejects(
+              Promise.resolve().then(() =>
+                options.tools.get_npc_details.execute({ npcId: "aiko" }),
+              ),
+              /interlocutor terpilih/,
+            );
+          }
+          await fakeStep(options);
+          return {
+            text: JSON.stringify({
+              narrative: "The journey continues.",
+              effects: [],
+            }),
+          };
+        },
+      },
+    );
+    return { result, details };
+  };
+
+  const positive = await capture({
+    playerAction: addressed,
+    movement: allowed,
+    scoped: true,
+    destinationActive: true,
+  });
+  assert.equal(positive.details.name, "Aiko");
+  assert.deepEqual(positive.details.knowledge.privateKnowledge, [
+    "She knows the lighthouse secret.",
+  ]);
+  assert.equal(
+    positive.result.application.state.world.locationId,
+    "loc:harbor",
+  );
+  assert.ok(
+    positive.result.application.state.world.activeCharacters.includes("aiko"),
+  );
+
+  const denied = await capture({
+    playerAction: addressed,
+    movement: blocked,
+    scoped: false,
+    destinationActive: false,
+  });
+  assert.equal(denied.result.application.state.world.locationId, "loc:cafe");
+  assert.ok(
+    !denied.result.application.state.world.activeCharacters.includes("aiko"),
+  );
+
+  const mention = await capture({
+    playerAction: "I remember Aiko as we travel to the harbor.",
+    movement: allowed,
+    scoped: false,
+    destinationActive: true,
+  });
+  assert.equal(mention.result.application.state.world.locationId, "loc:harbor");
+  assert.ok(
+    mention.result.application.state.world.activeCharacters.includes("aiko"),
+  );
+});
+
 test("hides actor-bound lore from a different principal", async () => {
   const session = makeSession();
   session.state.world.location = "Cafe Nami";
@@ -1572,23 +1797,4 @@ test("uses opaque discovery handles across a gated lore repair", async () => {
       { id: opaqueHandle, discoveryCandidate: true },
     ]);
   }
-});
-
-test("sessions without an override use the shipped narrator JSON default", async () => {
-  const result = await agent.runNarrator(makeInput(), {
-    generateText: async (options) => {
-      assert.equal(
-        options.system,
-        narratorPrompt.DEFAULT_NARRATOR_SYSTEM_PROMPT,
-      );
-      await fakeStep(options);
-      return {
-        text: JSON.stringify({
-          narrative: "The scene continues.",
-          effects: [],
-        }),
-      };
-    },
-  });
-  assert.equal(result.response.narrative, "The scene continues.");
 });

@@ -28,9 +28,9 @@ import {
 function legacyItemEffects(effects: TurnEffect[]): ItemEffect[] {
   const itemEffects: ItemEffect[] = [];
   for (const effect of effects) {
-    if (effect.type === "REGISTER_NPC") {
+    if (effect.type === "REGISTER_NPC" || effect.type === "REGISTER_ITEM") {
       throw new Error(
-        "REGISTER_NPC is unsupported by the legacy src/turn.ts flow.",
+        `${effect.type} is unsupported by the legacy src/turn.ts flow.`,
       );
     }
     itemEffects.push(effect);

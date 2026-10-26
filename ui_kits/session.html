@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Mercusuar sebelum fajar — Fworld</title>
+  <meta name="description" content="Sesi Pesisir Utara: baca adegan, kirim aksi, dan periksa catatan lapangan tanpa meninggalkan cerita.">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/tokens.css">
+  <link rel="stylesheet" href="assets/app.css">
+  <script src="assets/app.js" defer></script>
+</head>
+<body class="session-page">
+  <a class="skip-link" href="#main">Langsung ke isi</a>
+
+  <div class="shell">
+    <aside class="rail texture texture--leather" aria-label="Navigasi utama">
+      <a class="rail__brand" href="index.html" aria-label="Fworld, beranda prototipe">
+        <span class="brand-mark" aria-hidden="true">F</span>
+        <span>
+          <span class="brand-word">Fworld</span>
+          <span class="brand-sub">Ruang cerita</span>
+        </span>
+      </a>
+
+      <nav class="rail__nav" aria-label="Jelajahi">
+        <p class="rail__label">Jelajahi</p>
+        <a class="nav-link" href="library.html">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-library"></use></svg>
+          Perpustakaan
+          <span class="nav-link__count">06</span>
+        </a>
+        <a class="nav-link" href="settings.html">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-settings"></use></svg>
+          Pengaturan
+        </a>
+      </nav>
+
+      <div class="rail__recent">
+        <p class="rail__label">Dunia terakhir</p>
+        <a class="recent-link" href="session.html" aria-current="page">
+          <span class="recent-link__title">Pesisir Utara</span>
+          <span class="recent-link__meta">Sesi 4 · sedang diputar</span>
+        </a>
+        <a class="recent-link" href="session.html">
+          <span class="recent-link__title">Lentera di Hutan</span>
+          <span class="recent-link__meta">Sesi 4 · 2 jam lalu</span>
+        </a>
+        <a class="recent-link" href="world.html">
+          <span class="recent-link__title">Arsip Hujan</span>
+          <span class="recent-link__meta">Sesi 2 · 3 hari lalu</span>
+        </a>
+      </div>
+
+      <div class="rail__foot">
+        <p class="status-line">
+          <span class="status-dot status-dot--ok" aria-hidden="true"></span>
+          Backend lokal aktif
+        </p>
+        <p class="rail__version">Fworld 0.9 · prototipe</p>
+      </div>
+    </aside>
+
+    <div class="session-main">
+      <header class="session-head">
+        <a class="session-head__back" href="world.html" aria-label="Kembali ke dunia Pesisir Utara">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-arrow-left"></use></svg>
+        </a>
+
+        <div class="session-head__titles">
+          <h1 class="session-head__title">Mercusuar sebelum fajar</h1>
+          <p class="session-head__sub">Pesisir Utara · Bab tiga</p>
+        </div>
+
+        <div class="session-head__actions">
+          <button class="icon-btn session-head__desk" type="button" aria-label="Perbesar ukuran teks" data-textsize-toggle>
+            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-text"></use></svg>
+          </button>
+          <button class="icon-btn" type="button" aria-label="Masuk mode fokus" aria-pressed="false" data-focus-toggle>
+            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-focus"></use></svg>
+          </button>
+          <button class="btn btn--ghost btn--sm notes-toggle" type="button" data-open="sheet-notes">
+            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-notes"></use></svg>
+            Catatan
+          </button>
+          <div class="menu-wrap">
+            <button class="icon-btn" type="button" aria-label="Menu sesi" aria-haspopup="menu" data-menu="menu-sesi">
+              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-more"></use></svg>
+            </button>
+            <div class="menu" id="menu-sesi" role="menu" aria-label="Mercusuar sebelum fajar">
+              <button class="menu__item" type="button" role="menuitem" data-toast="Pengaturan sesi tersedia di prototipe penuh.">
+                <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-settings"></use></svg>
+                Pengaturan sesi
+              </button>
+              <button class="menu__item" type="button" role="menuitem" data-toast="Save sesi diekspor (contoh).">
+                <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-download"></use></svg>
+                Export save
+              </button>
+              <div class="menu__sep" role="separator"></div>
+              <a class="menu__item" role="menuitem" href="library.html">
+                <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-library"></use></svg>
+                Kembali ke perpustakaan
+              </a>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div class="scene-strip">
+        <span>Dermaga Utara</span>
+        <span aria-hidden="true">·</span>
+        <span>Senja</span>
+        <span aria-hidden="true">·</span>
+        <span>Hujan ringan</span>
+        <span class="scene-strip__turn">Giliran 12</span>
+      </div>
+
+      <div class="session-shell">
+        <main class="stage-wrap" id="main">
+          <section class="stage texture texture--grain" aria-label="Adegan cerita">
+            <div class="stage__progress" role="progressbar" aria-label="Kemajuan bab tiga" aria-valuemin="0" aria-valuemax="100" aria-valuenow="58"></div>
+
+            <div class="stage__inner" data-messages>
+              <div class="stage__more">
+                <button class="btn btn--quiet btn--sm" type="button" data-toast="Riwayat sebelumnya dimuat (contoh).">Muat riwayat sebelumnya</button>
+              </div>
+
+              <header class="title-card">
+                <span class="title-card__kicker">Bab tiga</span>
+                <p class="title-card__text">Air pasang</p>
+              </header>
+
+              <article class="msg msg--narration">
+                <div class="msg__label">Narator</div>
+                <div class="msg__body">
+                  <p>Hujan turun tipis, lebih seperti kabut yang turun perlahan daripada air. Di ujung dermaga, lentera-lentera nelayan bergoyang tanpa irama, dan setiap kali menyala, bayangan tiang-tiang kayu memanjang ke arah laut.</p>
+                  <p>Mercusuar di seberang teluk masih gelap. Dua belas hari sudah ia tidak menyala, tetapi malam ini ada sesuatu yang bergerak di puncaknya — kecil, gelap, dan sabar.</p>
+                </div>
+              </article>
+
+              <article class="msg msg--player">
+                <div class="msg__label">Kamu</div>
+                <div class="msg__body">
+                  <p>Aku menahan lentera agar tidak padam, lalu melangkah ke ujung dermaga. Papan terakhir berderit lebih keras dari yang lain.</p>
+                </div>
+              </article>
+
+              <article class="msg msg--npc">
+                <div class="msg__label">
+                  <span class="msg__speaker">Mara</span>
+                  <span>Nelayan</span>
+                </div>
+                <div class="msg__body">
+                  <p>“Jangan berdiri di papan itu.” Suaranya datang dari balik tumpukan jaring, pelan tetapi jelas. “Dua hari lalu seseorang berdiri di sana, dan pagi harinya hanya sepatunya yang tersisa.”</p>
+                </div>
+              </article>
+
+              <article class="msg msg--narration">
+                <div class="msg__label">Narator</div>
+                <div class="msg__body">
+                  <p>Mara keluar dari bayangan kanopi. Di tangannya, sebuah kunci kuningan sepanjang telapak tangan. Ia tidak memberikannya, hanya menatapmu seolah sudah tahu kenapa kamu datang.</p>
+                </div>
+              </article>
+
+              <article class="msg msg--system">
+                <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-clock"></use></svg>
+                Giliran 12 tersimpan · 21.48 · Dermaga Utara
+              </article>
+
+              <p class="stage-end">Akhir riwayat tersimpan · 12 giliran</p>
+            </div>
+          </section>
+        </main>
+
+        <aside class="notes" aria-label="Catatan lapangan">
+          <div class="notes__head">
+            <h2 class="notes__title">Catatan</h2>
+            <span class="notes__turn">Giliran 12</span>
+          </div>
+
+          <details class="note-group" open>
+            <summary class="note-group__summary">
+              Kamu
+              <span class="note-group__count">03</span>
+              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+            </summary>
+            <div class="note-group__body">
+              <div class="meter" role="img" aria-label="Darah 12 dari 14">
+                <div class="meter__row">
+                  <span class="meter__label">Darah</span>
+                  <span class="meter__value">12 / 14</span>
+                </div>
+                <div class="meter__track"><div class="meter__fill" style="width:86%"></div></div>
+              </div>
+              <div class="meter meter--accent" role="img" aria-label="Stamina 7 dari 10">
+                <div class="meter__row">
+                  <span class="meter__label">Stamina</span>
+                  <span class="meter__value">7 / 10</span>
+                </div>
+                <div class="meter__track"><div class="meter__fill" style="width:70%"></div></div>
+              </div>
+              <div class="meter meter--accent" role="img" aria-label="Kewaspadaan 4 dari 6">
+                <div class="meter__row">
+                  <span class="meter__label">Kewaspadaan</span>
+                  <span class="meter__value">4 / 6</span>
+                </div>
+                <div class="meter__track"><div class="meter__fill" style="width:67%"></div></div>
+              </div>
+            </div>
+          </details>
+
+          <details class="note-group" open>
+            <summary class="note-group__summary">
+              Hadir
+              <span class="note-group__count">02</span>
+              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+            </summary>
+            <div class="note-group__body">
+              <div class="person-row">
+                <span class="monogram" aria-hidden="true">M</span>
+                <div>
+                  <p class="person-row__name">Mara</p>
+                  <p class="person-row__role">Nelayan tua</p>
+                </div>
+                <span class="person-row__value">percaya +2</span>
+              </div>
+              <div class="person-row">
+                <span class="monogram" aria-hidden="true">I</span>
+                <div>
+                  <p class="person-row__name">Ilan</p>
+                  <p class="person-row__role">Penjaga dermaga</p>
+                </div>
+                <span class="person-row__value">waspada −1</span>
+              </div>
+            </div>
+          </details>
+
+          <details class="note-group" open>
+            <summary class="note-group__summary">
+              Tas
+              <span class="note-group__count">03</span>
+              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+            </summary>
+            <div class="note-group__body">
+              <div class="inv-row">
+                <span>Lentera badai</span>
+                <span class="inv-row__qty">×1</span>
+                <span class="inv-row__tags">cahaya · tahan air</span>
+              </div>
+              <div class="inv-row">
+                <span>Surat Kapten Mira</span>
+                <span class="inv-row__qty">×1</span>
+                <span class="inv-row__tags">petunjuk · terbaca</span>
+              </div>
+              <div class="inv-row">
+                <span>Koin tembaga</span>
+                <span class="inv-row__qty">×18</span>
+                <span class="inv-row__tags">mata uang</span>
+              </div>
+            </div>
+          </details>
+
+          <details class="note-group">
+            <summary class="note-group__summary">
+              Dunia
+              <span class="note-group__count">04</span>
+              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+            </summary>
+            <div class="note-group__body">
+              <p class="fact-row"><strong>Lokasi</strong> · Dermaga Utara</p>
+              <p class="fact-row"><strong>Waktu</strong> · Senja, hujan ringan</p>
+              <p class="fact-row"><strong>Diketahui</strong> · Mercusuar padam sejak dua belas hari lalu.</p>
+              <p class="fact-row"><strong>Penemuan</strong> · Jejak di papan dermaga tidak cocok dengan sepatu nelayan.</p>
+            </div>
+          </details>
+
+          <div class="notes__foot">
+            <button class="btn btn--secondary btn--sm btn--block" type="button" data-open="sheet-notes">
+              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-notes"></use></svg>
+              Buka catatan lengkap
+            </button>
+          </div>
+        </aside>
+      </div>
+
+      <div class="composer-dock">
+        <div class="banner banner--error composer-fail" data-composer-fail hidden>
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-alert"></use></svg>
+          <div class="banner__body">
+            <p class="banner__title">Narator tidak menjawab</p>
+            <p class="banner__text">Koneksi ke backend lokal terputus. Drafmu masih aman.</p>
+          </div>
+          <button class="btn btn--secondary btn--sm banner__action" type="button" data-retry>Ulangi</button>
+        </div>
+
+        <div class="choices" aria-label="Pilihan aksi">
+          <button class="choice" type="button" data-choice="Minta Mara menjelaskan apa yang terjadi pada orang yang berdiri di papan terakhir.">
+            <span class="choice__num">01</span>
+            <span class="choice__text">Minta Mara menjelaskan nasib orang di papan terakhir.</span>
+            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-arrow-right"></use></svg>
+          </button>
+          <button class="choice" type="button" data-choice="Periksa papan dermaga dan jejak yang disebut Mara.">
+            <span class="choice__num">02</span>
+            <span class="choice__text">Periksa papan dan jejak yang disebut Mara.</span>
+            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-arrow-right"></use></svg>
+          </button>
+          <button class="choice" type="button" data-choice="Tanyakan tentang kunci kuningan di tangan Mara.">
+            <span class="choice__num">03</span>
+            <span class="choice__text">Tanyakan tentang kunci kuningan di tangannya.</span>
+            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-arrow-right"></use></svg>
+          </button>
+        </div>
+
+        <div class="composer" data-composer>
+          <div class="composer__row">
+            <textarea class="composer__area" id="aksi" data-composer-area rows="1" aria-label="Tulis aksi atau dialog" placeholder="Tulis apa yang kamu lakukan…"></textarea>
+            <button class="btn btn--primary btn--sm composer__send" type="button" data-send disabled>
+              Kirim
+              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-send"></use></svg>
+            </button>
+          </div>
+          <div class="composer__foot">
+            <span class="composer__hint composer__bantuan">
+              <kbd>Enter</kbd> untuk kirim
+              <span aria-hidden="true">·</span>
+              <kbd>Shift</kbd>+<kbd>Enter</kbd> untuk baris baru
+            </span>
+            <span class="composer__status" data-composer-status aria-live="polite" hidden></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn btn--secondary focus-exit" type="button" data-focus-exit>
+    <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-close"></use></svg>
+    Keluar fokus
+  </button>
+
+  <nav class="dock" aria-label="Kontrol sesi">
+    <button class="dock__btn" type="button" aria-current="true">
+      <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-feather"></use></svg>
+      Cerita
+    </button>
+    <button class="dock__btn" type="button" data-open="sheet-notes">
+      <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-notes"></use></svg>
+      Catatan
+    </button>
+    <a class="dock__btn" href="#aksi">
+      <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-quote"></use></svg>
+      Pilihan
+    </a>
+    <button class="dock__btn" type="button" data-open="sheet-session-menu">
+      <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-more"></use></svg>
+      Lainnya
+    </button>
+  </nav>
+
+  <div class="scrim" data-scrim></div>
+
+  <div class="sheet sheet--bottom notes-sheet" id="sheet-notes" role="dialog" aria-modal="true" aria-labelledby="sheet-notes-title" aria-hidden="true">
+    <header class="sheet__head">
+      <div>
+        <p class="sheet__eyebrow">Sesi 4 · Giliran 12</p>
+        <h2 class="sheet__title" id="sheet-notes-title">Catatan lapangan</h2>
+      </div>
+      <button class="icon-btn" type="button" aria-label="Tutup catatan" data-close>
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-close"></use></svg>
+      </button>
+    </header>
+
+    <div class="sheet__body">
+      <div class="sheet-tabs" role="tablist" aria-label="Bagian catatan" data-tabs>
+        <button class="sheet-tabs__btn" type="button" role="tab" id="tabbtn-kamu" aria-controls="tab-kamu" aria-selected="true">Kamu</button>
+        <button class="sheet-tabs__btn" type="button" role="tab" id="tabbtn-tokoh" aria-controls="tab-tokoh" aria-selected="false" tabindex="-1">Tokoh</button>
+        <button class="sheet-tabs__btn" type="button" role="tab" id="tabbtn-tas" aria-controls="tab-tas" aria-selected="false" tabindex="-1">Tas</button>
+        <button class="sheet-tabs__btn" type="button" role="tab" id="tabbtn-dunia" aria-controls="tab-dunia" aria-selected="false" tabindex="-1">Dunia</button>
+      </div>
+
+      <div class="tabpanel" id="tab-kamu" role="tabpanel" aria-labelledby="tabbtn-kamu" tabindex="0">
+        <div class="meter" role="img" aria-label="Darah 12 dari 14">
+          <div class="meter__row">
+            <span class="meter__label">Darah</span>
+            <span class="meter__value">12 / 14</span>
+          </div>
+          <div class="meter__track"><div class="meter__fill" style="width:86%"></div></div>
+        </div>
+        <div class="meter meter--accent" role="img" aria-label="Stamina 7 dari 10">
+          <div class="meter__row">
+            <span class="meter__label">Stamina</span>
+            <span class="meter__value">7 / 10</span>
+          </div>
+          <div class="meter__track"><div class="meter__fill" style="width:70%"></div></div>
+        </div>
+        <div class="meter meter--accent" role="img" aria-label="Kewaspadaan 4 dari 6">
+          <div class="meter__row">
+            <span class="meter__label">Kewaspadaan</span>
+            <span class="meter__value">4 / 6</span>
+          </div>
+          <div class="meter__track"><div class="meter__fill" style="width:67%"></div></div>
+        </div>
+        <p class="fact-row"><strong>Kondisi</strong> · Lengan kiri basah, luka lama terasa dingin.</p>
+      </div>
+
+      <div class="tabpanel" id="tab-tokoh" role="tabpanel" aria-labelledby="tabbtn-tokoh" tabindex="0" hidden>
+        <div class="person-row">
+          <span class="monogram" aria-hidden="true">M</span>
+          <div>
+            <p class="person-row__name">Mara</p>
+            <p class="person-row__role">Nelayan tua</p>
+          </div>
+          <span class="person-row__value">percaya +2</span>
+        </div>
+        <div class="person-row">
+          <span class="monogram" aria-hidden="true">I</span>
+          <div>
+            <p class="person-row__name">Ilan</p>
+            <p class="person-row__role">Penjaga dermaga</p>
+          </div>
+          <span class="person-row__value">waspada −1</span>
+        </div>
+        <p class="fact-row"><strong>Catatan</strong> · Mara menyimpan kunci kuningan yang tidak ia jelaskan.</p>
+      </div>
+
+      <div class="tabpanel" id="tab-tas" role="tabpanel" aria-labelledby="tabbtn-tas" tabindex="0" hidden>
+        <div class="inv-row">
+          <span>Lentera badai</span>
+          <span class="inv-row__qty">×1</span>
+          <span class="inv-row__tags">cahaya · tahan air · nyala redup</span>
+        </div>
+        <div class="inv-row">
+          <span>Surat Kapten Mira</span>
+          <span class="inv-row__qty">×1</span>
+          <span class="inv-row__tags">petunjuk · satu nama belum terbaca</span>
+        </div>
+        <div class="inv-row">
+          <span>Koin tembaga</span>
+          <span class="inv-row__qty">×18</span>
+          <span class="inv-row__tags">mata uang</span>
+        </div>
+      </div>
+
+      <div class="tabpanel" id="tab-dunia" role="tabpanel" aria-labelledby="tabbtn-dunia" tabindex="0" hidden>
+        <p class="fact-row"><strong>Lokasi</strong> · Dermaga Utara, Pesisir Utara</p>
+        <p class="fact-row"><strong>Waktu</strong> · Senja, hujan ringan</p>
+        <p class="fact-row"><strong>Diketahui</strong> · Mercusuar padam sejak dua belas hari lalu.</p>
+        <p class="fact-row"><strong>Penemuan</strong> · Jejak di papan dermaga tidak cocok dengan sepatu nelayan.</p>
+        <p class="fact-row"><strong>Belum terjawab</strong> · Siapa yang menyalakan cahaya di puncak mercusuar tadi?</p>
+      </div>
+    </div>
+
+    <footer class="sheet__foot">
+      <button class="btn btn--ghost" type="button" data-close>Kembali ke cerita</button>
+    </footer>
+  </div>
+
+  <div class="sheet sheet--bottom" id="sheet-session-menu" role="dialog" aria-modal="true" aria-labelledby="sheet-session-title" aria-hidden="true">
+    <header class="sheet__head">
+      <div>
+        <p class="sheet__eyebrow">Sesi 4</p>
+        <h2 class="sheet__title" id="sheet-session-title">Menu sesi</h2>
+      </div>
+      <button class="icon-btn" type="button" aria-label="Tutup menu sesi" data-close>
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-close"></use></svg>
+      </button>
+    </header>
+
+    <div class="sheet__body">
+      <button class="menu__item" type="button" data-toast="Pengaturan sesi tersedia di prototipe penuh.">
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-settings"></use></svg>
+        Pengaturan sesi
+      </button>
+      <button class="menu__item" type="button" data-toast="Save sesi diekspor (contoh).">
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-download"></use></svg>
+        Export save
+      </button>
+      <button class="menu__item" type="button" data-toast="Ukuran teks diubah." data-textsize="large">
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-text"></use></svg>
+        Perbesar ukuran teks
+      </button>
+      <a class="menu__item" href="library.html">
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-library"></use></svg>
+        Kembali ke perpustakaan
+      </a>
+    </div>
+
+    <footer class="sheet__foot">
+      <button class="btn btn--ghost" type="button" data-close>Tutup</button>
+    </footer>
+  </div>
+</body>
+</html>

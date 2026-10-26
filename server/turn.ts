@@ -311,10 +311,28 @@ async function runStarted(
             nextState.world.activeCharacters.includes(id),
         )
         .map(({ id }) => id);
+      let joinedPresenceNpcIds: string[] = [];
+      if (nextState.world.locationId === knowledge.sceneLocationId) {
+        const finalSession = {
+          ...session,
+          definitionSnapshot: nextDefinitionSnapshot,
+          state: nextState,
+        };
+        const finalParticipants = narratorParticipants(finalSession, worldMap);
+        joinedPresenceNpcIds = outcome.response.effects.flatMap((effect) =>
+          effect.type === "NPC_PRESENCE" &&
+          effect.present &&
+          finalParticipants.includes(effect.npcId)
+            ? [effect.npcId]
+            : [],
+        );
+      }
       const recipients = [
         ...new Set([
           ...narratorParticipants(session, worldMap),
+          ...(knowledge.principalNpcId ? [knowledge.principalNpcId] : []),
           ...encounteredNpcIds,
+          ...joinedPresenceNpcIds,
         ]),
       ];
       const messageScope = {

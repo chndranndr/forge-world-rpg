@@ -25,7 +25,6 @@ test("frontend starts and renders app and narrative dialogue", async (t) => {
     const markup = renderToStaticMarkup(createElement(App));
     assert.match(markup, /<main class="main">/);
     assert.match(markup, /class="rail texture"/);
-    assert.match(markup, /<h1>Dunia untuk kembali\.<\/h1>/);
     assert.match(markup, /<nav aria-label="Navigasi utama">/);
     assert.match(markup, /Perpustakaan/);
     const { StoryMarkdown } = await server.ssrLoadModule(

@@ -63,6 +63,9 @@ import type {
 } from "../types";
 import { PLAYER_ID } from "../../shared/types";
 import exampleTemplate from "../../examples/game-template.json";
+import evolvingStoryLorebook from "../../examples/lorebook-evolving-story.json?raw";
+import evolvingStoryGame from "../../examples/lorebook-evolving-game.json?raw";
+import evolvingStoryGuide from "../../examples/lorebook-evolving-guide.md?raw";
 import { createUuid } from "../../shared/uuid";
 import { storyIllustration } from "../illustrations";
 
@@ -158,24 +161,47 @@ const EDITABLE_COLLECTIONS = [
   "npcs",
 ] as const;
 type EditableCollection = (typeof EDITABLE_COLLECTIONS)[number];
+const EDITOR_SECTION_GROUPS = [
+  { id: "story", label: "Dasar cerita" },
+  { id: "world", label: "Isi dunia" },
+  { id: "rules", label: "Aturan permainan" },
+  { id: "review", label: "Tinjau" },
+] as const;
 const EDITOR_SECTIONS = [
-  { id: "summary", label: "Ringkasan" },
-  { id: "scenario", label: "Skenario" },
-  { id: "player", label: "Pemain" },
-  { id: "attributes", label: "Atribut" },
-  { id: "resources", label: "Sumber daya" },
-  { id: "relationships", label: "Relasi" },
-  { id: "items", label: "Item" },
-  { id: "inventory", label: "Inventaris awal" },
-  { id: "npcs", label: "NPC" },
-  { id: "lorebook", label: "Lorebook" },
-  { id: "preview", label: "Pratinjau" },
+  { id: "summary", label: "Ringkasan", group: "story" },
+  { id: "scenario", label: "Skenario", group: "story" },
+  { id: "player", label: "Pemain", group: "story" },
+  { id: "worldmap", label: "Peta dunia", group: "world" },
+  { id: "npcs", label: "NPC", group: "world" },
+  { id: "items", label: "Item", group: "world" },
+  { id: "inventory", label: "Inventaris awal", group: "world" },
+  { id: "lorebook", label: "Lorebook", group: "world" },
+  { id: "attributes", label: "Atribut", group: "rules" },
+  { id: "resources", label: "Sumber daya", group: "rules" },
+  { id: "relationships", label: "Relasi", group: "rules" },
+  { id: "preview", label: "Pratinjau", group: "review" },
 ] as const;
 type EditorSectionId = (typeof EDITOR_SECTIONS)[number]["id"];
 
 function describeError(error: unknown, fallback: string): string {
   if (error instanceof ApiError) return `${error.code}: ${error.message}`;
   return error instanceof Error ? error.message : fallback;
+}
+
+function downloadText(
+  content: string,
+  filename: string,
+  mimeType: string,
+): void {
+  const url = URL.createObjectURL(new Blob([content], { type: mimeType }));
+  try {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 function defaultEffect(
@@ -352,6 +378,7 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
     const [profileRetry, setProfileRetry] = useState(0);
     const [entitiesExpanded, setEntitiesExpanded] = useState(true);
     const [issueFocusVersion, setIssueFocusVersion] = useState(0);
+    const [readinessOpen, setReadinessOpen] = useState(false);
     const [sectionSheetOpen, setSectionSheetOpen] = useState(false);
     const [previewAsideOpen, setPreviewAsideOpen] = useState(true);
     const sectionPanelRefs = useRef<
@@ -935,21 +962,29 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
       }
     };
 
+    const downloadEvolvingAsset = (
+      content: string,
+      filename: string,
+      mimeType: string,
+    ) => {
+      setLoreError(null);
+      try {
+        downloadText(content, filename, mimeType);
+      } catch (error) {
+        setLoreError(describeError(error, "Unduhan contoh gagal."));
+      }
+    };
+
     const handleExportLorebook = async () => {
       if (!loreRef) return;
       setLoreError(null);
       try {
         const pack = await exportLorebook(loreRef);
-        const url = URL.createObjectURL(
-          new Blob([JSON.stringify(pack, null, 2)], {
-            type: "application/json",
-          }),
+        downloadText(
+          JSON.stringify(pack, null, 2),
+          `lorebook-${loreRef.packId}-v${loreRef.version}.json`,
+          "application/json",
         );
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `lorebook-${loreRef.packId}-v${loreRef.version}.json`;
-        link.click();
-        URL.revokeObjectURL(url);
       } catch (error) {
         setLoreError(describeError(error, "Ekspor lorebook gagal."));
       }
@@ -1275,6 +1310,7 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
         }
         if (allErrors.length > 0) {
           setErrors(allErrors);
+          setReadinessOpen(true);
           return false;
         }
         const saved =
@@ -1320,6 +1356,11 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
       try {
         if (revision === null) {
           setErrors(["Simpan dunia ini sebelum memulai sesi."]);
+          setReadinessOpen(true);
+          return;
+        }
+        if (dirtyRef.current) {
+          setSaveNote("Simpan perubahan sebelum memulai sesi baru.");
           return;
         }
         const definitionErrors = [
@@ -1328,6 +1369,7 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
         ];
         if (definitionErrors.length > 0) {
           setErrors(definitionErrors);
+          setReadinessOpen(true);
           return;
         }
         setErrors([]);
@@ -1375,6 +1417,7 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
       Object.keys(rawIssues).length > 0 ||
       worldMapError !== null;
     dirtyRef.current = isDirty;
+    const saveState = revision === null ? "new" : isDirty ? "dirty" : "saved";
     const savedDefinitionErrors =
       revision === null
         ? []
@@ -1411,10 +1454,10 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
       if (
         text.includes("world map") ||
         text.includes("worldmap") ||
-        text.includes("startinglocationid") ||
-        text.includes("scenario.")
+        text.includes("startinglocationid")
       )
-        return "scenario";
+        return "worldmap";
+      if (text.includes("scenario.")) return "scenario";
       if (text.includes("relationshipparties")) return "relationships";
       if (text.includes("player") || text.includes("pemain")) return "player";
       if (text.includes("attributes") || text.includes("atribut"))
@@ -1483,6 +1526,13 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
           fieldKey: rawKey,
           ...(collection ? { collection, entityId } : {}),
         };
+      }
+
+      if (/^startinglocationid/i.test(message)) {
+        return { section: "worldmap", fieldKey: "startingLocationId" };
+      }
+      if (/^world ?map/i.test(message)) {
+        return { section: "worldmap", fieldKey: "worldMap" };
       }
 
       const inventoryIndex = message.match(/startingInventory\[(\d+)\]/i)?.[1];
@@ -1776,17 +1826,13 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
     const handleExportTemplate = () => {
       try {
         const bundle = exportTemplate(current);
-        const blob = new Blob([JSON.stringify(bundle, null, 2)], {
-          type: "application/json",
-        });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
         const slug =
           current.title.trim().replace(/\s+/g, "-").toLowerCase() || "template";
-        link.href = url;
-        link.download = `fworld-template-${slug}.json`;
-        link.click();
-        URL.revokeObjectURL(url);
+        downloadText(
+          JSON.stringify(bundle, null, 2),
+          `fworld-template-${slug}.json`,
+          "application/json",
+        );
         setSaveNote("Template diekspor dari draft saat ini (tanpa menyimpan).");
       } catch (err) {
         setSaveNote(
@@ -1865,6 +1911,8 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
           return current.npcs.length;
         case "lorebook":
           return current.lorebookRefs?.length ?? 0;
+        case "worldmap":
+          return current.worldMap?.locations.length ?? 0;
         default:
           return null;
       }
@@ -1992,8 +2040,27 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
       );
     };
 
+    const renderSectionTabs = (prefix: string) => (
+      <>
+        {EDITOR_SECTION_GROUPS.map((group) => (
+          <div
+            key={group.id}
+            className="editor-section-group"
+            role="presentation"
+          >
+            <p className="editor-section-group-label" role="presentation">
+              {group.label}
+            </p>
+            {EDITOR_SECTIONS.filter(
+              (section) => section.group === group.id,
+            ).map((section) => renderSectionTab(section, prefix))}
+          </div>
+        ))}
+      </>
+    );
+
     return (
-      <div className="editor-workshop paper editor-paper">
+      <div className="editor-workshop">
         <aside className="editor-rail" aria-label="Navigasi editor dunia">
           <button
             type="button"
@@ -2019,9 +2086,7 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
               aria-orientation="vertical"
               className="editor-section-tabs"
             >
-              {EDITOR_SECTIONS.map((section) =>
-                renderSectionTab(section, "rail"),
-              )}
+              {renderSectionTabs("rail")}
             </div>
           </nav>
           <button
@@ -2036,38 +2101,22 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
         </aside>
 
         <section className="editor-form-column">
-          <div className="row editor-toolbar" aria-label="Aksi editor">
-            <button
-              type="button"
-              onClick={handleExportTemplate}
-              disabled={working}
-            >
-              Ekspor template JSON
-            </button>
-            <label className="button">
-              Impor template JSON
-              <input
-                type="file"
-                accept="application/json"
-                className="visually-hidden"
-                onChange={(event) => void handleImportTemplate(event)}
-              />
-            </label>
-            <button
-              type="button"
-              onClick={handleLoadExample}
-              disabled={working}
-            >
-              Muat contoh
-            </button>
-            <button
-              type="button"
-              onClick={handleOpenSettings}
-              disabled={working}
-            >
-              Pengaturan
-            </button>
-          </div>
+          <header className="editor-intro">
+            <h2>{current.title.trim() || "Dunia tanpa judul"}</h2>
+            <p className="editor-save-state" data-state={saveState}>
+              {saveState === "new"
+                ? "Belum disimpan"
+                : saveState === "dirty"
+                  ? "Perubahan belum disimpan"
+                  : "Tersimpan"}
+            </p>
+            {revision === null && (
+              <p className="hint editor-start-hint">
+                Mulai dari Ringkasan, Skenario, dan Pemain. Bagian lain dapat
+                disesuaikan nanti.
+              </p>
+            )}
+          </header>
           <button
             type="button"
             ref={sectionButtonRef}
@@ -2089,45 +2138,79 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
                 ?.label
             }
           </button>
-          <header className="editor-intro">
-            <h2>{current.title.trim() || "Dunia tanpa judul"}</h2>
-            <p>
-              Perubahan pada dunia tersimpan hanya berlaku untuk sesi yang
-              dimulai setelah disimpan. Sesi yang sudah ada tetap menggunakan
-              snapshot awalnya.
-            </p>
-            {revision === null && (
-              <p className="editor-unsaved-note">
-                Draft ini belum disimpan. Simpan dunia sebelum memulai sesi.
-              </p>
-            )}
-            {isDirty && revision !== null && savedPlayable && (
-              <p className="editor-unsaved-note">
-                Perubahan yang belum disimpan belum berlaku. Mulai sesi tetap
-                memakai versi tersimpan.
-              </p>
-            )}
-          </header>
+          <details className="editor-utilities">
+            <summary>Alat dunia</summary>
+            <div className="row editor-toolbar" aria-label="Aksi editor">
+              <button
+                type="button"
+                onClick={handleExportTemplate}
+                disabled={working}
+              >
+                Ekspor template JSON
+              </button>
+              <label className="button">
+                Impor template JSON
+                <input
+                  type="file"
+                  accept="application/json"
+                  className="visually-hidden"
+                  onChange={(event) => void handleImportTemplate(event)}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={handleLoadExample}
+                disabled={working}
+              >
+                Muat contoh
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenSettings}
+                disabled={working}
+              >
+                Pengaturan
+              </button>
+            </div>
+          </details>
           {importError && (
             <p className="error" role="alert">
               {importError}
             </p>
           )}
           {saveNote && <p role="status">{saveNote}</p>}
-          <section
-            className="editor-session-note"
-            aria-labelledby="editor-session-note-heading"
-            aria-live="polite"
-          >
-            <h2 id="editor-session-note-heading">Sesi dunia ini</h2>
-            {revision === null ? (
-              <p>
-                Simpan draft lebih dulu untuk memeriksa sesi yang memakai versi
-                tersimpan.
-              </p>
-            ) : sessionsLoading ? (
-              <p role="status">Memeriksa daftar sesi tersimpan…</p>
-            ) : sessionsError ? (
+          <details className="editor-search">
+            <summary>Cari bidang</summary>
+            <label className="editor-field-search">
+              Cari bidang di{" "}
+              {
+                EDITOR_SECTIONS.find((section) => section.id === activeSection)
+                  ?.label
+              }
+              <input
+                type="search"
+                value={fieldSearch}
+                onChange={(event) => setFieldSearch(event.target.value)}
+                placeholder="Nama bidang…"
+                aria-controls={`editor-panel-${activeSection}`}
+              />
+            </label>
+          </details>
+          <section aria-live="polite">
+            <p className="hint">
+              {revision === null
+                ? "Sesi baru memakai versi tersimpan setelah dunia disimpan."
+                : sessionsLoading
+                  ? "Memeriksa jumlah sesi tersimpan…"
+                  : sessionsError
+                    ? "Jumlah sesi belum diketahui."
+                    : sessionsCount === null
+                      ? "Status sesi belum diketahui."
+                      : sessionsCount === 0
+                        ? "Belum ada sesi tersimpan."
+                        : `${sessionsCount} sesi tersimpan.`}
+            </p>
+            {revision !== null && sessionsError && (
               <div>
                 <p role="alert">
                   Daftar sesi belum dapat dimuat. Jumlah sesi belum diketahui,
@@ -2141,31 +2224,35 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
                   Coba periksa lagi
                 </button>
               </div>
-            ) : sessionsCount !== null && sessionsCount > 0 ? (
-              <p>
-                <strong>Perubahan ini hanya berlaku untuk sesi baru.</strong>{" "}
-                Sesi yang sudah ada tidak berubah.
-              </p>
-            ) : sessionsCount === 0 ? (
-              <p>Belum ada sesi tersimpan.</p>
-            ) : (
-              <p>Status sesi belum diketahui.</p>
             )}
+            <details className="editor-session-context">
+              <summary>Tentang sesi dunia ini</summary>
+              <p>
+                Perubahan pada dunia tersimpan hanya berlaku untuk sesi yang
+                dimulai setelah disimpan. Sesi yang sudah ada tetap menggunakan
+                snapshot awalnya.
+              </p>
+              {revision === null ? (
+                <p>
+                  Simpan draft lebih dulu untuk memeriksa sesi yang memakai
+                  versi tersimpan.
+                </p>
+              ) : sessionsLoading ? (
+                <p role="status">Memeriksa daftar sesi tersimpan…</p>
+              ) : sessionsError ? (
+                <p>Jumlah sesi belum diketahui.</p>
+              ) : sessionsCount !== null && sessionsCount > 0 ? (
+                <p>
+                  <strong>Perubahan ini hanya berlaku untuk sesi baru.</strong>{" "}
+                  Sesi yang sudah ada tidak berubah.
+                </p>
+              ) : sessionsCount === 0 ? (
+                <p>Belum ada sesi tersimpan.</p>
+              ) : (
+                <p>Status sesi belum diketahui.</p>
+              )}
+            </details>
           </section>
-          <label className="editor-field-search">
-            Cari bidang di{" "}
-            {
-              EDITOR_SECTIONS.find((section) => section.id === activeSection)
-                ?.label
-            }
-            <input
-              type="search"
-              value={fieldSearch}
-              onChange={(event) => setFieldSearch(event.target.value)}
-              placeholder="Nama bidang…"
-              aria-controls={`editor-panel-${activeSection}`}
-            />
-          </label>
           {(activeSection === "attributes" ||
             activeSection === "resources" ||
             activeSection === "relationships" ||
@@ -2184,22 +2271,31 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
             </div>
           ) : null}
           {readinessIssues.length > 0 && (
-            <ul
-              className="editor-error-list"
-              aria-label="Pemeriksaan yang perlu diperbaiki"
+            <details
+              className="editor-readiness"
+              open={readinessOpen}
+              onToggle={(event) => setReadinessOpen(event.currentTarget.open)}
             >
-              {readinessIssues.map((message, index) => (
-                <li key={`${message}-${index}`}>
-                  <button
-                    type="button"
-                    className="editor-issue-link"
-                    onClick={() => focusIssue(message)}
-                  >
-                    {message}
-                  </button>
-                </li>
-              ))}
-            </ul>
+              <summary>
+                {readinessIssues.length} pemeriksaan perlu diperbaiki
+              </summary>
+              <ul
+                className="editor-error-list"
+                aria-label="Pemeriksaan yang perlu diperbaiki"
+              >
+                {readinessIssues.map((message, index) => (
+                  <li key={`${message}-${index}`}>
+                    <button
+                      type="button"
+                      className="editor-issue-link"
+                      onClick={() => focusIssue(message)}
+                    >
+                      {message}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </details>
           )}
 
           <div className="editor-section-panels">
@@ -2587,9 +2683,19 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
                   />
                 </label>
               </details>
-
-              <details className="card" data-editor-collapsible>
-                <summary>Katalog dunia</summary>
+            </section>
+            <section
+              role="tabpanel"
+              id="editor-panel-worldmap"
+              aria-labelledby="editor-tab-rail-worldmap"
+              aria-label="Peta dunia"
+              ref={(element) => {
+                sectionPanelRefs.current.worldmap = element;
+              }}
+              hidden={activeSection !== "worldmap"}
+            >
+              <details className="card" open data-editor-collapsible>
+                <summary>Peta dunia</summary>
                 <p className="hint">
                   Masukkan katalog kecil yang tervalidasi. ID lokasi awal harus
                   cocok persis dengan ID pada peta atau lorebook yang dipin.
@@ -2669,13 +2775,56 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
               }}
               hidden={activeSection !== "lorebook"}
             >
-              <details className="card">
+              <details className="card" open>
                 <summary>Lorebook</summary>
                 <p className="hint">
                   Pack dicoba dahulu tanpa menulis. Pencarian menampilkan
                   halaman entri publik; ekspor pack adalah akses pembuat yang
                   terpisah.
                 </p>
+                <h3>Template cerita berkembang</h3>
+                <p className="hint">
+                  Contoh preman → residivis → mafia → politisi. Unduh lorebook,
+                  dunia pendamping, dan panduan; lalu sesuaikan isinya.
+                </p>
+                <div className="row">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      downloadEvolvingAsset(
+                        evolvingStoryLorebook,
+                        "lorebook-evolving-story.json",
+                        "application/json",
+                      )
+                    }
+                  >
+                    Unduh lorebook JSON
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      downloadEvolvingAsset(
+                        evolvingStoryGame,
+                        "lorebook-evolving-game.json",
+                        "application/json",
+                      )
+                    }
+                  >
+                    Unduh template dunia
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      downloadEvolvingAsset(
+                        evolvingStoryGuide,
+                        "lorebook-evolving-guide.md",
+                        "text/markdown;charset=utf-8",
+                      )
+                    }
+                  >
+                    Unduh panduan
+                  </button>
+                </div>
                 <label className="button">
                   Impor JSON lorebook (maks. 8 MiB)
                   <input
@@ -3084,7 +3233,7 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
               }}
               hidden={activeSection !== "player"}
             >
-              <details className="card">
+              <details className="card" open>
                 <summary>Pemain</summary>
                 <label>
                   Nama
@@ -3297,7 +3446,7 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
               }}
               hidden={activeSection !== "attributes"}
             >
-              <details className="card">
+              <details className="card" open>
                 <summary>Atribut</summary>
                 {current.attributes.map((attribute, index) => (
                   <details
@@ -3450,7 +3599,7 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
               }}
               hidden={activeSection !== "resources"}
             >
-              <details className="card">
+              <details className="card" open>
                 <summary>Sumber daya</summary>
                 {current.resources.map((resource, index) => (
                   <details
@@ -3604,7 +3753,7 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
               }}
               hidden={activeSection !== "relationships"}
             >
-              <details className="card">
+              <details className="card" open>
                 <summary>Relasi</summary>
                 {current.relationships.map((relationship, index) => (
                   <details
@@ -3938,7 +4087,7 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
               }}
               hidden={activeSection !== "items"}
             >
-              <details className="card">
+              <details className="card" open>
                 <summary>Item</summary>
                 {current.items.map((item, index) => (
                   <details
@@ -4681,7 +4830,7 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
               }}
               hidden={activeSection !== "inventory"}
             >
-              <details className="card">
+              <details className="card" open>
                 <summary>Inventaris awal</summary>
                 {current.startingInventory.map((entry, index) => (
                   <details
@@ -4887,7 +5036,7 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
               }}
               hidden={activeSection !== "npcs"}
             >
-              <details className="card">
+              <details className="card" open>
                 <summary>NPC</summary>
                 {current.npcs.map((npc, index) => (
                   <details
@@ -5112,31 +5261,50 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
           </div>
 
           <div className="sticky-actions editor-actions">
-            {revision === null || !savedPlayable ? (
+            {revision === null ? (
               <button
                 type="button"
                 className="primary"
                 onClick={handleSave}
                 disabled={working}
               >
-                Simpan
+                Simpan dunia
               </button>
-            ) : (
+            ) : isDirty ? (
               <>
                 <button
                   type="button"
                   className="primary"
-                  onClick={handleStart}
+                  onClick={handleSave}
                   disabled={working}
                 >
-                  Mulai sesi
+                  Simpan perubahan
                 </button>
-                {isDirty && (
-                  <button type="button" onClick={handleSave} disabled={working}>
-                    Simpan perubahan
-                  </button>
-                )}
+                <button type="button" disabled>
+                  Mulai sesi baru
+                </button>
+                <p className="editor-start-disabled">
+                  Simpan perubahan sebelum memulai sesi baru.
+                </p>
               </>
+            ) : savedPlayable ? (
+              <button
+                type="button"
+                className="primary"
+                onClick={handleStart}
+                disabled={working}
+              >
+                Mulai sesi baru
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="primary"
+                onClick={handleSave}
+                disabled={working}
+              >
+                Simpan dunia
+              </button>
             )}
           </div>
 
@@ -5222,9 +5390,7 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
             aria-orientation="vertical"
             className="editor-section-tabs"
           >
-            {EDITOR_SECTIONS.map((section) =>
-              renderSectionTab(section, "sheet"),
-            )}
+            {renderSectionTabs("sheet")}
           </div>
         </dialog>
 
@@ -5253,6 +5419,7 @@ export default forwardRef<GameEditorHandle, GameEditorProps>(
 
         <dialog
           ref={discardDialogRef}
+          className="editor-discard-dialog"
           onClose={() => {
             setPendingExit(null);
             backButtonRef.current?.focus();

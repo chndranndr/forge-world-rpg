@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Pengaturan - Fworld</title>
+  <meta name="description" content="Pengaturan Fworld: koneksi AI, profil narator, tampilan teks, backup, dan status backend lokal.">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/tokens.css">
+  <link rel="stylesheet" href="assets/app.css">
+  <script src="assets/app.js" defer></script>
+</head>
+<body class="settings-page">
+  <a class="skip-link" href="#main">Langsung ke isi</a>
+
+  <div class="shell">
+    <aside class="rail texture texture--leather" aria-label="Navigasi utama">
+      <a class="rail__brand" href="index.html" aria-label="Fworld, beranda prototipe">
+        <span class="brand-mark" aria-hidden="true">F</span>
+        <span>
+          <span class="brand-word">Fworld</span>
+          <span class="brand-sub">Ruang cerita</span>
+        </span>
+      </a>
+
+      <nav class="rail__nav" aria-label="Jelajahi">
+        <p class="rail__label">Jelajahi</p>
+        <a class="nav-link" href="library.html">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-library"></use></svg>
+          Perpustakaan
+          <span class="nav-link__count">06</span>
+        </a>
+        <a class="nav-link" href="settings.html" aria-current="page">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-settings"></use></svg>
+          Pengaturan
+        </a>
+      </nav>
+
+      <div class="rail__recent">
+        <p class="rail__label">Dunia terakhir</p>
+        <a class="recent-link" href="session.html">
+          <span class="recent-link__title">Lentera di Hutan</span>
+          <span class="recent-link__meta">Sesi 4 &middot; 2 jam lalu</span>
+        </a>
+        <a class="recent-link" href="world.html">
+          <span class="recent-link__title">Pesisir Utara</span>
+          <span class="recent-link__meta">Sesi 12 &middot; kemarin</span>
+        </a>
+        <a class="recent-link" href="world.html">
+          <span class="recent-link__title">Arsip Hujan</span>
+          <span class="recent-link__meta">Sesi 2 &middot; 3 hari lalu</span>
+        </a>
+      </div>
+
+      <div class="rail__foot">
+        <p class="status-line">
+          <span class="status-dot status-dot--ok" aria-hidden="true"></span>
+          Backend lokal aktif
+        </p>
+        <p class="rail__version">Fworld 0.9 &middot; prototipe</p>
+      </div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <a class="topbar__back" href="library.html" aria-label="Kembali ke perpustakaan">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-arrow-left"></use></svg>
+        </a>
+        <p class="topbar__title">Pengaturan</p>
+        <div class="topbar__actions">
+          <a class="icon-btn" href="library.html" aria-label="Perpustakaan">
+            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-library"></use></svg>
+          </a>
+        </div>
+      </header>
+
+      <main id="main" class="page">
+        <div class="page__inner">
+          <header class="page-head">
+            <p class="eyebrow">Pengaturan</p>
+            <div class="page-head__row">
+              <div>
+                <h1 class="page-title">Atur ruang cerita.</h1>
+                <p class="page-lede">Koneksi, suara narator, dan data cerita tinggal di perangkat ini. Tidak ada kunci yang ditampilkan kembali setelah disimpan.</p>
+              </div>
+              <p class="mono faint">Tersimpan lokal &middot; Fworld 0.9</p>
+            </div>
+          </header>
+
+          <div class="settings-shell" data-tabs data-tab-hash>
+            <nav class="subnav" role="tablist" aria-label="Bagian pengaturan">
+              <button class="subnav__link" id="ai" type="button" role="tab" aria-selected="true" aria-controls="panel-ai" tabindex="0">
+                <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-feather"></use></svg>
+                AI
+              </button>
+              <button class="subnav__link" id="profil-ai" type="button" role="tab" aria-selected="false" aria-controls="panel-profil-ai" tabindex="-1">
+                <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-user"></use></svg>
+                Profil AI
+              </button>
+              <button class="subnav__link" id="tampilan" type="button" role="tab" aria-selected="false" aria-controls="panel-tampilan" tabindex="-1">
+                <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-text"></use></svg>
+                Tampilan
+              </button>
+              <button class="subnav__link" id="data" type="button" role="tab" aria-selected="false" aria-controls="panel-data" tabindex="-1">
+                <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-layers"></use></svg>
+                Data &amp; pemulihan
+              </button>
+              <button class="subnav__link" id="backend" type="button" role="tab" aria-selected="false" aria-controls="panel-backend" tabindex="-1">
+                <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-folder"></use></svg>
+                Tentang backend
+              </button>
+            </nav>
+
+            <div class="settings-main">
+              <section class="panel" id="panel-ai" role="tabpanel" aria-labelledby="ai" tabindex="0">
+                <div class="panel__head">
+                  <div>
+                    <h2 class="panel__title">AI</h2>
+                    <p class="panel__desc">Satu koneksi aktif dipakai untuk narator, pilihan aksi, dan pemeriksaan konsistensi.</p>
+                  </div>
+                  <span class="badge badge--ready"><span class="badge__dot" aria-hidden="true"></span>Aktif</span>
+                </div>
+
+                <div class="panel-group">
+                  <p class="panel-group__title">Koneksi</p>
+                  <div class="field-grid">
+                    <div class="field">
+                      <label class="field__label" for="provider">Provider</label>
+                      <div class="select-wrap">
+                        <select class="select" id="provider" name="provider">
+                          <option selected>OpenAI-compatible</option>
+                          <option>Ollama (lokal)</option>
+                          <option>LM Studio (lokal)</option>
+                        </select>
+                        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                      </div>
+                      <p class="field__hint">Endpoint dan format permintaan mengikuti provider.</p>
+                    </div>
+                    <div class="field">
+                      <label class="field__label" for="model">Model</label>
+                      <div class="select-wrap">
+                        <select class="select" id="model" name="model">
+                          <option selected>narrator-large-01</option>
+                          <option>narrator-fast-01</option>
+                          <option>lore-reader-01</option>
+                        </select>
+                        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+                      </div>
+                      <p class="field__hint">Model cepat cocok untuk giliran pendek; model besar untuk adegan panjang.</p>
+                    </div>
+                    <div class="field field--full">
+                      <span class="field__label">Kunci API</span>
+                      <div class="credential">
+                        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-lock"></use></svg>
+                        <code>Tersimpan di backend lokal</code>
+                        <button class="btn btn--sm btn--secondary" type="button" data-open="sheet-key">Ganti key</button>
+                      </div>
+                      <p class="field__hint">Kunci tidak pernah ditampilkan lagi. Status saja yang terlihat di sini.</p>
+                    </div>
+                  </div>
+
+                  <div class="cluster">
+                    <button class="btn btn--secondary" type="button" data-test-connection>
+                      <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-refresh"></use></svg>
+                      Uji koneksi
+                    </button>
+                    <span class="status-line"><span class="status-dot status-dot--ok" aria-hidden="true"></span>Terhubung &middot; 42 ms</span>
+                  </div>
+                </div>
+
+                <div class="panel-group">
+                  <p class="panel-group__title">Narator</p>
+                  <div class="field">
+                    <label class="field__label" for="prompt-narator">
+                      Prompt narator
+                      <span class="field__optional">Dipakai setiap giliran</span>
+                    </label>
+                    <textarea class="textarea textarea--prose" id="prompt-narator" maxlength="8000" data-prompt-narator>Kamu adalah narator Fworld. Tulis dalam bahasa Indonesia dengan sudut pandang orang kedua. Jaga adegan tetap tenang dan sinematik: satu gambar konkret, satu indra, satu keputusan. Jangan mengulang pilihan yang sudah lewat, jangan menyebut angka giliran, dan jangan mengambil alih tindakan pemain. Akhiri setiap giliran dengan ruang untuk bertindak, bukan dengan kesimpulan.</textarea>
+                    <div class="spread">
+                      <p class="field__hint">Nada, batasan, dan format keluaran. Perubahan berlaku pada giliran berikutnya.</p>
+                      <span class="char-count" data-prompt-count>373 / 8.000</span>
+                    </div>
+                  </div>
+                  <div>
+                    <button class="btn btn--ghost btn--sm" type="button" data-reset-prompt>Pulihkan prompt bawaan</button>
+                  </div>
+                </div>
+
+                <div class="panel__foot">
+                  <p class="mono faint">Terakhir diubah hari ini, 09.14</p>
+                  <button class="btn btn--primary" type="button" data-save-ai>Simpan pengaturan AI</button>
+                </div>
+              </section>
+
+              <section class="panel" id="panel-profil-ai" role="tabpanel" aria-labelledby="profil-ai" tabindex="0" hidden>
+                <div class="panel__head">
+                  <div>
+                    <h2 class="panel__title">Profil AI</h2>
+                    <p class="panel__desc">Profil menyimpan pasangan provider dan model. Satu profil menjadi bawaan untuk dunia baru.</p>
+                  </div>
+                  <button class="btn btn--secondary btn--sm" type="button" data-open="sheet-profile">
+                    <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-plus"></use></svg>
+                    Tambah profil
+                  </button>
+                </div>
+
+                <div>
+                  <div class="profile-row">
+                    <div>
+                      <p class="profile-row__name">Narator utama <span class="badge badge--active"><span class="badge__dot" aria-hidden="true"></span>Bawaan</span></p>
+                      <p class="profile-row__meta">OPENAI-COMPATIBLE &middot; NARRATOR-LARGE-01 &middot; KUNCI TERSIMPAN</p>
+                    </div>
+                    <div class="cluster">
+                      <button class="btn btn--ghost btn--sm" type="button" data-open="sheet-profile">Ubah</button>
+                      <button class="icon-btn icon-btn--sm" type="button" aria-label="Menu profil Narator utama" data-toast="Menu profil (contoh).">
+                        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-more"></use></svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="profile-row">
+                    <div>
+                      <p class="profile-row__name">Narator cepat</p>
+                      <p class="profile-row__meta">OLLAMA &middot; LLAMA3.2 &middot; LOKAL, TANPA KUNCI</p>
+                    </div>
+                    <div class="cluster">
+                      <button class="btn btn--ghost btn--sm" type="button" data-open="sheet-profile">Ubah</button>
+                      <button class="icon-btn icon-btn--sm" type="button" aria-label="Menu profil Narator cepat" data-toast="Menu profil (contoh).">
+                        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-more"></use></svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="profile-row">
+                    <div>
+                      <p class="profile-row__name">Editor lore</p>
+                      <p class="profile-row__meta">OPENAI-COMPATIBLE &middot; LORE-READER-01 &middot; KUNCI TERSIMPAN</p>
+                    </div>
+                    <div class="cluster">
+                      <button class="btn btn--ghost btn--sm" type="button" data-open="sheet-profile">Ubah</button>
+                      <button class="icon-btn icon-btn--sm" type="button" aria-label="Menu profil Editor lore" data-toast="Menu profil (contoh).">
+                        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-more"></use></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <p class="field__hint">Mengubah profil tidak menimpa sesi yang sedang berjalan. Dunia memakai profil yang tercatat saat sesi dimulai.</p>
+              </section>
+
+              <section class="panel" id="panel-tampilan" role="tabpanel" aria-labelledby="tampilan" tabindex="0" hidden>
+                <div class="panel__head">
+                  <div>
+                    <h2 class="panel__title">Tampilan</h2>
+                    <p class="panel__desc">Ukuran teks berlaku langsung. Tema mengikuti layar: malam untuk membaca, kertas untuk menyunting.</p>
+                  </div>
+                </div>
+
+                <div class="panel-group">
+                  <p class="panel-group__title">Ukuran teks</p>
+                  <div class="spread">
+                    <div>
+                      <p class="field__label">Teks antarmuka dan cerita</p>
+                      <p class="field__hint">Pilihan disimpan di peramban ini dan langsung diterapkan.</p>
+                    </div>
+                    <div class="segmented" role="group" aria-label="Ukuran teks">
+                      <button class="segmented__btn" type="button" data-textsize="normal" aria-pressed="true">Normal</button>
+                      <button class="segmented__btn" type="button" data-textsize="large" aria-pressed="false">Besar</button>
+                    </div>
+                  </div>
+
+                  <div class="sample-text" aria-label="Contoh teks cerita">
+                    Hujan berhenti sebelum fajar. Di dermaga, lentera terakhir berayun pelan, dan seseorang menunggu dengan mantel yang terlalu tebal untuk musim ini.
+                    <strong>&ldquo;Kau datang lebih cepat dari yang kuduga.&rdquo;</strong>
+                  </div>
+                </div>
+
+                <div class="banner banner--info">
+                  <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-lock"></use></svg>
+                  <div class="banner__body">
+                    <p class="banner__title">Tema tidak bisa diganti manual</p>
+                    <p class="banner__text">Shell malam dan editor kertas adalah satu sistem bahan. Preferensi kontras tinggi tetap dihormati bila perangkat memintanya.</p>
+                  </div>
+                </div>
+              </section>
+
+              <section class="panel" id="panel-data" role="tabpanel" aria-labelledby="data" tabindex="0" hidden>
+                <div class="panel__head">
+                  <div>
+                    <h2 class="panel__title">Data &amp; pemulihan</h2>
+                    <p class="panel__desc">Cadangan menjaga dunia, sesi, dan lorebook. Kunci API tidak ikut tersimpan di berkas backup.</p>
+                  </div>
+                </div>
+
+                <div class="panel-group">
+                  <p class="panel-group__title">Backup backend</p>
+                  <p class="panel__desc">Buat salinan lengkap dari semua dunia di perangkat ini. Simpan berkasnya di luar folder aplikasi.</p>
+                  <div>
+                    <button class="btn btn--secondary" type="button" data-backup-now>
+                      <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-download"></use></svg>
+                      Buat backup sekarang
+                    </button>
+                  </div>
+                  <div class="backup-list">
+                    <div class="backup-row">
+                      <div>
+                        <p class="strong">fworld-backup-2026-10-19</p>
+                        <p class="profile-row__meta">19 OKT 2026 &middot; 18,4 MB &middot; 6 DUNIA</p>
+                      </div>
+                      <button class="btn btn--ghost btn--sm" type="button" data-open="dialog-restore">Pulihkan</button>
+                    </div>
+                    <div class="backup-row">
+                      <div>
+                        <p class="strong">fworld-backup-2026-10-12</p>
+                        <p class="profile-row__meta">12 OKT 2026 &middot; 16,1 MB &middot; 5 DUNIA</p>
+                      </div>
+                      <button class="btn btn--ghost btn--sm" type="button" data-open="dialog-restore">Pulihkan</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="panel-group">
+                  <p class="panel-group__title">Restore save</p>
+                  <p class="panel__desc">Pulihkan satu sesi dari berkas save terpisah tanpa menyentuh dunia lain.</p>
+                  <div class="cluster">
+                    <button class="btn btn--secondary" type="button" data-open="dialog-restore">
+                      <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-upload"></use></svg>
+                      Pilih berkas save
+                    </button>
+                    <span class="field__hint">Format .fworld-save &middot; maksimal 24 MB</span>
+                  </div>
+                </div>
+
+                <div class="panel-group">
+                  <p class="panel-group__title">Migrasi IndexedDB</p>
+                  <p class="panel__desc">Pindahkan data lokal ke skema baru. Dunia lama tetap bisa dibuka setelah migrasi selesai.</p>
+                  <div class="danger-zone">
+                    <p class="danger-zone__title">Migrasi mengubah struktur penyimpanan</p>
+                    <p class="danger-zone__text">Buat backup sebelum melanjutkan. Proses berjalan di perangkat ini dan tidak mengirim data ke mana pun.</p>
+                    <div>
+                      <button class="btn btn--secondary btn--sm" type="button" data-open="dialog-migrate">Mulai migrasi</button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="panel" id="panel-backend" role="tabpanel" aria-labelledby="backend" tabindex="0" hidden>
+                <div class="panel__head">
+                  <div>
+                    <h2 class="panel__title">Tentang backend</h2>
+                    <p class="panel__desc">Diagnostik singkat untuk memastikan aplikasi berbicara dengan server lokal yang benar.</p>
+                  </div>
+                  <span class="badge badge--ready"><span class="badge__dot" aria-hidden="true"></span>Sehat</span>
+                </div>
+
+                <dl class="backend-grid">
+                  <div class="backend-row"><dt>Origin lokal</dt><dd>http://127.0.0.1:8787</dd></div>
+                  <div class="backend-row"><dt>Status server</dt><dd>Aktif &middot; 42 ms</dd></div>
+                  <div class="backend-row"><dt>Versi skema</dt><dd>v4 &middot; 2026-09-18</dd></div>
+                  <div class="backend-row"><dt>Penyimpanan</dt><dd>IndexedDB &middot; 18,4 MB</dd></div>
+                  <div class="backend-row"><dt>Runtime</dt><dd>Node 22.11 &middot; lokal</dd></div>
+                </dl>
+
+                <div class="panel-group">
+                  <p class="panel-group__title">Baris diagnostik</p>
+                  <div class="diag-line">
+                    <code id="diag-line">fworld 0.9 &middot; backend ok &middot; schema v4 &middot; origin 127.0.0.1:8787</code>
+                    <button class="icon-btn icon-btn--sm" type="button" aria-label="Salin baris diagnostik" data-copy="#diag-line">
+                      <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-copy"></use></svg>
+                    </button>
+                  </div>
+                  <p class="field__hint">Tempelkan baris ini saat melapor masalah. Tidak ada kunci atau isi cerita di dalamnya.</p>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <nav class="tabbar" aria-label="Navigasi bawah">
+        <a class="tabbar__link" href="library.html">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-library"></use></svg>
+          Perpustakaan
+        </a>
+        <a class="tabbar__link" href="settings.html" aria-current="page">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-settings"></use></svg>
+          Pengaturan
+        </a>
+      </nav>
+    </div>
+  </div>
+
+  <div class="scrim" data-scrim></div>
+
+  <section class="sheet sheet--right" id="sheet-key" aria-labelledby="sheet-key-title" aria-hidden="true">
+    <div class="sheet__head">
+      <div>
+        <p class="sheet__eyebrow">Kredensial</p>
+        <h2 class="sheet__title" id="sheet-key-title">Ganti kunci API</h2>
+      </div>
+      <button class="icon-btn" type="button" aria-label="Tutup" data-close>
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-close"></use></svg>
+      </button>
+    </div>
+    <div class="sheet__body">
+      <p class="field__hint">Kunci baru menggantikan kunci lama setelah disimpan. Nilainya tidak akan ditampilkan lagi.</p>
+      <div class="field">
+        <label class="field__label" for="api-key">Kunci API baru</label>
+        <input class="input input--mono" id="api-key" type="password" autocomplete="off" placeholder="sk-...">
+        <p class="field__hint">Disimpan hanya di backend lokal. Jangan gunakan kunci bersama.</p>
+      </div>
+      <div class="credential">
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-lock"></use></svg>
+        <code data-key-status>Status: kunci lama tersimpan</code>
+      </div>
+    </div>
+    <div class="sheet__foot">
+      <button class="btn btn--ghost" type="button" data-close>Batal</button>
+      <button class="btn btn--primary" type="button" data-save-key>Simpan key</button>
+    </div>
+  </section>
+
+  <section class="sheet sheet--right" id="sheet-profile" aria-labelledby="sheet-profile-title" aria-hidden="true">
+    <div class="sheet__head">
+      <div>
+        <p class="sheet__eyebrow">Profil AI</p>
+        <h2 class="sheet__title" id="sheet-profile-title">Ubah profil</h2>
+      </div>
+      <button class="icon-btn" type="button" aria-label="Tutup" data-close>
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-close"></use></svg>
+      </button>
+    </div>
+    <div class="sheet__body">
+      <div class="field">
+        <label class="field__label" for="profile-name">Nama profil</label>
+        <input class="input" id="profile-name" type="text" value="Narator utama">
+      </div>
+      <div class="field-grid">
+        <div class="field">
+          <label class="field__label" for="profile-provider">Provider</label>
+          <div class="select-wrap">
+            <select class="select" id="profile-provider">
+              <option selected>OpenAI-compatible</option>
+              <option>Ollama (lokal)</option>
+              <option>LM Studio (lokal)</option>
+            </select>
+            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-chevron-down"></use></svg>
+          </div>
+        </div>
+        <div class="field">
+          <label class="field__label" for="profile-model">Model</label>
+          <input class="input input--mono" id="profile-model" type="text" value="narrator-large-01">
+        </div>
+      </div>
+      <label class="check">
+        <input type="checkbox" checked>
+        <span class="check__box" aria-hidden="true"></span>
+        <span>Jadikan profil bawaan untuk dunia baru</span>
+      </label>
+      <div class="panel-group">
+        <p class="panel-group__title">Kredensial</p>
+        <div class="credential">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#i-lock"></use></svg>
+          <code>Tersimpan &middot; kunci tidak ditampilkan</code>
+          <button class="btn btn--sm btn--secondary" type="button" data-open="sheet-key">Ganti key</button>
+        </div>
+      </div>
+    </div>
+    <div class="sheet__foot">
+      <button class="btn btn--ghost" type="button" data-close>Batal</button>
+      <button class="btn btn--primary" type="button" data-save-profile>Simpan profil</button>
+    </div>
+  </section>
+
+  <div class="dialog" id="dialog-restore" role="dialog" aria-modal="true" aria-labelledby="restore-title" aria-hidden="true">
+    <h2 class="dialog__title" id="restore-title">Pulihkan data ini?</h2>
+    <p class="dialog__body">Dunia dan sesi yang ada akan diganti dengan isi backup. <strong>Backup terbaru tetap disimpan</strong> sebagai salinan sebelum pemulihan.</p>
+    <p class="dialog__note">Jangan tutup tab selama proses berjalan.</p>
+    <div class="dialog__actions">
+      <button class="btn btn--ghost" type="button" data-close>Batal</button>
+      <button class="btn btn--primary" type="button" data-confirm-action="Backup dipulihkan (contoh).">Pulihkan</button>
+    </div>
+  </div>
+
+  <div class="dialog" id="dialog-migrate" role="dialog" aria-modal="true" aria-labelledby="migrate-title" aria-hidden="true">
+    <h2 class="dialog__title" id="migrate-title">Mulai migrasi IndexedDB?</h2>
+    <p class="dialog__body">Skema penyimpanan akan dinaikkan ke v4. Dunia lama tetap tersedia, tetapi aplikasi tidak bisa dibuka di versi lama setelah migrasi.</p>
+    <p class="dialog__note">Buat backup lebih dulu bila kamu belum melakukannya.</p>
+    <div class="dialog__actions">
+      <button class="btn btn--ghost" type="button" data-close>Batal</button>
+      <button class="btn btn--secondary" type="button" data-backup-now>Backup dulu</button>
+      <button class="btn btn--primary" type="button" data-confirm-action="Migrasi dimulai (contoh).">Mulai migrasi</button>
+    </div>
+  </div>
+</body>
+</html>

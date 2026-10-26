@@ -28,6 +28,7 @@ export const MAX_REPAIR_TEXT_CHARS = 8_000;
 
 const SECTION_CHAR_LIMITS = {
   npcProfiles: 4_500,
+  npcIdentities: 1_200,
   relationships: 2_000,
   inventory: 1_800,
   facts: 1_800,
@@ -123,9 +124,26 @@ function isExplicitlyAddressed(text: string, identity: string): boolean {
   return false;
 }
 
+function narratorSceneLocationId(
+  session: GameSession,
+  worldMap: WorldMap | undefined,
+  movement: MovementCandidate | undefined,
+): string | undefined {
+  const locationId = session.state.world.locationId;
+  if (
+    movement?.kind === "allowed" &&
+    movement.fromId === locationId &&
+    worldMap?.locations.some(({ id }) => id === movement.toId)
+  ) {
+    return movement.toId;
+  }
+  return locationId;
+}
+
 export function narratorParticipants(
   session: GameSession,
   worldMap = session.worldMap,
+  locationId = session.state.world.locationId,
 ): string[] {
   const { definitionSnapshot: definition, state } = session;
   const knownNpcIds = definition.npcs.map((npc) => npc.id);
@@ -133,7 +151,7 @@ export function narratorParticipants(
   const ids = worldMap
     ? sceneParticipants(
         worldMap,
-        state.world.locationId,
+        locationId,
         state.world.npcPresence,
         knownNpcIds,
       )
@@ -143,19 +161,51 @@ export function narratorParticipants(
   return [...new Set(["player", ...ids])].slice(0, 7);
 }
 
+export interface NarratorScene {
+  locationId: string | undefined;
+  principalNpcId: string | undefined;
+}
+
+export function resolveNarratorScene(
+  session: GameSession,
+  playerAction: string,
+  worldMap: WorldMap | undefined,
+  movement: MovementCandidate | undefined,
+): NarratorScene {
+  const originId = session.state.world.locationId;
+  const destinationId = narratorSceneLocationId(session, worldMap, movement);
+  const addressedAt = (locationId: string | undefined) => {
+    const localNpcIds = new Set(
+      narratorParticipants(session, worldMap, locationId),
+    );
+    const addressed = session.definitionSnapshot.npcs.filter(
+      (npc) =>
+        localNpcIds.has(npc.id) &&
+        (isExplicitlyAddressed(playerAction, npc.id) ||
+          isExplicitlyAddressed(playerAction, npc.name)),
+    );
+    return addressed.length === 1 ? addressed[0].id : undefined;
+  };
+  const destinationPrincipal = addressedAt(destinationId);
+  if (destinationPrincipal !== undefined || destinationId === originId) {
+    return { locationId: destinationId, principalNpcId: destinationPrincipal };
+  }
+  // "Ask Aiko, then travel" keeps the departure-scene principal; the arrival
+  // scene wins for everything else so destination NPCs stay addressable.
+  const originPrincipal = addressedAt(originId);
+  return originPrincipal === undefined
+    ? { locationId: destinationId, principalNpcId: undefined }
+    : { locationId: originId, principalNpcId: originPrincipal };
+}
+
 export function selectPrincipalNpc(
   session: GameSession,
   playerAction: string,
   worldMap = session.worldMap,
+  movement?: MovementCandidate,
 ): string | undefined {
-  const localNpcIds = new Set(narratorParticipants(session, worldMap));
-  const addressed = session.definitionSnapshot.npcs.filter(
-    (npc) =>
-      localNpcIds.has(npc.id) &&
-      (isExplicitlyAddressed(playerAction, npc.id) ||
-        isExplicitlyAddressed(playerAction, npc.name)),
-  );
-  return addressed.length === 1 ? addressed[0].id : undefined;
+  return resolveNarratorScene(session, playerAction, worldMap, movement)
+    .principalNpcId;
 }
 
 function movementContext(movement: MovementCandidate | undefined) {
@@ -300,6 +350,21 @@ const EMPTY_DISCOVERY_HANDLES: ReadonlyMap<string, string> = new Map<
   string
 >();
 
+const REGISTER_ITEM_INSTRUCTIONS = [
+  "Dynamic items: REGISTER_ITEM creates one session-local item definition and immediately grants quantity copies to the player inventory. Its effects are stored now and validated only when the player uses the item, so registration itself changes no stat, resource, fact, or flag.",
+  'Payload: {"type":"REGISTER_ITEM","id":"item-<slug>","name":"...","description":"...","stackable":false,"maxStack":3,"consumable":true,"effects":[],"tags":["dokumen"],"quantity":1}.',
+  "Required fields: type, id, name, stackable, consumable, effects, tags, quantity. Optional fields: description and maxStack. effects and tags must be arrays and may be empty; quantity and maxStack are integers of at least 1. Effects use the existing effect shapes only; never invent an effect type.",
+  "Generate a fresh unused lowercase ASCII id from the name as a slug prefixed with item- (for example item-surat-rekomendasi, at most 128 characters) and add a numeric suffix on conflict. Never reuse an id already used by the player, game, stat, resource, relationship, NPC, relationship party, location, or item.",
+  "Register an item only when the story has just established that the player receives something whose exact id is not in the session snapshot. If the snapshot already contains that id, use ADD_ITEM with that id instead of a second definition; a duplicate name is rejected and the error names the existing id. Do not nest REGISTER_ITEM or REGISTER_NPC inside effects.",
+  "Description, tags, and effects must describe properties already established by the story, never arbitrary rewards. Every effect target must already exist in the snapshot or current context: stats, resources, relationships, NPCs, inventory items, declared flags, and lore ids shown as discovery candidates or already discovered.",
+].join("\n");
+
+function effectiveNarratorSystem(input: NarratorContextInput): string {
+  const stored = normalizeNarratorSystemPrompt(input.session.ai.systemPrompt);
+  if (input.kind !== "turn") return stored;
+  return `${stored}\n\n${REGISTER_ITEM_INSTRUCTIONS}`;
+}
+
 export function buildNarratorContext(
   input: NarratorContextInput,
   discoveryHandlesByLoreId: ReadonlyMap<
@@ -311,7 +376,7 @@ export function buildNarratorContext(
     string
   > = EMPTY_DISCOVERY_HANDLES,
 ): PreparedNarratorContext {
-  const system = normalizeNarratorSystemPrompt(input.session.ai.systemPrompt);
+  const system = effectiveNarratorSystem(input);
   if (input.playerAction.length > MAX_ACTION_CHARS) {
     throw new Error(`Aksi pemain melebihi batas ${MAX_ACTION_CHARS} karakter.`);
   }
@@ -325,11 +390,13 @@ export function buildNarratorContext(
   const session = input.session;
   const definition = session.definitionSnapshot;
   const state = session.state;
-  const principalNpcId = selectPrincipalNpc(
+  const scene = resolveNarratorScene(
     session,
     input.playerAction,
     input.worldMap,
+    input.movement,
   );
+  const principalNpcId = scene.principalNpcId;
   const history = candidateHistory.filter(
     (message) =>
       message.visibility === "public" ||
@@ -337,11 +404,23 @@ export function buildNarratorContext(
         message.knownBy?.includes(principalNpcId ?? "player")) ||
       (!principalNpcId && message.visibility === undefined),
   );
-  const participants = narratorParticipants(session, input.worldMap);
+  const participants = narratorParticipants(
+    session,
+    input.worldMap,
+    scene.locationId,
+  );
   const participantNpcIds = participants.filter((id) => id !== "player");
   const localNpcs = definition.npcs.filter((npc) =>
     participantNpcIds.includes(npc.id),
   );
+  const sceneNpcIds = new Set(participantNpcIds);
+  const knownNpcIdentityCandidates = Object.keys(state.world.npcPresence ?? {})
+    .filter((npcId) => !sceneNpcIds.has(npcId))
+    .flatMap((npcId) => {
+      const npc = definition.npcs.find((candidate) => candidate.id === npcId);
+      return npc ? [{ id: npc.id, name: npc.name.slice(0, 200) }] : [];
+    });
+  const knownNpcIdentities: Array<{ id: string; name: string }> = [];
   const selectedWorldFlags = Object.fromEntries(
     Object.entries(state.world.flags ?? {}).slice(0, 64),
   );
@@ -558,6 +637,7 @@ export function buildNarratorContext(
       },
     },
     activeNpcs: [] as Array<Record<string, unknown>>,
+    ...(knownNpcIdentityCandidates.length ? { knownNpcIdentities } : {}),
     npcKnowledge: principalNpc
       ? {
           npcId: principalNpc.id,
@@ -763,6 +843,17 @@ export function buildNarratorContext(
     profileCandidates,
     SECTION_CHAR_LIMITS.npcProfiles,
   );
+  if (knownNpcIdentityCandidates.length) {
+    addCandidates(
+      "npcIdentities",
+      knownNpcIdentities,
+      knownNpcIdentityCandidates,
+      SECTION_CHAR_LIMITS.npcIdentities,
+    );
+    if (knownNpcIdentities.length === 0) {
+      Reflect.deleteProperty(context, "knownNpcIdentities");
+    }
+  }
 
   const relationshipNpc = principalNpcId
     ? localNpcs.filter((npc) => npc.id === principalNpcId)
@@ -1083,7 +1174,7 @@ export function buildNarratorRepair(
   input: NarratorContextInput,
   baseTelemetry: ContextTelemetry,
 ): { prompt: string; telemetry: ContextTelemetry } {
-  const system = normalizeNarratorSystemPrompt(input.session.ai.systemPrompt);
+  const system = effectiveNarratorSystem(input);
   const base = JSON.parse(originalPrompt) as Record<string, unknown>;
   const recent = Array.isArray(base.recentMessages)
     ? [...base.recentMessages]

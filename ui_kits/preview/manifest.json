@@ -1,0 +1,13 @@
+﻿{
+  "title": "Fworld design system review cards",
+  "description": "Focused previews tied to preserved Fworld tokens, fonts, artwork, and source screens.",
+  "cards": [
+    {"id":"colors","title":"Colors","path":"colors.html","evidence":"assets/tokens.css"},
+    {"id":"typography","title":"Typography","path":"typography.html","evidence":"fonts/*.woff2"},
+    {"id":"spacing","title":"Spacing","path":"spacing.html","evidence":"assets/tokens.css"},
+    {"id":"depth","title":"Radius & shadows","path":"depth.html","evidence":"assets/tokens.css, assets/textures/*.svg"},
+    {"id":"components","title":"Components","path":"components.html","evidence":"assets/app.css, assets/icons.svg"},
+    {"id":"brand-assets","title":"Brand assets","path":"brand-assets.html","evidence":"assets/favicon.svg, assets/covers/*.svg, build/icons.svg"},
+    {"id":"applied-surfaces","title":"Applied UI surfaces","path":"applied-surfaces.html","evidence":"Preserved source screens and editor screenshot"}
+  ]
+}

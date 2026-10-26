@@ -6,3 +6,4 @@ AGENTS.md
 .pstack/
 # Design handoff archive is preserved verbatim as the visual contract.
 ui_kits/
+.codex/

@@ -1580,7 +1580,7 @@ function collectBundleProblems(raw: unknown): string[] {
       `Versi format tidak didukung (ditemukan ${String(raw.version)}).`,
     );
   }
-  const { game, session, messages } = raw;
+  const { game, session } = raw;
   const version = raw.version;
   const gameRefs =
     isObject(game) && Array.isArray(game.lorebookRefs) ? game.lorebookRefs : [];
@@ -1664,6 +1664,13 @@ function collectBundleProblems(raw: unknown): string[] {
   ) {
     problems.push("v1 bundles cannot contain lore-bound session dependencies.");
   }
+  problems.push(...collectSessionDataProblems(raw));
+  return problems;
+}
+
+function collectSessionDataProblems(raw: Record<string, unknown>): string[] {
+  const problems: string[] = [];
+  const { game, session, messages } = raw;
   if (!isObject(game)) problems.push("Bagian game hilang atau bukan object.");
   if (!isObject(session)) {
     problems.push("Bagian session hilang atau bukan object.");
@@ -1885,19 +1892,34 @@ export function validateExportBundle(raw: unknown): {
   const problems = collectBundleProblems(raw);
   if (problems.length > 0) throw new ImportError(problems);
   const bundle = raw as ExportBundle;
+  return {
+    ...normalizeValidatedSessionData(bundle),
+    ...(bundle.version === EXPORT_VERSION_WITH_LORE
+      ? { loreDependencies: structuredClone(bundle.loreDependencies) }
+      : {}),
+  };
+}
 
-  const game = pickGameDefinition(bundle.game);
+type SessionValidationData = Pick<
+  ExportBundle,
+  "game" | "session" | "messages"
+>;
+
+function normalizeValidatedSessionData(
+  data: SessionValidationData,
+): SessionValidationData {
+  const game = pickGameDefinition(data.game);
   const definitionErrors = validateDefinition(game);
   if (definitionErrors.length > 0) throw new ImportError(definitionErrors);
 
   const sessionProblems = collectSessionProblems(
     game,
-    bundle.session,
-    bundle.messages,
+    data.session,
+    data.messages,
   );
   if (sessionProblems.length > 0) throw new ImportError(sessionProblems);
 
-  const messages = bundle.messages.map((message) => {
+  const messages = data.messages.map((message) => {
     const next: Message = {
       id: message.id,
       sessionId: message.sessionId,
@@ -1920,35 +1942,40 @@ export function validateExportBundle(raw: unknown): {
   return {
     game,
     session: {
-      id: bundle.session.id,
-      gameId: bundle.session.gameId,
-      definitionSnapshot: pickGameDefinition(bundle.session.definitionSnapshot),
-      state: pickSessionState(bundle.session.state),
+      id: data.session.id,
+      gameId: data.session.gameId,
+      definitionSnapshot: pickGameDefinition(data.session.definitionSnapshot),
+      state: pickSessionState(data.session.state),
       ai: {
-        provider: bundle.session.ai.provider,
-        model: bundle.session.ai.model,
+        provider: data.session.ai.provider,
+        model: data.session.ai.model,
         systemPrompt: normalizeNarratorSystemPrompt(
-          bundle.session.ai.systemPrompt,
+          data.session.ai.systemPrompt,
         ),
       },
-      nextSequence: bundle.session.nextSequence,
-      updatedAt: bundle.session.updatedAt,
-      ...(bundle.session.name === undefined
+      nextSequence: data.session.nextSequence,
+      updatedAt: data.session.updatedAt,
+      ...(data.session.name === undefined ? {} : { name: data.session.name }),
+      ...(data.session.pinned === undefined
         ? {}
-        : { name: bundle.session.name }),
-      ...(bundle.session.pinned === undefined
+        : { pinned: data.session.pinned }),
+      ...(data.session.worldMap === undefined
         ? {}
-        : { pinned: bundle.session.pinned }),
-      ...(bundle.session.worldMap === undefined
+        : { worldMap: structuredClone(data.session.worldMap) }),
+      ...(data.session.lorebookRefs === undefined
         ? {}
-        : { worldMap: structuredClone(bundle.session.worldMap) }),
-      ...(bundle.session.lorebookRefs === undefined
-        ? {}
-        : { lorebookRefs: structuredClone(bundle.session.lorebookRefs) }),
+        : { lorebookRefs: structuredClone(data.session.lorebookRefs) }),
     },
     messages,
-    ...(bundle.version === EXPORT_VERSION_WITH_LORE
-      ? { loreDependencies: structuredClone(bundle.loreDependencies) }
-      : {}),
   };
+}
+
+export function validateSessionSnapshot(raw: unknown): SessionValidationData {
+  if (!isObject(raw)) throw new ImportError(["File bukan JSON object."]);
+  if (hasDangerousKeysDeep(raw)) {
+    throw new ImportError(["File mengandung key berbahaya."]);
+  }
+  const problems = collectSessionDataProblems(raw);
+  if (problems.length > 0) throw new ImportError(problems);
+  return normalizeValidatedSessionData(raw as SessionValidationData);
 }

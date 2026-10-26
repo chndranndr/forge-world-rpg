@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "kind": "markdown-document",
+  "title": "fworld-ui-ux-redesign-plan.md",
+  "entry": "fworld-ui-ux-redesign-plan.md",
+  "renderer": "markdown",
+  "status": "complete",
+  "exports": [
+    "md",
+    "html",
+    "pdf",
+    "zip"
+  ],
+  "createdAt": "2026-10-20T07:39:39.761Z",
+  "updatedAt": "2026-10-20T07:39:39.761Z",
+  "metadata": {
+    "inferred": true
+  }
+}
