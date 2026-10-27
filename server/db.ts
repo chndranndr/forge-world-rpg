@@ -477,6 +477,7 @@ const TRACE_CACHE_REASONS: Record<string, true> = {
   unsupported_provider: true,
   unsupported_model: true,
   repair: true,
+  final_answer: true,
   provider_rejected: true,
   capacity: true,
   busy: true,
@@ -484,10 +485,16 @@ const TRACE_CACHE_REASONS: Record<string, true> = {
 
 const TRACE_EVENT_FIELDS: Record<string, string[]> = {
   model: ["kind", "elapsedMs", "attempt", "phase", "status", "finishReason"],
-  tool: ["kind", "elapsedMs", "name", "status", "resultChars"],
-  validation: ["kind", "elapsedMs", "status"],
+  tool: ["kind", "elapsedMs", "name", "status", "resultChars", "reason"],
+  validation: ["kind", "elapsedMs", "status", "reason", "textChars"],
   repair: ["kind", "elapsedMs"],
   cache: ["kind", "elapsedMs", "operation", "status", "reason", "tokenCount"],
+};
+
+// Traces written before validation reasons were captured must stay readable.
+const TRACE_OPTIONAL_EVENT_FIELDS: Record<string, string[]> = {
+  tool: ["reason"],
+  validation: ["reason", "textChars"],
 };
 
 function credentialLike(value: string): boolean {
@@ -525,10 +532,13 @@ function validateAgentTrace(raw: unknown): AgentTrace | undefined {
       throw new ValidationError("Context trace event tidak valid.");
     }
     const fields = TRACE_EVENT_FIELDS[rawEvent.kind];
+    const optional = TRACE_OPTIONAL_EVENT_FIELDS[rawEvent.kind] ?? [];
     if (
       !fields ||
       Object.keys(rawEvent).some((key) => !fields.includes(key)) ||
-      fields.some((key) => !Object.hasOwn(rawEvent, key))
+      fields.some(
+        (key) => !optional.includes(key) && !Object.hasOwn(rawEvent, key),
+      )
     ) {
       throw new ValidationError("Context trace event tidak valid.");
     }
@@ -560,11 +570,16 @@ function validateAgentTrace(raw: unknown): AgentTrace | undefined {
         finishReason: rawEvent.finishReason as AgentTraceFinishReason | null,
       });
     } else if (rawEvent.kind === "tool") {
+      const reason = rawEvent.reason ?? null;
       if (
         typeof rawEvent.name !== "string" ||
         !/^[A-Za-z0-9_.:-]{1,64}$/.test(rawEvent.name) ||
         credentialLike(rawEvent.name) ||
-        (rawEvent.status !== "succeeded" && rawEvent.status !== "failed")
+        (rawEvent.status !== "succeeded" && rawEvent.status !== "failed") ||
+        (reason !== null &&
+          (typeof reason !== "string" ||
+            reason.length > 200 ||
+            credentialLike(reason)))
       ) {
         throw new ValidationError("Context trace event tidak valid.");
       }
@@ -577,15 +592,28 @@ function validateAgentTrace(raw: unknown): AgentTrace | undefined {
           rawEvent.resultChars === null
             ? null
             : traceCount(rawEvent.resultChars, "trace.resultChars"),
+        reason: reason as string | null,
       });
     } else if (rawEvent.kind === "validation") {
-      if (rawEvent.status !== "accepted" && rawEvent.status !== "rejected") {
+      const reason = rawEvent.reason ?? null;
+      if (
+        (rawEvent.status !== "accepted" && rawEvent.status !== "rejected") ||
+        (reason !== null &&
+          (typeof reason !== "string" ||
+            reason.length > 400 ||
+            credentialLike(reason)))
+      ) {
         throw new ValidationError("Context trace event tidak valid.");
       }
       events.push({
         kind: "validation",
         elapsedMs,
         status: rawEvent.status,
+        reason: reason as string | null,
+        textChars:
+          rawEvent.textChars === undefined
+            ? 0
+            : traceCount(rawEvent.textChars, "trace.textChars"),
       });
     } else if (rawEvent.kind === "repair") {
       events.push({ kind: "repair", elapsedMs });

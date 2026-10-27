@@ -76,6 +76,51 @@ function stripFences(text: string): string {
   return fenced ? fenced[1].trim() : text.trim();
 }
 
+// Models that are not in JSON mode sometimes wrap the payload in a sentence or
+// append commentary after it. JSON.parse alone would reject a usable answer,
+// so fall back to the first balanced object or array in the text. The result is
+// still parsed and domain-validated afterwards.
+function balancedSlice(text: string, start: number): string | undefined {
+  const open = text[start];
+  const close = open === "{" ? "}" : "]";
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === open) depth += 1;
+    else if (char === close) {
+      depth -= 1;
+      if (depth === 0) return text.slice(start, index + 1);
+    }
+  }
+  return undefined;
+}
+
+function parseNarratorJson(text: string): unknown {
+  const body = stripFences(text);
+  try {
+    return JSON.parse(body);
+  } catch (error) {
+    const start = body.search(/[[{]/);
+    if (start >= 0) {
+      const candidate = balancedSlice(body, start);
+      if (candidate !== undefined) return JSON.parse(candidate);
+    }
+    throw error;
+  }
+}
+
 function npcDetails(
   session: GameSession,
   npcId: string,
@@ -502,7 +547,7 @@ export function createNarratorHarness(input: {
     let application: NarratorApplyResult | null = null;
     let suppressPreviousResponse = false;
     try {
-      response = parseTurnResponse(JSON.parse(stripFences(result.text)));
+      response = parseTurnResponse(parseNarratorJson(result.text));
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       issue = `Respons narrator bukan JSON atau bentuk domain yang valid: ${detail}`;

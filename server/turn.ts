@@ -39,9 +39,24 @@ function hashInput(
     .digest("hex");
 }
 
-function errorForStorage(error: unknown): { code: string; message: string } {
+interface StoredRunFailure {
+  code: string;
+  message: string;
+  detail?: string;
+  textSample?: string;
+  errorName?: string;
+  causeCode?: string;
+  statusCode?: number;
+}
+
+function errorForStorage(error: unknown): StoredRunFailure {
   if (error instanceof NarratorResponseError) {
-    return { code: "AI_RESPONSE_INVALID", message: error.message };
+    return {
+      code: "AI_RESPONSE_INVALID",
+      message: error.message,
+      ...(error.detail ? { detail: error.detail.slice(0, 1_000) } : {}),
+      ...(error.textSample ? { textSample: error.textSample } : {}),
+    };
   }
   if (error instanceof NarratorContextError) {
     return { code: "CONTEXT_TOO_LARGE", message: error.message };
@@ -68,6 +83,7 @@ function errorForStorage(error: unknown): { code: string; message: string } {
     code: "RUN_FAILED",
     message:
       "Run gagal. Periksa koneksi, konfigurasi provider, dan log server.",
+    ...safeFailureDetails(error),
   };
 }
 
@@ -409,7 +425,10 @@ async function runStarted(
     });
   } catch (error) {
     const failure = errorForStorage(error);
-    if (failure.code === "RUN_FAILED") {
+    if (
+      failure.code === "RUN_FAILED" ||
+      error instanceof NarratorResponseError
+    ) {
       console.error("[fworld] run gagal", {
         sessionId: input.sessionId,
         requestId: input.requestId,
@@ -421,6 +440,7 @@ async function runStarted(
             }
           : {}),
         code: failure.code,
+        ...(failure.detail ? { detail: failure.detail } : {}),
         ...safeFailureDetails(error),
       });
     }

@@ -1573,7 +1573,13 @@ test("context telemetry keeps bounded traces, normalizes empty ones, and rejects
     ai: { provider: "gemini", model: "gemini-test" },
     sessionId: "trace-session",
   });
-  for (const requestId of ["trace-1", "trace-2", "trace-3", "trace-4"]) {
+  for (const requestId of [
+    "trace-1",
+    "trace-2",
+    "trace-3",
+    "trace-4",
+    "trace-5",
+  ]) {
     recordSimpleRun(db, "trace-session", requestId);
   }
   const base = {
@@ -1619,8 +1625,15 @@ test("context telemetry keeps bounded traces, normalizes empty ones, and rejects
           name: "search_memory",
           status: "succeeded",
           resultChars: 12,
+          reason: null,
         },
-        { kind: "validation", elapsedMs: 4, status: "accepted" },
+        {
+          kind: "validation",
+          elapsedMs: 4,
+          status: "accepted",
+          reason: null,
+          textChars: 12,
+        },
         { kind: "repair", elapsedMs: 5 },
         {
           kind: "cache",
@@ -1662,6 +1675,43 @@ test("context telemetry keeps bounded traces, normalizes empty ones, and rejects
     dropped: 3,
   });
 
+  db.saveContextTelemetry("trace-session", "trace-5", {
+    ...base,
+    trace: {
+      events: [
+        { kind: "validation", elapsedMs: 1, status: "rejected" },
+        {
+          kind: "tool",
+          elapsedMs: 2,
+          name: "run_check",
+          status: "failed",
+          resultChars: null,
+        },
+      ],
+      dropped: 0,
+    },
+  });
+  assert.deepEqual(db.getContextTelemetry("trace-session", "trace-5").trace, {
+    events: [
+      {
+        kind: "validation",
+        elapsedMs: 1,
+        status: "rejected",
+        reason: null,
+        textChars: 0,
+      },
+      {
+        kind: "tool",
+        elapsedMs: 2,
+        name: "run_check",
+        status: "failed",
+        resultChars: null,
+        reason: null,
+      },
+    ],
+    dropped: 0,
+  });
+
   const unsafe = [
     {
       events: [
@@ -1694,6 +1744,8 @@ test("context telemetry keeps bounded traces, normalizes empty ones, and rejects
           kind: "validation",
           elapsedMs: 0,
           status: "accepted",
+          reason: null,
+          textChars: 0,
           extra: true,
         },
       ],
@@ -1739,7 +1791,15 @@ test("missing trace columns are repaired without rewriting legacy telemetry", (t
     toolCalls: 0,
     repairs: 0,
     trace: {
-      events: [{ kind: "validation", elapsedMs: 1, status: "rejected" }],
+      events: [
+        {
+          kind: "validation",
+          elapsedMs: 1,
+          status: "rejected",
+          reason: "Respons AI bukan JSON object",
+          textChars: 3,
+        },
+      ],
       dropped: 0,
     },
   });

@@ -120,6 +120,51 @@ function openRouterResponse(content, id) {
   );
 }
 
+function openRouterToolResponse(toolCalls, id) {
+  return new Response(
+    JSON.stringify({
+      id,
+      object: "chat.completion",
+      created: 1,
+      model: "openai/gpt-4o-mini",
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: "assistant",
+            content: null,
+            tool_calls: toolCalls.map((call, index) => ({
+              index,
+              id: `call-${id}-${index}`,
+              type: "function",
+              function: {
+                name: call.name,
+                arguments: JSON.stringify(call.args ?? {}),
+              },
+            })),
+          },
+          finish_reason: "tool_calls",
+        },
+      ],
+      usage: { prompt_tokens: 8, completion_tokens: 5, total_tokens: 13 },
+    }),
+    { headers: { "Content-Type": "application/json" } },
+  );
+}
+
+function systemFromRequest(body) {
+  return (body.messages ?? [])
+    .filter((message) => message.role === "system")
+    .map((message) =>
+      Array.isArray(message.content)
+        ? message.content
+            .map((part) => (typeof part.text === "string" ? part.text : ""))
+            .join("\n")
+        : message.content,
+    )
+    .join("\n");
+}
+
 function promptFromRequest(body) {
   for (const message of body.messages ?? []) {
     const parts = Array.isArray(message.content)
@@ -160,7 +205,9 @@ function stubProvider(t, responses, beforeRequest = () => {}) {
       throw new Error(`Unexpected provider request ${requestNumber + 1}.`);
     }
     requestNumber += 1;
-    return openRouterResponse(content, `dynamic-npc-${requestNumber}`);
+    return content instanceof Response
+      ? content
+      : openRouterResponse(content, `dynamic-npc-${requestNumber}`);
   };
   t.after(() => {
     globalThis.fetch = originalFetch;
@@ -728,7 +775,7 @@ test("an off-scene registered NPC can be reencountered at a different location",
     },
     { narrative: "Lina answers quietly.", effects: [] },
   ];
-  stubProvider(t, responses, (prompt, _body, requestNumber) => {
+  stubProvider(t, responses, (prompt, body, requestNumber) => {
     if (requestNumber === 0) {
       assert.equal(
         "knownNpcIdentities" in prompt.context,
@@ -741,6 +788,11 @@ test("an off-scene registered NPC can be reencountered at a different location",
       assert.deepEqual(prompt.context.knownNpcIdentities, [
         { id: "stranger-1", name: "Lina" },
       ]);
+      const system = systemFromRequest(body);
+      assert.match(system, /knownNpcIdentities/);
+      assert.match(system, /NPC_PRESENCE/);
+      assert.match(system, /mention alone/);
+      assert.equal(system.includes("LINA_SECRET"), false);
       assert.deepEqual(prompt.context.actorScope, {
         kind: "player-narrator",
       });
@@ -896,6 +948,285 @@ test("an off-scene registered NPC can be reencountered at a different location",
         (hit) => hit.kind === "fact" && hit.excerpt.includes("LINA_SECRET"),
       ),
   );
+});
+
+test("a final answer after two tool rounds commits the turn", async (t) => {
+  const fixture = withDb(t);
+  const db = fixture.db;
+  const game = definition("dynamic-npc-budget-success-game");
+  const sessionId = "dynamic-npc-budget-success-session";
+  startSession(db, game, sessionId);
+  let requests = 0;
+  stubProvider(
+    t,
+    [
+      openRouterToolResponse(
+        [{ name: "search_memory", args: { query: "plaza" } }],
+        "tool-1",
+      ),
+      openRouterToolResponse(
+        [{ name: "search_memory", args: { query: "market" } }],
+        "tool-2",
+      ),
+      {
+        narrative: "Ren finds the path.",
+        effects: [
+          {
+            type: "ATTRIBUTE_CHANGE",
+            target: "wit",
+            operation: "ADD",
+            value: 1,
+          },
+        ],
+      },
+    ],
+    (_prompt, body, requestNumber) => {
+      requests = requestNumber + 1;
+      if (requestNumber === 2) {
+        assert.equal(body.tools, undefined);
+        assert.equal(body.tool_choice, undefined);
+      }
+    },
+  );
+
+  const result = await run(db, {
+    sessionId,
+    requestId: "dynamic-npc-budget-success",
+    work: { kind: "turn", input: "Aku mencari jalan." },
+  });
+  assert.equal(result.status, "committed", JSON.stringify(result.error));
+  assert.equal(requests, 3);
+  assert.equal(db.getSession(sessionId).state.attributes.wit, 5);
+  assert.ok(
+    db
+      .getHistory(sessionId)
+      .some(
+        (message) =>
+          message.role === "NARRATOR" &&
+          message.content === "Ren finds the path.",
+      ),
+  );
+});
+
+test("a failed tool call records its reason in the trace", async (t) => {
+  const fixture = withDb(t);
+  const db = fixture.db;
+  const game = definition("dynamic-npc-tool-reason-game");
+  const sessionId = "dynamic-npc-tool-reason-session";
+  startSession(db, game, sessionId);
+  stubProvider(t, [
+    openRouterToolResponse(
+      [{ name: "get_npc_details", args: { npcId: "npc-missing" } }],
+      "tool-1",
+    ),
+    { narrative: "Ren menunggu.", effects: [] },
+  ]);
+
+  const result = await run(db, {
+    sessionId,
+    requestId: "dynamic-npc-tool-reason",
+    work: { kind: "turn", input: "Aku melihat sekitar." },
+  });
+  assert.equal(result.status, "committed", JSON.stringify(result.error));
+  const failed = db
+    .getContextTelemetry(sessionId, "dynamic-npc-tool-reason")
+    .trace.events.find(
+      (event) => event.kind === "tool" && event.status === "failed",
+    );
+  assert.ok(failed);
+  assert.match(failed.reason, /interlocutor|NPC/i);
+  assert.equal(failed.resultChars, null);
+});
+
+test("a repaired final answer brings an off-scene NPC into the scene", async (t) => {
+  const fixture = withDb(t);
+  const db = fixture.db;
+  const game = definition("dynamic-npc-repair-join-game");
+  game.startingLocationId = "loc:market";
+  game.npcs.push({
+    id: "stranger-1",
+    name: "Lina",
+    personality: ["quiet"],
+    goals: ["find the market"],
+    privateKnowledge: [],
+    initialRelationships: {},
+  });
+  const sessionId = "dynamic-npc-repair-join-session";
+  startSession(db, game, sessionId);
+  const initial = db.getSession(sessionId);
+  const state = structuredClone(initial.state);
+  state.world.npcPresence = {
+    "stranger-1": { locationId: "loc:plaza" },
+  };
+  state.facts.push({
+    id: "lina-secret",
+    text: "LINA_SECRET: only Lina knows the market password.",
+    visibility: "private",
+    knownBy: ["stranger-1"],
+    createdAt: "2026-10-13T00:00:00.000Z",
+    source: "story",
+  });
+  state.world.activeCharacters = worldApi.sceneParticipants(
+    game.worldMap,
+    state.world.locationId,
+    state.world.npcPresence,
+    game.npcs.map((npc) => npc.id),
+  );
+  db.updateSession(sessionId, { state }, initial.revision);
+
+  let requests = 0;
+  stubProvider(
+    t,
+    [
+      openRouterToolResponse(
+        [{ name: "search_memory", args: { query: "plaza" } }],
+        "tool-1",
+      ),
+      openRouterToolResponse(
+        [{ name: "search_memory", args: { query: "market" } }],
+        "tool-2",
+      ),
+      openRouterResponse("bukan json", "invalid-final"),
+      {
+        narrative: "Lina steps out of the market crowd.",
+        effects: [{ type: "NPC_PRESENCE", npcId: "stranger-1", present: true }],
+      },
+    ],
+    (prompt, body, requestNumber) => {
+      requests = requestNumber + 1;
+      if (requestNumber === 2) {
+        assert.equal(body.tools, undefined);
+        assert.equal(body.tool_choice, undefined);
+        assert.equal(
+          body.messages.some((message) => message.role === "tool"),
+          true,
+        );
+      }
+      if (requestNumber === 3) {
+        assert.equal(body.tools, undefined);
+        assert.equal(body.max_tokens, 8_192);
+        assert.ok(prompt.correction);
+        assert.deepEqual(prompt.context.knownNpcIdentities, [
+          { id: "stranger-1", name: "Lina" },
+        ]);
+        assert.equal(JSON.stringify(prompt).includes("LINA_SECRET"), false);
+        const system = systemFromRequest(body);
+        assert.match(system, /knownNpcIdentities/);
+        assert.match(system, /NPC_PRESENCE/);
+        assert.equal(system.includes("LINA_SECRET"), false);
+      }
+    },
+  );
+
+  const result = await run(db, {
+    sessionId,
+    requestId: "dynamic-npc-repair-join",
+    work: { kind: "turn", input: "Lina, join me at the market." },
+  });
+  assert.equal(result.status, "committed", JSON.stringify(result.error));
+  assert.equal(requests, 4);
+  const committed = db.getSession(sessionId);
+  assert.equal(committed.state.world.locationId, "loc:market");
+  assert.deepEqual(committed.state.world.npcPresence["stranger-1"], {
+    locationId: "loc:market",
+    present: true,
+  });
+  assert.ok(committed.state.world.activeCharacters.includes("stranger-1"));
+  assert.deepEqual(
+    worldApi.sceneParticipants(
+      committed.worldMap,
+      "loc:market",
+      committed.state.world.npcPresence,
+      committed.definitionSnapshot.npcs.map((npc) => npc.id),
+    ),
+    ["player", "stranger-1"],
+  );
+  const messages = result.result.messages.filter(
+    (message) => message.role === "PLAYER" || message.role === "NARRATOR",
+  );
+  assert.equal(messages.length, 2);
+  assert.ok(
+    messages.every(
+      (message) =>
+        message.knownBy?.includes("player") &&
+        message.knownBy?.includes("stranger-1"),
+    ),
+  );
+  assert.ok(
+    !db
+      .getRecentHistory(sessionId, 24, "stranger-1")
+      .some((message) => message.content.includes("LINA_SECRET")),
+  );
+});
+
+test("a rejected fourth-request repair commits nothing", async (t) => {
+  const fixture = withDb(t);
+  const db = fixture.db;
+  const game = definition("dynamic-npc-budget-game");
+  const sessionId = "dynamic-npc-budget-session";
+  startSession(db, game, sessionId);
+  const before = db.getSession(sessionId);
+  const history = db.getHistory(sessionId);
+  let requests = 0;
+  stubProvider(
+    t,
+    [
+      openRouterToolResponse(
+        [{ name: "search_memory", args: { query: "plaza" } }],
+        "tool-1",
+      ),
+      openRouterToolResponse(
+        [{ name: "search_memory", args: { query: "market" } }],
+        "tool-2",
+      ),
+      openRouterResponse("bukan json", "invalid-final"),
+      openRouterResponse("masih bukan json", "invalid-repair"),
+    ],
+    (prompt, body, requestNumber) => {
+      requests = requestNumber + 1;
+      if (requestNumber === 2) {
+        assert.equal(body.tools, undefined);
+        assert.equal(body.tool_choice, undefined);
+        assert.equal(
+          body.messages.some((message) => message.role === "tool"),
+          true,
+        );
+      }
+      if (requestNumber === 3) {
+        assert.equal(body.tools, undefined);
+        assert.equal(body.max_tokens, 8_192);
+        assert.ok(prompt.correction);
+        assert.match(prompt.correction.reason, /JSON|domain/i);
+      }
+    },
+  );
+
+  const result = await run(db, {
+    sessionId,
+    requestId: "dynamic-npc-budget",
+    work: { kind: "turn", input: "Aku menyapa orang di pasar." },
+  });
+  assert.equal(result.status, "failed");
+  assert.equal(result.error.code, "AI_RESPONSE_INVALID");
+  assert.match(result.error.message, /setelah satu kali perbaikan/);
+  assert.match(result.error.message, /Alasan: /);
+  assert.doesNotMatch(result.error.message, /batas permintaan run ini habis/);
+  assert.equal(requests, 4);
+  assert.deepEqual(db.getSession(sessionId), before);
+  assert.deepEqual(db.getHistory(sessionId), history);
+
+  const failedRun = db.getRun(sessionId, "dynamic-npc-budget");
+  assert.equal(failedRun.status, "failed");
+  assert.match(failedRun.error.detail, /JSON|domain/i);
+  assert.ok(failedRun.error.textSample.includes("masih bukan json"));
+  const telemetry = db.getContextTelemetry(sessionId, "dynamic-npc-budget");
+  const rejections = telemetry.trace.events.filter(
+    (event) => event.kind === "validation" && event.status === "rejected",
+  );
+  assert.equal(rejections.length, 2);
+  assert.match(rejections[0].reason, /JSON|domain/i);
+  assert.ok(rejections[0].textChars >= "bukan json".length);
+  assert.equal(rejections[1].textChars, failedRun.error.textSample.length);
 });
 
 test("origin-fallback travel keeps destination presence targets out of the audience", async (t) => {

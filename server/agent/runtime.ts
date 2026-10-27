@@ -13,9 +13,16 @@ import type {
 } from "../../shared/types.js";
 
 const MAX_STEPS = 3;
-const MAX_REPAIRS = 1;
+const MAX_REPAIRS = 2;
+const MAX_EXTRA_REPAIR_REQUESTS = 1;
+const MAX_TOTAL_REQUESTS = MAX_STEPS + MAX_EXTRA_REPAIR_REQUESTS;
 const MAX_OUTPUT_TOKENS = 4_096;
-const MAX_REPAIR_OUTPUT_TOKENS = 1_800;
+// Providers such as Gemini count hidden reasoning inside the output cap. Tool
+// steps only emit small tool calls, but a narrative JSON that needs ~1.000
+// visible tokens can be cut off at 4.096 when thinking uses ~3.000 of them
+// (observed on the same session), so the answer and repair steps get headroom.
+const MAX_FINAL_OUTPUT_TOKENS = 8_192;
+const MAX_REPAIR_OUTPUT_TOKENS = MAX_FINAL_OUTPUT_TOKENS;
 const RUN_TIMEOUT_MS = 60_000;
 const MAX_TRACE_EVENTS = 128;
 
@@ -83,11 +90,22 @@ export interface AgentRunOptions {
 }
 
 export class NarratorResponseError extends Error {
-  constructor(readonly reason: "output_limit" | "invalid") {
-    super(
+  constructor(
+    readonly reason: "output_limit" | "invalid",
+    readonly repairs = 0,
+    readonly detail = "",
+    readonly textSample = "",
+  ) {
+    const summary =
       reason === "output_limit"
         ? "Respons AI terpotong sebelum selesai. Coba lagi dengan konteks yang lebih ringkas atau pilih model lain."
-        : "Respons AI belum bisa dipakai setelah satu kali perbaikan. Silakan coba lagi.",
+        : repairs > 0
+          ? `Respons AI belum bisa dipakai setelah ${repairs === 1 ? "satu" : "dua"} kali perbaikan. Silakan coba lagi.`
+          : "Respons AI belum valid; batas permintaan run ini habis sebelum perbaikan. Silakan coba lagi.";
+    super(
+      detail
+        ? `${summary} Alasan: ${Array.from(detail.trim()).slice(0, 300).join("")}`
+        : summary,
     );
     this.name = "NarratorResponseError";
   }
@@ -315,7 +333,7 @@ export async function runAgent<TResult>(
         toolOutput,
       }: {
         toolCall: { toolName: string };
-        toolOutput: { type: string; output?: unknown };
+        toolOutput: { type: string; output?: unknown; error?: unknown };
       }) => {
         if (closed) return;
         let resultChars: number | null = null;
@@ -326,6 +344,14 @@ export async function runAgent<TResult>(
             resultChars = null;
           }
         }
+        const failure =
+          toolOutput.type === "tool-result"
+            ? ""
+            : toolOutput.error instanceof Error
+              ? toolOutput.error.message
+              : typeof toolOutput.error === "string"
+                ? toolOutput.error
+                : "";
         trace({
           kind: "tool",
           name: allowedToolNames.has(toolCall.toolName)
@@ -333,40 +359,60 @@ export async function runAgent<TResult>(
             : "unknown",
           status: toolOutput.type === "tool-result" ? "succeeded" : "failed",
           resultChars,
+          reason: failure ? failure.slice(0, 200) : null,
         });
       },
     };
 
     const generate = options.generateText ?? generateText;
 
+    // attemptLimit stays 3 for the initial/tool loop and ordinary repairs. The
+    // single authorized fourth request passes MAX_TOTAL_REQUESTS instead.
     async function generateResponse(
       request: AgentRequest,
       isRepair: boolean,
+      attemptLimit: number = MAX_STEPS,
     ): Promise<{
       text: string;
       finishReason: AgentTraceFinishReason | null;
     }> {
-      if (attemptCount >= MAX_STEPS || generationCount >= MAX_STEPS) {
-        throw new Error(`Batas ${MAX_STEPS} request AI per run tercapai.`);
+      if (attemptCount >= attemptLimit || generationCount >= MAX_STEPS) {
+        throw new Error(`Batas ${attemptLimit} request AI per run tercapai.`);
       }
       generationCount += 1;
       currentPhase = isRepair ? "repair" : "initial";
       allowedToolNames = new Set(Object.keys(request.tools ?? {}));
-      const remainingCalls = Math.max(1, MAX_STEPS - attemptCount);
+      const remainingCalls = Math.max(1, attemptLimit - attemptCount);
+      const tools = request.tools;
       const generation = generate({
         model: request.model,
         system: request.system,
         prompt: request.prompt,
-        ...(request.tools
+        ...(tools
           ? {
-              tools: request.tools,
+              tools,
               stopWhen: stepCountIs(remainingCalls),
             }
           : {}),
         prepareStep: () => {
           controller.signal.throwIfAborted();
-          if (attemptCount >= MAX_STEPS) {
-            throw new Error(`Batas ${MAX_STEPS} request AI per run tercapai.`);
+          if (attemptCount >= attemptLimit) {
+            throw new Error(
+              `Batas ${attemptLimit} request AI per run tercapai.`,
+            );
+          }
+          // The last permitted provider request is reserved for prose. Without
+          // this, a tool-heavy turn can spend every request on tool calls and
+          // end with no final response at all. Providers such as Google AI
+          // Studio ignore tool_choice "none" while a tool loop is in progress,
+          // so the tool definitions are removed for that step; an empty tool
+          // set is the only provider-agnostic way to force a text answer.
+          if (tools && attemptCount >= attemptLimit - 1) {
+            return {
+              activeTools: [],
+              toolChoice: "none" as const,
+              maxOutputTokens: MAX_FINAL_OUTPUT_TOKENS,
+            };
           }
         },
         maxRetries: 0,
@@ -394,9 +440,8 @@ export async function runAgent<TResult>(
 
     let result = await generateResponse(task.request, false);
     let repairCount = 0;
-    let sawOutputLimit = false;
     while (true) {
-      if (result.finishReason === "length") sawOutputLimit = true;
+      const outputLimit = result.finishReason === "length";
       const validation = task.validate({
         text: result.text,
         finishReason: result.finishReason,
@@ -404,19 +449,36 @@ export async function runAgent<TResult>(
       throwIfLatched();
       controller.signal.throwIfAborted();
       if (validation.kind === "accepted") {
-        trace({ kind: "validation", status: "accepted" });
+        trace({
+          kind: "validation",
+          status: "accepted",
+          reason: null,
+          textChars: result.text.length,
+        });
         controller.signal.throwIfAborted();
         throwIfLatched();
         return validation.value;
       }
-      trace({ kind: "validation", status: "rejected" });
+      trace({
+        kind: "validation",
+        status: "rejected",
+        reason: validation.reason.slice(0, 400),
+        textChars: result.text.length,
+      });
+      // Repairs may use whatever provider requests remain under the hard
+      // 4-request cap, so a turn that only needed two requests for tools and a
+      // first answer can still be corrected twice. A tool-heavy turn that
+      // already spent three requests gets exactly one repair, as before.
       if (
-        attemptCount >= MAX_STEPS ||
+        attemptCount >= MAX_TOTAL_REQUESTS ||
         generationCount >= MAX_STEPS ||
         repairCount >= MAX_REPAIRS
       ) {
         throw new NarratorResponseError(
-          sawOutputLimit ? "output_limit" : "invalid",
+          outputLimit ? "output_limit" : "invalid",
+          repairCount,
+          validation.reason,
+          result.text.slice(0, 1_500),
         );
       }
       repairCount += 1;
@@ -428,7 +490,7 @@ export async function runAgent<TResult>(
       });
       throwIfLatched();
       controller.signal.throwIfAborted();
-      result = await generateResponse(repairRequest, true);
+      result = await generateResponse(repairRequest, true, MAX_TOTAL_REQUESTS);
     }
   } finally {
     closed = true;

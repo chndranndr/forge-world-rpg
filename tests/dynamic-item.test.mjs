@@ -838,6 +838,7 @@ test("deferred discovery stays hidden until a gated item use, then persists", as
     },
     discoveryItemProposal("activity:invented"),
     discoveryItemProposal("activity:invented"),
+    discoveryItemProposal("activity:invented"),
     { narrative: "Raka berjalan ke pasar.", effects: [] },
     { narrative: "Raka kembali ke plaza.", effects: [] },
     (prompt) => {

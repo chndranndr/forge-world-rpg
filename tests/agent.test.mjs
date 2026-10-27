@@ -296,6 +296,13 @@ test("uses the session model, fixed request limits, compact context, and counts 
           assert.equal(options.model.modelId, "gemini-test");
           assert.equal(options.maxRetries, 0);
           assert.equal(options.maxOutputTokens, 4096);
+          assert.match(
+            options.system,
+            /Custom narrator system prompt for this session\./,
+          );
+          assert.match(options.system, /knownNpcIdentities/);
+          assert.match(options.system, /NPC_PRESENCE/);
+          assert.match(options.system, /operation must be exactly/);
           assert.equal(options.stopWhen({ steps: [{}, {}] }), false);
           assert.equal(options.stopWhen({ steps: [{}, {}, {}] }), true);
           assert.equal(options.abortSignal.aborted, false);
@@ -365,6 +372,26 @@ test("uses the session model, fixed request limits, compact context, and counts 
   assert.equal(finished[1].usage.totalTokens, 16);
 });
 
+test("accepts a narration JSON wrapped in a sentence", async () => {
+  const session = makeSession();
+  let calls = 0;
+  const result = await agent.runNarrator(
+    makeInput({ session, playerAction: "Aku menunggu." }),
+    {
+      generateText: async (options) => {
+        calls += 1;
+        await fakeStep(options);
+        return {
+          text: 'Here is the response:\n{"narrative": "Peta {kuno} itu terbuka.", "effects": []}\nSemoga membantu.',
+          finishReason: "stop",
+        };
+      },
+    },
+  );
+  assert.equal(calls, 1);
+  assert.equal(result.response.narrative, "Peta {kuno} itu terbuka.");
+});
+
 test("repairs choice generation after output-limit truncation", async () => {
   const session = makeSession("openrouter");
   const finished = [];
@@ -379,7 +406,11 @@ test("repairs choice generation after output-limit truncation", async () => {
     {
       generateText: async (options) => {
         calls += 1;
-        assert.equal(options.maxOutputTokens, calls === 1 ? 4096 : 1800);
+        assert.equal(
+          options.maxOutputTokens,
+          calls === 1 ? 4_096 : 8_192,
+          "the repair gets output headroom for hidden reasoning",
+        );
         if (calls === 1) {
           assert.match(options.system, /0–3 distinct/);
           assert.doesNotMatch(options.system, /exactly three|exactly 3/i);
@@ -482,7 +513,7 @@ test("accepts zero or fewer than three choices and rejects more than three", asy
     ),
     (error) => error instanceof runtimeModule.NarratorResponseError,
   );
-  assert.equal(invalidCalls, 2);
+  assert.equal(invalidCalls, 3);
 });
 
 test("reports when choice generation remains truncated after repair", async () => {

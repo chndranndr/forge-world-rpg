@@ -143,6 +143,19 @@ function textReply(
   };
 }
 
+function lengthReply(text) {
+  return {
+    candidates: [
+      {
+        content: { role: "model", parts: [{ text }] },
+        finishReason: "MAX_TOKENS",
+        index: 0,
+      },
+    ],
+    usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 10 },
+  };
+}
+
 function toolReply(name, args, { thoughtSignature, usage } = {}) {
   return {
     candidates: [
@@ -864,6 +877,65 @@ test("tool continuations use one cached resource but keep local tool authority",
   );
 });
 
+test("the third request disables tool calls after two tool rounds", async () => {
+  const searches = [];
+  const attempts = [];
+  const session = makeSession();
+  const fake = transport({
+    create: () => jsonResponse(cacheCreateReply(Date.now() + 300_000)),
+    generate: (_body, call) => {
+      if (call === 1)
+        return jsonResponse(
+          toolReply("search_memory", { query: "lighthouse" }),
+        );
+      if (call === 2)
+        return jsonResponse(
+          toolReply("get_item_details", { itemId: "umbrella" }),
+        );
+      return jsonResponse(
+        textReply(
+          JSON.stringify({ narrative: "The lamp glows.", effects: [] }),
+        ),
+      );
+    },
+  });
+  const result = await withGlobalFetch(fake.fetch, () =>
+    agent.runNarrator(
+      makeInput({
+        session,
+        searchMemory: async (query) => {
+          searches.push(query);
+          return [];
+        },
+        onAttemptFinish: (event) => attempts.push(event),
+        contextCache: {
+          client: new cacheModule.GeminiContextCache({ mode: "off" }),
+          databaseScope: {},
+        },
+      }),
+    ),
+  );
+  assert.equal(fake.generated.length, 3);
+  assert.equal(searches.length, 1);
+  assert.deepEqual(
+    attempts.map((event) => event.finishReason),
+    ["tool-calls", "tool-calls", "stop"],
+  );
+  assert.ok(fake.generated[0].body.tools?.length);
+  assert.deepEqual(fake.generated[1].body.toolConfig, {
+    functionCallingConfig: { mode: "AUTO" },
+  });
+  const finalBody = fake.generated[2].body;
+  assert.equal(finalBody.tools, undefined);
+  assert.equal(finalBody.toolConfig, undefined);
+  assert.equal(finalBody.generationConfig.maxOutputTokens, 8_192);
+  const finalContents = JSON.stringify(finalBody.contents);
+  assert.match(finalContents, /functionResponse/);
+  assert.match(finalContents, /lighthouse/);
+  assert.match(finalContents, /umbrella/);
+  assert.equal(result.response.narrative, "The lamp glows.");
+});
+
 test("invalid tool-followup proposals repair once with the exact check and no partial state", async () => {
   const checks = [];
   let repairBody;
@@ -931,14 +1003,246 @@ test("invalid tool-followup proposals repair once with the exact check and no pa
   assert.equal(checks.length, 3);
 });
 
-test("exhausted repairs stay a failed run without a fourth provider request", async () => {
-  let calls = 0;
+test("explicit cache bypasses the final no-tools step and repairs an exhausted tool turn", async () => {
+  const attempts = [];
+  let telemetry;
+  const cache = createCacheTransport({
+    create: () => jsonResponse(cacheCreateReply(Date.now() + 300_000, 64)),
+    generate: (_body, call) => {
+      if (call <= 2)
+        return jsonResponse(
+          toolReply("search_memory", { query: "lighthouse" }),
+        );
+      if (call === 3) return jsonResponse(textReply("not valid json"));
+      return jsonResponse(
+        textReply(
+          JSON.stringify({ narrative: "The lamp glows.", effects: [] }),
+        ),
+      );
+    },
+  });
+  const result = await withGlobalFetch(cache.fetch, () =>
+    agent.runNarrator(
+      makeInput({
+        session: makeSession(),
+        searchMemory: async () => [],
+        onAttemptFinish: (event) => attempts.push(event),
+        onContext: (value) => {
+          telemetry = value;
+        },
+        contextCache: { client: cache.client, databaseScope: {} },
+      }),
+    ),
+  );
+  assert.equal(cache.created.length, 1, "only the tool cache is created");
+  assert.equal(cache.generated.length, 4);
+  const first = cache.generated[0].body;
+  const second = cache.generated[1].body;
+  const final = cache.generated[2].body;
+  const repair = cache.generated[3].body;
+  assert.equal(typeof first.cachedContent, "string");
+  assert.equal(second.cachedContent, first.cachedContent);
+  assert.equal(final.cachedContent, undefined);
+  assert.equal(final.tools, undefined);
+  assert.equal(final.toolConfig, undefined);
+  assert.ok(final.systemInstruction);
+  // The final no-tools request keeps the full tool conversation; the fourth
+  // request is the existing fresh repair (original prompt + correction).
+  assert.match(JSON.stringify(final.contents), /functionResponse/);
+  assert.match(JSON.stringify(final.contents), /lighthouse/);
+  assert.equal(repair.cachedContent, undefined);
+  assert.equal(repair.tools, undefined);
+  assert.equal(repair.toolConfig, undefined);
+  assert.equal(repair.generationConfig.maxOutputTokens, 8_192);
+  const repairPrompt = repair.contents[0].parts[0].text;
+  assert.match(repairPrompt, /correction/);
+  assert.match(repairPrompt, /not valid json/);
+  assert.match(repair.systemInstruction.parts[0].text, /knownNpcIdentities/);
+  assert.deepEqual(
+    attempts.map((event) => event.finishReason),
+    ["tool-calls", "tool-calls", "stop", "stop"],
+  );
+  assert.equal(result.response.narrative, "The lamp glows.");
+  const cacheTraces = telemetry.trace.events.filter(
+    (event) => event.kind === "cache",
+  );
+  assert.equal(
+    cacheTraces.filter(
+      (event) =>
+        event.operation === "bypass" && event.reason === "final_answer",
+    ).length,
+    1,
+  );
+  assert.equal(
+    cacheTraces.filter(
+      (event) => event.operation === "bypass" && event.reason === "repair",
+    ).length,
+    1,
+  );
+  assert.equal(
+    cacheTraces.filter((event) => event.operation === "create").length,
+    1,
+  );
+  assert.doesNotMatch(
+    JSON.stringify(telemetry.trace),
+    /She knows the lighthouse secret|private-1/,
+  );
+});
+
+test("a rejected fourth-request repair cannot make a fifth call or commit", async () => {
+  let telemetry;
+  const session = makeSession();
+  const before = structuredClone(session.state);
+  const cache = createCacheTransport({
+    create: () => jsonResponse(cacheCreateReply(Date.now() + 300_000)),
+    generate: (_body, call) => {
+      if (call <= 2)
+        return jsonResponse(
+          toolReply("search_memory", { query: "lighthouse" }),
+        );
+      return jsonResponse(textReply("not valid json"));
+    },
+  });
+  await assert.rejects(
+    withGlobalFetch(cache.fetch, () =>
+      agent.runNarrator(
+        makeInput({
+          session,
+          searchMemory: async () => [],
+          onContext: (value) => {
+            telemetry = value;
+          },
+          contextCache: { client: cache.client, databaseScope: {} },
+        }),
+      ),
+    ),
+    (error) => {
+      assert.ok(error instanceof runtimeModule.NarratorResponseError);
+      assert.equal(error.repairs, 1);
+      assert.match(error.message, /setelah satu kali perbaikan/);
+      assert.doesNotMatch(error.message, /batas permintaan run ini habis/);
+      return true;
+    },
+  );
+  assert.equal(cache.generated.length, 4);
+  assert.equal(cache.created.length, 1);
+  assert.equal(cache.generated[3].body.tools, undefined);
+  assert.equal(cache.generated[3].body.generationConfig.maxOutputTokens, 8_192);
+  assert.deepEqual(session.state, before);
+  assert.equal(
+    telemetry.trace.events.filter(
+      (event) => event.kind === "model" && event.status === "started",
+    ).length,
+    4,
+  );
+  assert.equal(
+    telemetry.trace.events.filter((event) => event.kind === "repair").length,
+    1,
+  );
+});
+
+test("a truncated final answer after two tool rounds is repaired by the fourth request", async () => {
   const session = makeSession();
   const fake = transport({
     create: () => jsonResponse(cacheCreateReply(Date.now() + 300_000)),
-    generate: () => {
-      calls += 1;
-      if (calls <= 2)
+    generate: (_body, call) => {
+      if (call <= 2)
+        return jsonResponse(
+          toolReply("search_memory", { query: "lighthouse" }),
+        );
+      if (call === 3) return jsonResponse(lengthReply('{"narrative":"'));
+      return jsonResponse(
+        textReply(
+          JSON.stringify({ narrative: "The lamp glows.", effects: [] }),
+        ),
+      );
+    },
+  });
+  const result = await withGlobalFetch(fake.fetch, () =>
+    agent.runNarrator(
+      makeInput({
+        session,
+        searchMemory: async () => [],
+        contextCache: {
+          client: new cacheModule.GeminiContextCache({ mode: "off" }),
+          databaseScope: {},
+        },
+      }),
+    ),
+  );
+  assert.equal(fake.generated.length, 4);
+  const repair = fake.generated[3].body;
+  assert.equal(repair.tools, undefined);
+  assert.equal(repair.generationConfig.maxOutputTokens, 8_192);
+  const repairPrompt = JSON.parse(repair.contents[0].parts[0].text);
+  assert.match(repairPrompt.correction.reason, /output token/i);
+  assert.equal(result.response.narrative, "The lamp glows.");
+});
+
+test("the final failure reason follows the last attempt", async () => {
+  const runFailure = async (finalReply, repairReply) => {
+    const session = makeSession();
+    const before = structuredClone(session.state);
+    const fake = transport({
+      create: () => jsonResponse(cacheCreateReply(Date.now() + 300_000)),
+      generate: (_body, call) => {
+        if (call <= 2)
+          return jsonResponse(
+            toolReply("search_memory", { query: "lighthouse" }),
+          );
+        if (call === 3) return jsonResponse(finalReply);
+        return jsonResponse(repairReply);
+      },
+    });
+    let failure;
+    await assert.rejects(
+      withGlobalFetch(fake.fetch, () =>
+        agent.runNarrator(
+          makeInput({
+            session,
+            searchMemory: async () => [],
+            contextCache: {
+              client: new cacheModule.GeminiContextCache({ mode: "off" }),
+              databaseScope: {},
+            },
+          }),
+        ),
+      ),
+      (error) => {
+        assert.ok(error instanceof runtimeModule.NarratorResponseError);
+        failure = error;
+        return true;
+      },
+    );
+    assert.equal(fake.generated.length, 4);
+    assert.deepEqual(session.state, before);
+    return failure;
+  };
+
+  const repairedLength = await runFailure(
+    textReply("not valid json"),
+    lengthReply('{"narrative":"'),
+  );
+  assert.equal(repairedLength.reason, "output_limit");
+  assert.match(repairedLength.message, /terpotong/);
+  assert.equal(repairedLength.repairs, 1);
+
+  const initialLength = await runFailure(
+    lengthReply('{"narrative":"'),
+    textReply("not valid json"),
+  );
+  assert.equal(initialLength.reason, "invalid");
+  assert.match(initialLength.message, /setelah satu kali perbaikan/);
+  assert.doesNotMatch(initialLength.message, /terpotong/);
+  assert.equal(initialLength.repairs, 1);
+});
+
+test("a rejected repair retries once more within the four-request cap", async () => {
+  const session = makeSession();
+  const fake = transport({
+    create: () => jsonResponse(cacheCreateReply(Date.now() + 300_000)),
+    generate: (_body, call) => {
+      if (call === 1)
         return jsonResponse(
           toolReply("search_memory", { query: "lighthouse" }),
         );
@@ -952,17 +1256,84 @@ test("exhausted repairs stay a failed run without a fourth provider request", as
           session,
           searchMemory: async () => [],
           contextCache: {
-            client: new cacheModule.GeminiContextCache({
-              mode: "off",
-            }),
+            client: new cacheModule.GeminiContextCache({ mode: "off" }),
             databaseScope: {},
           },
         }),
       ),
     ),
-    (error) => error instanceof runtimeModule.NarratorResponseError,
+    (error) => {
+      assert.ok(error instanceof runtimeModule.NarratorResponseError);
+      assert.equal(error.repairs, 2);
+      return true;
+    },
   );
-  assert.equal(calls, 3);
+  assert.equal(fake.generated.length, 4);
+});
+
+test("a second repair within the request cap commits the turn", async () => {
+  const session = makeSession();
+  const badEffect = JSON.stringify({
+    narrative: "Aiko tersenyum.",
+    effects: [
+      {
+        type: "RELATIONSHIP_CHANGE",
+        npcId: "aiko",
+        target: "attraction",
+        operation: "ADD",
+        value: 1,
+      },
+    ],
+  });
+  const goodEffect = JSON.stringify({
+    narrative: "Aiko tersenyum.",
+    effects: [
+      {
+        type: "RELATIONSHIP_CHANGE",
+        npcId: "aiko",
+        target: "trust",
+        operation: "ADD",
+        value: 1,
+      },
+    ],
+  });
+  const fake = transport({
+    create: () => jsonResponse(cacheCreateReply(Date.now() + 300_000)),
+    generate: (_body, call) => {
+      if (call === 1)
+        return jsonResponse(
+          toolReply("search_memory", { query: "lighthouse" }),
+        );
+      if (call <= 3) return jsonResponse(textReply(badEffect));
+      return jsonResponse(textReply(goodEffect));
+    },
+  });
+  const result = await withGlobalFetch(fake.fetch, () =>
+    agent.runNarrator(
+      makeInput({
+        session,
+        searchMemory: async () => [],
+        contextCache: {
+          client: new cacheModule.GeminiContextCache({ mode: "off" }),
+          databaseScope: {},
+        },
+      }),
+    ),
+  );
+  assert.equal(fake.generated.length, 4);
+  const secondRepair = JSON.parse(
+    fake.generated[3].body.contents[0].parts[0].text,
+  );
+  assert.match(secondRepair.correction.reason, /attraction|tidak dikenal/);
+  assert.match(secondRepair.correction.reason, /Id tersedia: trust/);
+  assert.equal(result.response.narrative, "Aiko tersenyum.");
+  assert.equal(
+    result.application.state.relationships.find(
+      (entry) => entry.npcId === "aiko",
+    ).values.trust,
+    session.state.relationships.find((entry) => entry.npcId === "aiko").values
+      .trust + 1,
+  );
 });
 
 test("abort, rejected attempt ledgers, and observer failures cannot report success", async () => {
@@ -1049,7 +1420,12 @@ test("abort, rejected attempt ledgers, and observer failures cannot report succe
 test("traces are bounded and unknown usage stays null", async () => {
   const collector = new runtimeModule.AgentTraceCollector();
   for (let index = 0; index < 130; index += 1) {
-    collector.push({ kind: "validation", status: "rejected" });
+    collector.push({
+      kind: "validation",
+      status: "rejected",
+      reason: "Respons narrator tidak valid.",
+      textChars: 4,
+    });
   }
   const bounded = collector.snapshot();
   assert.equal(bounded.events.length, 128);

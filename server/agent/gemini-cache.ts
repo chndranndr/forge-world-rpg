@@ -131,6 +131,7 @@ export class GeminiContextCache {
         | "disabled"
         | "unsupported_provider"
         | "unsupported_model"
+        | "final_answer"
         | "provider_rejected"
         | "capacity"
         | "busy",
@@ -203,6 +204,36 @@ export class GeminiContextCache {
       }
       const promptIndex = firstPart.text.indexOf(options.context.prompt);
       if (promptIndex < 0) throw new ContextCacheError();
+
+      // The reserved final-answer step disables tool calls by switching the
+      // tool config to NONE. That config has a different cache fingerprint, so
+      // creating another resource would add cost and failure surface for a
+      // one-off request. Send the intact body uncached instead and leave the
+      // existing resource available for later tool-enabled turns.
+      const toolConfig = body.toolConfig;
+      const functionCallingConfig =
+        isObject(toolConfig) && isObject(toolConfig.functionCallingConfig)
+          ? toolConfig.functionCallingConfig
+          : undefined;
+      // The reserved final-answer step removes the tool definitions entirely,
+      // which also changes the cache fingerprint. A body without tools that
+      // still carries function responses belongs to that step, so send it
+      // uncached instead of creating a second resource mid-run.
+      const hasToolResult = contents.some(
+        (content) =>
+          isObject(content) &&
+          Array.isArray(content.parts) &&
+          content.parts.some(
+            (part) => isObject(part) && "functionResponse" in part,
+          ),
+      );
+      if (
+        functionCallingConfig?.mode === "NONE" ||
+        (body.tools === undefined && hasToolResult)
+      ) {
+        bypass("final_answer");
+        return sendUncached(url, init);
+      }
 
       const fingerprint = createHmac("sha256", this.#secret)
         .update(identity)

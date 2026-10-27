@@ -313,6 +313,7 @@ export type AgentTraceCacheReason =
   | "unsupported_provider"
   | "unsupported_model"
   | "repair"
+  | "final_answer"
   | "provider_rejected"
   | "capacity"
   | "busy";
@@ -332,11 +333,14 @@ export type AgentTraceEvent =
       name: string;
       status: "succeeded" | "failed";
       resultChars: number | null;
+      reason: string | null;
     }
   | {
       kind: "validation";
       elapsedMs: number;
       status: "accepted" | "rejected";
+      reason: string | null;
+      textChars: number;
     }
   | { kind: "repair"; elapsedMs: number }
   | {

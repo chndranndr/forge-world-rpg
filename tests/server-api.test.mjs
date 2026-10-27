@@ -140,6 +140,13 @@ test("logs safe metadata when a turn fails", async (t) => {
   }
   assert.equal(run?.status, "failed");
   assert.equal(run.error.code, "RUN_FAILED");
+  assert.equal(run.error.errorName, "AI_APICallError");
+  assert.equal(run.error.causeCode, "ECONNRESET");
+  assert.equal(run.error.statusCode, 503);
+  assert.doesNotMatch(
+    JSON.stringify(run.error),
+    /secret provider response|private player action/,
+  );
   assert.deepEqual(logs, [
     [
       "[fworld] run gagal",

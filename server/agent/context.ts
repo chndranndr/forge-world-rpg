@@ -359,10 +359,20 @@ const REGISTER_ITEM_INSTRUCTIONS = [
   "Description, tags, and effects must describe properties already established by the story, never arbitrary rewards. Every effect target must already exist in the snapshot or current context: stats, resources, relationships, NPCs, inventory items, declared flags, and lore ids shown as discovery candidates or already discovered.",
 ].join("\n");
 
+const NPC_REENCOUNTER_INSTRUCTIONS = [
+  "Off-scene NPCs: knownNpcIdentities, when present, lists only the id and name of characters the player met earlier who are currently outside this scene. A name in that list does not put the character in the scene and does not make the character nearby, watching, or reachable; never place that character in the current scene from a mention alone, and never reveal or infer their location, private knowledge, relationships, or other details that are not in this context. get_npc_details still answers only for the server-selected interlocutor.",
+  'Only when the current story itself establishes that one listed character actually joins the scene the player is in, emit {"type":"NPC_PRESENCE","npcId":"<id>","present":true} with an exact listed id. Leave the effect out for a character who is merely mentioned, remembered, contacted remotely, or already in activeCharacters.',
+  "If the most recent narration of this scene already places one listed character here, emit that effect once in this turn so the saved scene matches the story, even when the player's action does not mention them again.",
+].join("\n");
+
+const EFFECT_CONTRACT_INSTRUCTIONS = [
+  'Effect contract: operation must be exactly "ADD", "SUBTRACT", or "SET" in uppercase. Every target must be an existing id from this context, never a display name or a translation: relationship targets use the ids shown in state.relationships, attributes use the game attribute ids, and NPC effects use npc ids.',
+].join("\n");
+
 function effectiveNarratorSystem(input: NarratorContextInput): string {
   const stored = normalizeNarratorSystemPrompt(input.session.ai.systemPrompt);
   if (input.kind !== "turn") return stored;
-  return `${stored}\n\n${REGISTER_ITEM_INSTRUCTIONS}`;
+  return `${stored}\n\n${EFFECT_CONTRACT_INSTRUCTIONS}\n\n${REGISTER_ITEM_INSTRUCTIONS}\n\n${NPC_REENCOUNTER_INSTRUCTIONS}`;
 }
 
 export function buildNarratorContext(

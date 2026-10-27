@@ -107,15 +107,29 @@ function fail(message: string): never {
   throw new EngineError(message);
 }
 
+// Repair requests get one or two attempts, so an id error must name the ids the
+// model is allowed to use instead of only rejecting the guess.
+function knownIds(ids: readonly string[]): string {
+  if (!ids.length) return " Tidak ada id yang tersedia.";
+  const shown = ids.slice(0, 12).join(", ");
+  return ` Id tersedia: ${shown}${ids.length > 12 ? ", …" : ""}.`;
+}
+
 function findAttribute(game: GameDefinition, id: string): AttributeDefinition {
   const def = game.attributes.find((entry) => entry.id === id);
-  if (!def) fail(`Atribut "${id}" tidak dikenal`);
+  if (!def)
+    fail(
+      `Atribut "${id}" tidak dikenal.${knownIds(game.attributes.map((entry) => entry.id))}`,
+    );
   return def;
 }
 
 function findResource(game: GameDefinition, id: string): ResourceDefinition {
   const def = game.resources.find((entry) => entry.id === id);
-  if (!def) fail(`Sumber daya "${id}" tidak dikenal`);
+  if (!def)
+    fail(
+      `Sumber daya "${id}" tidak dikenal.${knownIds(game.resources.map((entry) => entry.id))}`,
+    );
   return def;
 }
 
@@ -124,13 +138,19 @@ function findRelationship(
   id: string,
 ): RelationshipDefinition {
   const def = game.relationships.find((entry) => entry.id === id);
-  if (!def) fail(`Hubungan "${id}" tidak dikenal`);
+  if (!def)
+    fail(
+      `Hubungan "${id}" tidak dikenal.${knownIds(game.relationships.map((entry) => entry.id))}`,
+    );
   return def;
 }
 
 function findItem(game: GameDefinition, id: string): ItemDefinition {
   const item = game.items.find((entry) => entry.id === id);
-  if (!item) fail(`Item "${id}" tidak dikenal`);
+  if (!item)
+    fail(
+      `Item "${id}" tidak dikenal.${knownIds(game.items.map((entry) => entry.id))}`,
+    );
   return item;
 }
 
@@ -279,7 +299,10 @@ function applyOne(
         fail(`Perubahan hubungan "${rel.name}" membutuhkan NPC`);
       }
       const npc = game.npcs.find((entry) => entry.id === effect.npcId);
-      if (!npc) fail(`NPC "${effect.npcId}" tidak dikenal`);
+      if (!npc)
+        fail(
+          `NPC "${effect.npcId}" tidak dikenal.${knownIds(game.npcs.map((entry) => entry.id))}`,
+        );
       const entry = next.relationships.find((r) => r.npcId === npc.id);
       if (!entry) fail(`NPC "${npc.name}" belum memiliki catatan hubungan`);
       const current = entry.values[rel.id] ?? rel.defaultValue;
@@ -463,7 +486,9 @@ function applyOne(
     }
     case "NPC_PRESENCE": {
       if (!game.npcs.some((npc) => npc.id === effect.npcId)) {
-        fail(`NPC "${effect.npcId}" tidak dikenal`);
+        fail(
+          `NPC "${effect.npcId}" tidak dikenal.${knownIds(game.npcs.map((entry) => entry.id))}`,
+        );
       }
       if (typeof effect.present !== "boolean") {
         fail("NPC_PRESENCE membutuhkan present boolean");
@@ -726,7 +751,9 @@ export function validateCheckRequest(
   const problems: string[] = [];
   const attr = game.attributes.find((entry) => entry.id === params.attributeId);
   if (!attr) {
-    problems.push(`Atribut "${params.attributeId}" tidak dikenal`);
+    problems.push(
+      `Atribut "${params.attributeId}" tidak dikenal.${knownIds(game.attributes.map((entry) => entry.id))}`,
+    );
   }
   if (!Number.isInteger(params.difficulty) || params.difficulty < 0) {
     problems.push("Tingkat kesulitan harus bilangan bulat minimal 0");
@@ -734,7 +761,9 @@ export function validateCheckRequest(
   if (params.npcId !== undefined) {
     const npc = game.npcs.find((entry) => entry.id === params.npcId);
     if (!npc) {
-      problems.push(`NPC "${params.npcId}" tidak dikenal`);
+      problems.push(
+        `NPC "${params.npcId}" tidak dikenal.${knownIds(game.npcs.map((entry) => entry.id))}`,
+      );
     } else if (npc.attributes?.[params.attributeId] === undefined) {
       problems.push(
         `NPC "${npc.name}" tidak memiliki atribut "${params.attributeId}"`,
@@ -760,7 +789,10 @@ export function runCheck(
   let base: number;
   if (params.npcId !== undefined) {
     const npc = game.npcs.find((entry) => entry.id === params.npcId);
-    if (!npc) fail(`NPC "${params.npcId}" tidak dikenal`);
+    if (!npc)
+      fail(
+        `NPC "${params.npcId}" tidak dikenal.${knownIds(game.npcs.map((entry) => entry.id))}`,
+      );
     const value = npc.attributes?.[params.attributeId];
     if (value === undefined) {
       fail(`NPC "${npc.name}" tidak memiliki atribut "${params.attributeId}"`);
