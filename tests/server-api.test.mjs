@@ -114,11 +114,15 @@ test("logs safe metadata when a turn fails", async (t) => {
   });
   const session = started.session.value;
   const failure = new Error(
-    "secret provider response and private player action",
+    "secret provider response and private player action sk-or-v1-0123456789abcdef0123456789abcdef",
   );
   failure.name = "AI_APICallError";
   failure.code = "ECONNRESET";
-  failure.statusCode = 503;
+  failure.statusCode = 500;
+  failure.responseBody = JSON.stringify({
+    error: { message: "upstream 200 without choices" },
+    echo: "AIzaAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  });
   database.getWorldMap = () => {
     throw failure;
   };
@@ -142,11 +146,13 @@ test("logs safe metadata when a turn fails", async (t) => {
   assert.equal(run.error.code, "RUN_FAILED");
   assert.equal(run.error.errorName, "AI_APICallError");
   assert.equal(run.error.causeCode, "ECONNRESET");
-  assert.equal(run.error.statusCode, 503);
-  assert.doesNotMatch(
-    JSON.stringify(run.error),
-    /secret provider response|private player action/,
+  assert.equal(run.error.statusCode, 500);
+  assert.equal(
+    run.error.detail,
+    "secret provider response and private player action [redacted]",
   );
+  assert.match(run.error.responseBody, /upstream 200 without choices/);
+  assert.doesNotMatch(JSON.stringify(run.error), /sk-or-v1-|AIzaA/);
   assert.deepEqual(logs, [
     [
       "[fworld] run gagal",
@@ -159,7 +165,7 @@ test("logs safe metadata when a turn fails", async (t) => {
         code: "RUN_FAILED",
         errorName: "AI_APICallError",
         causeCode: "ECONNRESET",
-        statusCode: 503,
+        statusCode: 500,
       },
     ],
   ]);
@@ -167,6 +173,194 @@ test("logs safe metadata when a turn fails", async (t) => {
     JSON.stringify(logs),
     /secret provider response|private player action/,
   );
+});
+
+test("classifies a provider content block as AI_CONTENT_BLOCKED", async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "fworld-content-block-"));
+  const database = new databaseApi.GameDatabase(join(directory, "data.sqlite"));
+  const originalGetWorldMap = database.getWorldMap;
+  const originalConsoleError = console.error;
+  t.after(() => {
+    console.error = originalConsoleError;
+    database.getWorldMap = originalGetWorldMap;
+    database.close();
+    rmSync(directory, { recursive: true, force: true });
+  });
+  console.error = () => {};
+
+  const started = database.startSession({
+    definition: game("content-block"),
+    ai: { provider: "openrouter", model: "google/gemini-test" },
+  });
+  const session = started.session.value;
+  const blocked = new Error("Gemini blocked the request: PROHIBITED_CONTENT");
+  blocked.name = "AI_APICallError";
+  blocked.statusCode = 200;
+  database.getWorldMap = () => {
+    throw blocked;
+  };
+
+  const requestId = "content-block-run";
+  turnApi.startSessionRun(database, {
+    sessionId: session.id,
+    requestId,
+    expectedRevision: started.session.revision,
+    work: { kind: "turn", input: "lanjut" },
+    providerKey: "",
+  });
+  let run = database.getRun(session.id, requestId);
+  for (let attempt = 0; run?.status === "running" && attempt < 100; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    run = database.getRun(session.id, requestId);
+  }
+  assert.equal(run?.status, "failed");
+  assert.equal(run.error.code, "AI_CONTENT_BLOCKED");
+  assert.match(run.error.message, /kebijakan konten/i);
+  assert.match(run.error.detail, /PROHIBITED_CONTENT/);
+  assert.equal(
+    database.getSession(session.id).revision,
+    started.session.revision,
+  );
+});
+
+test("classifies provider overload as AI_PROVIDER_UNAVAILABLE without committing", async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "fworld-provider-busy-"));
+  const database = new databaseApi.GameDatabase(join(directory, "data.sqlite"));
+  const originalGetWorldMap = database.getWorldMap;
+  const originalConsoleError = console.error;
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    console.error = originalConsoleError;
+    database.getWorldMap = originalGetWorldMap;
+    globalThis.fetch = originalFetch;
+    database.close();
+    rmSync(directory, { recursive: true, force: true });
+  });
+  const logs = [];
+  console.error = (message, details) => logs.push([message, details]);
+
+  const started = database.startSession({
+    definition: game("provider-busy"),
+    ai: { provider: "gemini", model: "gemini-test" },
+  });
+  const session = started.session.value;
+  let providerCalls = 0;
+  globalThis.fetch = async (input, init) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (!url.startsWith("https://generativelanguage.googleapis.com/")) {
+      return originalFetch(input, init);
+    }
+    providerCalls++;
+    return new Response(
+      JSON.stringify({
+        error: {
+          code: 503,
+          message:
+            "This model is currently experiencing high demand. Please try again later. sk-or-v1-0123456789abcdef0123456789abcdef",
+          status: "UNAVAILABLE",
+        },
+      }),
+      { status: 503, headers: { "Content-Type": "application/json" } },
+    );
+  };
+
+  const requestId = "provider-busy-run";
+  turnApi.startSessionRun(database, {
+    sessionId: session.id,
+    requestId,
+    expectedRevision: started.session.revision,
+    work: { kind: "turn", input: "lanjut" },
+    providerKey: "test-gemini-key",
+  });
+  let run = database.getRun(session.id, requestId);
+  for (let attempt = 0; run?.status === "running" && attempt < 100; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    run = database.getRun(session.id, requestId);
+  }
+  assert.equal(run?.status, "failed");
+  assert.equal(run.error.code, "AI_PROVIDER_UNAVAILABLE");
+  assert.match(run.error.message, /sementara.*coba lagi/i);
+  assert.match(run.error.message, /ganti model atau profil ai/i);
+  assert.equal(run.error.errorName, "AI_APICallError");
+  assert.equal(run.error.statusCode, 503);
+  assert.match(run.error.detail, /high demand/);
+  assert.doesNotMatch(JSON.stringify(run.error), /sk-or-v1-/);
+  assert.deepEqual(logs, [
+    [
+      "[fworld] run gagal",
+      {
+        sessionId: session.id,
+        requestId,
+        kind: "turn",
+        provider: "gemini",
+        model: "gemini-test",
+        code: "AI_PROVIDER_UNAVAILABLE",
+        errorName: "AI_APICallError",
+        statusCode: 503,
+      },
+    ],
+  ]);
+  assert.doesNotMatch(JSON.stringify(logs), /sk-or-v1-|high demand/);
+
+  const after = database.getSession(session.id);
+  assert.equal(after.revision, started.session.revision);
+  assert.equal(after.nextSequence, 0);
+  assert.deepEqual(after.state, session.state);
+  assert.equal(database.getHistory(session.id).length, 0);
+  assert.equal(providerCalls, 1);
+
+  const server = serverApi.createHttpServer(
+    { current: database, path: join(directory, "data.sqlite") },
+    {
+      development: true,
+      allowedHosts: ["*"],
+      backupDirectory: join(directory, "backups"),
+      envFilePath: join(directory, ".env"),
+    },
+  );
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${server.address().port}/api/sessions/${session.id}/runs/${requestId}`,
+      { headers: { Origin: "http://127.0.0.1:5173" } },
+    );
+    assert.equal(response.status, 200);
+    const publicRun = await response.json();
+    assert.equal(publicRun.error.code, "AI_PROVIDER_UNAVAILABLE");
+    assert.equal(publicRun.error.retryable, true);
+    assert.match(publicRun.error.message, /sementara.*coba lagi/i);
+    assert.doesNotMatch(JSON.stringify(publicRun), /high demand|sk-or-v1-/);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+
+  const unrelatedFailure = new Error("local subsystem unavailable");
+  unrelatedFailure.statusCode = 503;
+  database.getWorldMap = () => {
+    throw unrelatedFailure;
+  };
+  const unrelatedRequestId = "non-provider-503";
+  turnApi.startSessionRun(database, {
+    sessionId: session.id,
+    requestId: unrelatedRequestId,
+    expectedRevision: started.session.revision,
+    work: { kind: "turn", input: "lanjut" },
+    providerKey: "",
+  });
+  let unrelated = database.getRun(session.id, unrelatedRequestId);
+  for (
+    let attempt = 0;
+    unrelated?.status === "running" && attempt < 100;
+    attempt++
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    unrelated = database.getRun(session.id, unrelatedRequestId);
+  }
+  assert.equal(unrelated?.status, "failed");
+  assert.equal(unrelated.error.code, "RUN_FAILED");
 });
 
 test("development API allows only exact private IPv4 host and origin pairs", async (t) => {

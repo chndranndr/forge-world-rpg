@@ -25,6 +25,7 @@ export const MAX_CONTEXT_TOKENS = 128_000;
 export const MAX_ACTION_CHARS = 8_000;
 export const MAX_RECENT_MESSAGES = 24;
 export const MAX_REPAIR_TEXT_CHARS = 8_000;
+const MAX_RELATIONSHIP_CATALOG = 64;
 
 const SECTION_CHAR_LIMITS = {
   npcProfiles: 4_500,
@@ -366,7 +367,8 @@ const NPC_REENCOUNTER_INSTRUCTIONS = [
 ].join("\n");
 
 const EFFECT_CONTRACT_INSTRUCTIONS = [
-  'Effect contract: operation must be exactly "ADD", "SUBTRACT", or "SET" in uppercase. Every target must be an existing id from this context, never a display name or a translation: relationship targets use the ids shown in state.relationships, attributes use the game attribute ids, and NPC effects use npc ids.',
+  'Effect contract: operation must be exactly "ADD", "SUBTRACT", or "SET" in uppercase. Every target must be an existing id from this context, never a display name or a translation: RELATIONSHIP_CHANGE target must be one of the ids in game.relationshipCatalog and npcId names the affected character, attributes use the game attribute ids, and NPC effects use npc ids. game.relationshipCatalog lists the relationship ids and names regardless of the selected NPC, while state.relationships only adds the values of the current interlocutor and is empty when no NPC is the interlocutor.',
+  'Effect keys (each effect also needs "type"; "?" marks optional): ATTRIBUTE_CHANGE/RESOURCE_CHANGE: target, operation, value; RELATIONSHIP_CHANGE: npcId, target, operation, value; ADD_ITEM/REMOVE_ITEM: target, quantity; ADD_FACT: text, visibility?, knownBy?, revealableTo?; REMOVE_FACT: target; DISCOVER_LORE: loreId; REVEAL_FACT: factId, npcId; SET_FLAG: target, value; NPC_PRESENCE: npcId, present; REGISTER_NPC: id, name, personality, goals, description?, role?; REGISTER_ITEM: its own fields below. Extra keys are rejected.',
 ].join("\n");
 
 function effectiveNarratorSystem(input: NarratorContextInput): string {
@@ -553,6 +555,12 @@ export function buildNarratorContext(
                   : { secret: party.secret.slice(0, 600) }),
               })),
           }),
+      relationshipCatalog: definition.relationships
+        .slice(0, MAX_RELATIONSHIP_CATALOG)
+        .map((relationship) => ({
+          id: relationship.id,
+          name: relationship.name.slice(0, 200),
+        })),
     },
     scenario: {
       setting: definition.scenario.setting,
@@ -716,6 +724,9 @@ export function buildNarratorContext(
   const sections: ContextTelemetry["sections"] = {};
   const omissions: string[] = [];
   if (partyContextOmitted > 0) omissions.push("limit.relationshipParties");
+  if (definition.relationships.length > MAX_RELATIONSHIP_CATALOG) {
+    omissions.push("limit.relationshipCatalog");
+  }
   if (
     Object.keys(state.world.flags ?? {}).length >
     Object.keys(selectedWorldFlags).length

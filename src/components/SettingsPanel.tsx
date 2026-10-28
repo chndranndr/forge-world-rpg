@@ -10,6 +10,7 @@ import {
   ApiError,
   applySessionAiProfile,
   createBackup,
+  getAiReasoning,
   getAiSettings,
   getHealth,
   getSession,
@@ -21,6 +22,7 @@ import {
   readLegacyMigration,
   restoreBackup,
   saveAiCredential,
+  saveAiReasoning,
   testAiConnection,
   updateSessionAi,
   type BackupRecord,
@@ -118,6 +120,11 @@ export default function SettingsPanel(props: SettingsPanelProps) {
   >({ gemini: "", openrouter: "" });
   const [credentialBusy, setCredentialBusy] = useState(false);
   const [credentialNote, setCredentialNote] = useState<string | null>(null);
+  const [reasoning, setReasoning] = useState<boolean | null>(null);
+  const [reasoningBusy, setReasoningBusy] = useState(false);
+  const reasoningBusyRef = useRef(false);
+  const [reasoningError, setReasoningError] = useState<string | null>(null);
+  const [reasoningNote, setReasoningNote] = useState<string | null>(null);
   const [profiles, setProfiles] = useState<AiProfile[]>([]);
   const [profilesError, setProfilesError] = useState<string | null>(null);
   const [sessionProfileId, setSessionProfileId] = useState("");
@@ -331,6 +338,17 @@ export default function SettingsPanel(props: SettingsPanelProps) {
         setConfigured(null);
         setAiSettingsError(
           errorText(error, "Status provider tidak dapat dimuat."),
+        );
+      });
+    void getAiReasoning()
+      .then((state) => {
+        setReasoning(state.enabled);
+        setReasoningError(null);
+      })
+      .catch((error: unknown) => {
+        setReasoning(null);
+        setReasoningError(
+          errorText(error, "Status reasoning tidak dapat dimuat."),
         );
       });
     void refreshBackups();
@@ -587,6 +605,31 @@ export default function SettingsPanel(props: SettingsPanelProps) {
       }
     } finally {
       setSessionSaveBusy(false);
+    }
+  }
+
+  async function handleReasoningChange(enabled: boolean) {
+    if (reasoningBusyRef.current || reasoning === null || enabled === reasoning)
+      return;
+    reasoningBusyRef.current = true;
+    setReasoningBusy(true);
+    setReasoningError(null);
+    setReasoningNote(null);
+    try {
+      const state = await saveAiReasoning(enabled);
+      setReasoning(state.enabled);
+      setReasoningNote(
+        state.enabled
+          ? "Reasoning aktif untuk semua sesi; berlaku pada run berikutnya."
+          : "Reasoning diminta serendah yang didukung provider untuk semua sesi; berlaku pada run berikutnya.",
+      );
+    } catch (error) {
+      setReasoningError(
+        `Simpan pengaturan reasoning gagal: ${errorText(error, "Backend tidak tersedia.")}`,
+      );
+    } finally {
+      reasoningBusyRef.current = false;
+      setReasoningBusy(false);
     }
   }
 
@@ -1113,6 +1156,46 @@ export default function SettingsPanel(props: SettingsPanelProps) {
                 Kelola profil AI →
               </button>
             </section>
+            <section aria-label="Reasoning model" className="settings-section">
+              <h2>Reasoning model</h2>
+              <label>
+                Reasoning untuk semua sesi
+                <select
+                  value={reasoning === null ? "" : reasoning ? "on" : "off"}
+                  disabled={reasoning === null || reasoningBusy}
+                  aria-describedby="ai-reasoning-help"
+                  onChange={(event) =>
+                    void handleReasoningChange(event.target.value === "on")
+                  }
+                >
+                  {reasoning === null && (
+                    <option value="">
+                      {reasoningError ? "Tidak diketahui" : "Memuat…"}
+                    </option>
+                  )}
+                  <option value="on">Aktif</option>
+                  <option value="off">Nonaktif</option>
+                </select>
+              </label>
+              <p className="hint" id="ai-reasoning-help">
+                Berlaku untuk seluruh server dan dipakai pada run berikutnya,
+                termasuk permintaan perbaikan. Pilihan ini tidak mengubah profil
+                AI, model, maupun system prompt sesi. Nonaktif meminta reasoning
+                serendah yang didukung provider, bukan jaminan berhenti
+                berpikir: Gemini 3 dan GLM-5.3 tetap melakukan reasoning pada
+                level rendah. Gemini 2.5 Pro, model yang tidak dikenali, dan
+                endpoint OpenAI-compatible (custom) dapat tetap memakai default.
+                Nilai disimpan di .env backend; variabel FWORLD_AI_REASONING
+                yang diekspor di environment proses tetap menang saat server
+                dimulai ulang.
+              </p>
+              {reasoningError && (
+                <p className="error" role="alert">
+                  {reasoningError}
+                </p>
+              )}
+              {reasoningNote && <p role="status">{reasoningNote}</p>}
+            </section>
           </section>
           <section
             id="settings-panel-profiles"
@@ -1194,9 +1277,11 @@ export default function SettingsPanel(props: SettingsPanelProps) {
                 )}
                 <p className="hint">
                   Snapshot sesi tidak berubah saat profil diedit; gunakan
-                  Terapkan profil untuk memakai konfigurasi terbaru. Field
-                  model/prompt manual di atas mengganti snapshot sesi dengan
-                  credential yang tetap sama.
+                  Terapkan profil untuk memakai konfigurasi terbaru. Terapkan
+                  profil juga menimpa system prompt sesi dengan prompt profil
+                  tersebut, jadi prompt kustom sesi ini akan hilang kecuali
+                  sudah disalin ke profilnya. Field model/prompt manual di atas
+                  mengganti snapshot sesi dengan credential yang tetap sama.
                 </p>
                 {sessionProfileError && (
                   <p className="error" role="alert">

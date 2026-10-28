@@ -51,11 +51,21 @@ export interface AttemptEvent {
   reasoningTokens: number | null;
 }
 
+export type AgentProviderOptions = NonNullable<
+  Parameters<typeof generateText>[0]["providerOptions"]
+>;
+
+export type AgentReasoning = NonNullable<
+  Parameters<typeof generateText>[0]["reasoning"]
+>;
+
 export interface AgentRequest {
   model: LanguageModel;
   system: string;
   prompt: string;
   tools?: ToolSet;
+  providerOptions?: AgentProviderOptions;
+  reasoning?: AgentReasoning;
 }
 
 export type AgentValidation<TResult> =
@@ -388,6 +398,10 @@ export async function runAgent<TResult>(
         model: request.model,
         system: request.system,
         prompt: request.prompt,
+        ...(request.providerOptions
+          ? { providerOptions: request.providerOptions }
+          : {}),
+        ...(request.reasoning ? { reasoning: request.reasoning } : {}),
         ...(tools
           ? {
               tools,

@@ -44,9 +44,19 @@ interface StoredRunFailure {
   message: string;
   detail?: string;
   textSample?: string;
+  responseBody?: string;
   errorName?: string;
   causeCode?: string;
   statusCode?: number;
+}
+
+// Provider errors are the only way to diagnose parse failures, so their text
+// is stored, but API keys must never end up in the database or a backup.
+const CREDENTIAL_PATTERN =
+  /(?:sk-(?:or-v1-|proj-)?[A-Za-z0-9_-]{16,}|AIza[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})/g;
+
+function scrubbed(value: string, limit: number): string {
+  return value.replace(CREDENTIAL_PATTERN, "[redacted]").slice(0, limit);
 }
 
 function errorForStorage(error: unknown): StoredRunFailure {
@@ -79,11 +89,43 @@ function errorForStorage(error: unknown): StoredRunFailure {
   if (error instanceof Error && /profil ai/i.test(error.message)) {
     return { code: "AI_PROFILE_REQUIRED", message: error.message };
   }
+  const message = error instanceof Error ? scrubbed(error.message, 300) : "";
+  const body =
+    error instanceof Error &&
+    "responseBody" in error &&
+    typeof error.responseBody === "string"
+      ? scrubbed(error.responseBody, 800)
+      : undefined;
+  const details = {
+    ...(message ? { detail: message } : {}),
+    ...(body ? { responseBody: body } : {}),
+    ...safeFailureDetails(error),
+  };
+  if (details.errorName === "AI_APICallError" && details.statusCode === 503) {
+    return {
+      code: "AI_PROVIDER_UNAVAILABLE",
+      message:
+        "Provider AI sedang kelebihan beban atau tidak tersedia sementara (HTTP 503). Tunggu sebentar lalu coba lagi; jika tetap gagal, ganti model atau profil AI.",
+      ...details,
+    };
+  }
+  if (
+    /PROHIBITED_CONTENT|blocked (?:the )?request|content policy/i.test(
+      `${message} ${body}`,
+    )
+  ) {
+    return {
+      code: "AI_CONTENT_BLOCKED",
+      message:
+        "Provider menolak permintaan karena kebijakan konten. Ganti model atau profil AI, atau kurangi detail adegan, lalu coba lagi.",
+      ...details,
+    };
+  }
   return {
     code: "RUN_FAILED",
     message:
       "Run gagal. Periksa koneksi, konfigurasi provider, dan log server.",
-    ...safeFailureDetails(error),
+    ...details,
   };
 }
 
@@ -427,6 +469,7 @@ async function runStarted(
     const failure = errorForStorage(error);
     if (
       failure.code === "RUN_FAILED" ||
+      failure.code === "AI_PROVIDER_UNAVAILABLE" ||
       error instanceof NarratorResponseError
     ) {
       console.error("[fworld] run gagal", {
@@ -440,7 +483,9 @@ async function runStarted(
             }
           : {}),
         code: failure.code,
-        ...(failure.detail ? { detail: failure.detail } : {}),
+        ...(error instanceof NarratorResponseError && failure.detail
+          ? { detail: failure.detail }
+          : {}),
         ...safeFailureDetails(error),
       });
     }

@@ -546,8 +546,26 @@ export function createNarratorHarness(input: {
     let issue: string | undefined;
     let application: NarratorApplyResult | null = null;
     let suppressPreviousResponse = false;
+    const parseResponse = (text: string): TurnResponse => {
+      const raw = parseNarratorJson(text);
+      try {
+        return parseTurnResponse(raw);
+      } catch (error) {
+        if (input.input.kind !== "opening") throw error;
+        // An opening never applies state proposals, so a malformed effects
+        // array must not discard an otherwise usable opening narration.
+        try {
+          return parseTurnResponse({
+            ...(raw as Record<string, unknown>),
+            effects: [],
+          });
+        } catch {
+          throw error;
+        }
+      }
+    };
     try {
-      response = parseTurnResponse(parseNarratorJson(result.text));
+      response = parseResponse(result.text);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       issue = `Respons narrator bukan JSON atau bentuk domain yang valid: ${detail}`;

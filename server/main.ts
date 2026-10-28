@@ -202,7 +202,7 @@ function publicRun(run: RunRecord) {
             code: typeof error.code === "string" ? error.code : "RUN_FAILED",
             message:
               typeof error.message === "string" ? error.message : "Run gagal.",
-            retryable: false,
+            retryable: error.code === "AI_PROVIDER_UNAVAILABLE",
           },
         }
       : {}),
@@ -580,6 +580,7 @@ function credentialKey(credentialId: string): string | undefined {
 function saveProviderEnvironment(
   envFilePath: string,
   assignments: Record<string, string>,
+  label = "Credential",
 ): void {
   const names = Object.keys(assignments);
   if (names.length === 0) {
@@ -605,7 +606,7 @@ function saveProviderEnvironment(
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
       throw new HttpError(
-        "Credential tidak dapat dibaca dari konfigurasi server.",
+        `${label} tidak dapat dibaca dari konfigurasi server.`,
         500,
         "CREDENTIAL_PERSISTENCE_FAILED",
       );
@@ -652,7 +653,7 @@ function saveProviderEnvironment(
   } catch {
     rmSync(temporaryPath, { force: true });
     throw new HttpError(
-      "Credential tidak dapat disimpan di konfigurasi server.",
+      `${label} tidak dapat disimpan di konfigurasi server.`,
       500,
       "CREDENTIAL_PERSISTENCE_FAILED",
     );
@@ -1632,6 +1633,31 @@ export function createHttpServer(
                 gemini: { configured: Boolean(providerKey("gemini")) },
                 openrouter: { configured: Boolean(providerKey("openrouter")) },
               },
+            });
+            return;
+          }
+          if (pathname === "/api/ai/reasoning" && method === "GET") {
+            jsonResponse(response, 200, {
+              enabled: process.env.FWORLD_AI_REASONING !== "off",
+            });
+            return;
+          }
+          if (pathname === "/api/ai/reasoning" && method === "PUT") {
+            const input = objectBody(body, ["enabled"], ["enabled"]);
+            if (typeof input.enabled !== "boolean") {
+              throw new ValidationError("Field enabled harus boolean.");
+            }
+            // The setting is server-wide, so it is stored next to the provider
+            // credentials and applied to process.env for the next run. An
+            // externally exported FWORLD_AI_REASONING still wins on startup
+            // because node --env-file does not override existing variables.
+            saveProviderEnvironment(
+              envFilePath,
+              { FWORLD_AI_REASONING: input.enabled ? "on" : "off" },
+              "Pengaturan reasoning",
+            );
+            jsonResponse(response, 200, {
+              enabled: process.env.FWORLD_AI_REASONING !== "off",
             });
             return;
           }

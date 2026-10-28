@@ -303,6 +303,8 @@ test("uses the session model, fixed request limits, compact context, and counts 
           assert.match(options.system, /knownNpcIdentities/);
           assert.match(options.system, /NPC_PRESENCE/);
           assert.match(options.system, /operation must be exactly/);
+          assert.match(options.system, /Effect keys/);
+          assert.match(options.system, /ADD_FACT: text/);
           assert.equal(options.stopWhen({ steps: [{}, {}] }), false);
           assert.equal(options.stopWhen({ steps: [{}, {}, {}] }), true);
           assert.equal(options.abortSignal.aborted, false);
@@ -390,6 +392,415 @@ test("accepts a narration JSON wrapped in a sentence", async () => {
   );
   assert.equal(calls, 1);
   assert.equal(result.response.narrative, "Peta {kuno} itu terbuka.");
+});
+
+test("relaxes Gemini safety settings only when the server opts in", async (t) => {
+  const seen = [];
+  const respond = async (options) => {
+    seen.push(options.providerOptions);
+    await fakeStep(options);
+    return {
+      text: JSON.stringify({ narrative: "Hujan.", effects: [] }),
+      finishReason: "stop",
+    };
+  };
+  const run = (provider) =>
+    agent.runNarrator(
+      makeInput({ session: makeSession(provider), playerAction: "Aku diam." }),
+      { generateText: respond },
+    );
+
+  await run("gemini");
+  assert.equal(seen[0], undefined);
+
+  process.env.FWORLD_GEMINI_SAFETY = "off";
+  t.after(() => {
+    delete process.env.FWORLD_GEMINI_SAFETY;
+  });
+  seen.length = 0;
+  await run("gemini");
+  assert.deepEqual(
+    seen[0].google.safetySettings.map((entry) => entry.category),
+    [
+      "HARM_CATEGORY_HARASSMENT",
+      "HARM_CATEGORY_HATE_SPEECH",
+      "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+      "HARM_CATEGORY_DANGEROUS_CONTENT",
+    ],
+  );
+  assert.ok(
+    seen[0].google.safetySettings.every(
+      (entry) => entry.threshold === "BLOCK_NONE",
+    ),
+  );
+
+  seen.length = 0;
+  await run("openrouter");
+  assert.equal(seen[0], undefined);
+});
+
+test("turns reasoning off only where the provider accepts it", async (t) => {
+  const seen = [];
+  const respond = async (options) => {
+    seen.push({
+      providerOptions: options.providerOptions,
+      reasoning: options.reasoning,
+    });
+    await fakeStep(options);
+    return {
+      text: JSON.stringify({ narrative: "Hujan.", effects: [] }),
+      finishReason: "stop",
+    };
+  };
+  const run = (provider, model) => {
+    const session = makeSession(provider);
+    session.ai.model = model;
+    return agent.runNarrator(
+      makeInput({ session, playerAction: "Aku diam." }),
+      { generateText: respond },
+    );
+  };
+
+  await run("gemini", "gemini-3.6-flash");
+  assert.deepEqual(seen[0], {
+    providerOptions: undefined,
+    reasoning: undefined,
+  });
+
+  process.env.FWORLD_AI_REASONING = "off";
+  process.env.FWORLD_GEMINI_SAFETY = "off";
+  t.after(() => {
+    delete process.env.FWORLD_AI_REASONING;
+    delete process.env.FWORLD_GEMINI_SAFETY;
+  });
+
+  seen.length = 0;
+  await run("gemini", "gemini-3.6-flash");
+  assert.equal(seen[0].reasoning, "none");
+  assert.equal(seen[0].providerOptions.google.thinkingConfig, undefined);
+  assert.equal(seen[0].providerOptions.google.safetySettings.length, 4);
+
+  seen.length = 0;
+  await run("gemini", "gemini-3-pro-preview");
+  assert.equal(seen[0].reasoning, "low");
+
+  seen.length = 0;
+  await run("gemini", "gemini-2.5-pro");
+  assert.equal(seen[0].reasoning, undefined);
+
+  seen.length = 0;
+  await run("openrouter", "vendor/model-test");
+  assert.equal(seen[0].reasoning, undefined);
+  assert.deepEqual(seen[0].providerOptions, {
+    openrouter: {
+      reasoning: { enabled: false, effort: "none", exclude: true },
+    },
+  });
+
+  seen.length = 0;
+  await run("openrouter", "z-ai/glm-5.3-flash");
+  assert.deepEqual(seen[0].providerOptions, {
+    openrouter: { reasoning: { effort: "low" } },
+  });
+});
+
+// Real SDK serialization: runNarrator builds the provider models itself, so
+// only the transport is faked and the assertions read the outbound bodies.
+function fakeProviderTransport(respond) {
+  const original = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (input, init) => {
+    const url = typeof input === "string" ? input : String(input);
+    const body = typeof init?.body === "string" ? JSON.parse(init.body) : {};
+    requests.push({ url, body, init });
+    return respond(body, requests.length, url);
+  };
+  return {
+    requests,
+    restore: () => {
+      globalThis.fetch = original;
+    },
+  };
+}
+
+function geminiCompletion(text) {
+  return new Response(
+    JSON.stringify({
+      candidates: [
+        {
+          content: { role: "model", parts: [{ text }] },
+          finishReason: "STOP",
+          index: 0,
+        },
+      ],
+      usageMetadata: {
+        promptTokenCount: 10,
+        candidatesTokenCount: 5,
+        totalTokenCount: 15,
+      },
+    }),
+    { headers: { "content-type": "application/json" } },
+  );
+}
+
+function openRouterCompletion(text) {
+  return new Response(
+    JSON.stringify({
+      id: "gen-test",
+      object: "chat.completion",
+      created: 1,
+      choices: [
+        {
+          index: 0,
+          message: { role: "assistant", content: text },
+          finish_reason: "stop",
+        },
+      ],
+      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+    }),
+    { headers: { "content-type": "application/json" } },
+  );
+}
+
+const NARRATION = JSON.stringify({ narrative: "Hujan reda.", effects: [] });
+
+test("Gemini reasoning off serializes each model's documented floor", async (t) => {
+  process.env.FWORLD_AI_REASONING = "off";
+  t.after(() => {
+    delete process.env.FWORLD_AI_REASONING;
+  });
+  const transport = fakeProviderTransport(() => geminiCompletion(NARRATION));
+  t.after(transport.restore);
+
+  const run = async (model) => {
+    transport.requests.length = 0;
+    const session = makeSession("gemini");
+    session.ai.model = model;
+    const result = await agent.runNarrator(
+      makeInput({ session, playerAction: "Aku diam." }),
+    );
+    assert.equal(result.response.narrative, "Hujan reda.");
+    assert.equal(transport.requests.length, 1);
+    assert.match(
+      transport.requests[0].url,
+      /generativelanguage\.googleapis\.com\/v1beta\/models\/.*:generateContent/,
+    );
+    return transport.requests[0].body;
+  };
+
+  // Gemini 3.6 Flash: the installed SDK's minimum thinkingLevel.
+  assert.deepEqual(
+    (await run("gemini-3.6-flash")).generationConfig.thinkingConfig,
+    { thinkingLevel: "minimal" },
+  );
+  // Gemini 3.8 Flash documents "low" as its floor, not "minimal".
+  assert.deepEqual(
+    (await run("gemini-3.8-flash")).generationConfig.thinkingConfig,
+    { thinkingLevel: "low" },
+  );
+  // Gemini 2.5 Flash accepts a zero thinking budget.
+  assert.deepEqual(
+    (await run("gemini-2.5-flash")).generationConfig.thinkingConfig,
+    { thinkingBudget: 0 },
+  );
+  // Gemini 3 Pro rejects "minimal"; its documented floor is "low".
+  assert.deepEqual(
+    (await run("gemini-3-pro-preview")).generationConfig.thinkingConfig,
+    { thinkingLevel: "low" },
+  );
+  // Gemini 2.5 Pro cannot disable thinking, so no invalid zero is sent.
+  assert.equal(
+    (await run("gemini-2.5-pro")).generationConfig.thinkingConfig,
+    undefined,
+  );
+});
+
+test("reasoning enabled leaves Gemini and OpenRouter defaults intact", async (t) => {
+  delete process.env.FWORLD_AI_REASONING;
+  t.after(() => {
+    delete process.env.FWORLD_AI_REASONING;
+  });
+  const transport = fakeProviderTransport((_body, _call, url) =>
+    url.includes("openrouter.ai")
+      ? openRouterCompletion(NARRATION)
+      : geminiCompletion(NARRATION),
+  );
+  t.after(transport.restore);
+
+  const run = async (provider, model) => {
+    transport.requests.length = 0;
+    const session = makeSession(provider);
+    session.ai.model = model;
+    await agent.runNarrator(makeInput({ session, playerAction: "Aku diam." }));
+    assert.equal(transport.requests.length, 1);
+    return transport.requests[0].body;
+  };
+
+  assert.equal(
+    (await run("gemini", "gemini-3.6-flash")).generationConfig.thinkingConfig,
+    undefined,
+  );
+  assert.equal(
+    (await run("openrouter", "z-ai/glm-5.3-flash")).reasoning,
+    undefined,
+  );
+});
+
+test("OpenRouter reasoning off keeps mandatory reasoning at its floor", async (t) => {
+  process.env.FWORLD_AI_REASONING = "off";
+  t.after(() => {
+    delete process.env.FWORLD_AI_REASONING;
+  });
+  const transport = fakeProviderTransport(() =>
+    openRouterCompletion(NARRATION),
+  );
+  t.after(transport.restore);
+
+  const run = async (model) => {
+    transport.requests.length = 0;
+    const session = makeSession("openrouter");
+    session.ai.model = model;
+    const result = await agent.runNarrator(
+      makeInput({ session, playerAction: "Aku diam." }),
+    );
+    assert.equal(result.response.narrative, "Hujan reda.");
+    assert.equal(transport.requests.length, 1);
+    return transport.requests[0].body;
+  };
+
+  // GLM-5.3 always reasons, so asking for "none" is not a valid request; the
+  // documented floor is effort "low" and the details must not be excluded.
+  assert.deepEqual((await run("z-ai/glm-5.3-flash")).reasoning, {
+    effort: "low",
+  });
+  // Gemini 3 Flash and Pro also reason mandatorily on OpenRouter: effort
+  // "none" is rejected and excluding details would drop the tool-loop
+  // signatures, so each family gets its accepted minimum level instead.
+  assert.deepEqual((await run("google/gemini-3.6-flash")).reasoning, {
+    effort: "minimal",
+  });
+  assert.deepEqual((await run("google/gemini-3.8-flash")).reasoning, {
+    effort: "low",
+  });
+  assert.deepEqual((await run("google/gemini-3-pro-preview")).reasoning, {
+    effort: "low",
+  });
+  assert.equal((await run("google/gemini-2.5-pro")).reasoning, undefined);
+  assert.equal(
+    (await run("google/gemini-2.5-pro-preview")).reasoning,
+    undefined,
+  );
+  assert.deepEqual((await run("openai/gpt-4o-mini")).reasoning, {
+    enabled: false,
+    effort: "none",
+    exclude: true,
+  });
+});
+
+test("OpenRouter Gemini 3 tool continuations keep reasoning details", async (t) => {
+  process.env.FWORLD_AI_REASONING = "off";
+  t.after(() => {
+    delete process.env.FWORLD_AI_REASONING;
+  });
+  const detail = {
+    type: "reasoning.text",
+    text: "Ambil detail item dulu.",
+    signature: "sig-gemini-3",
+    format: "google-gemini-v1",
+  };
+  const toolCallCompletion = (model, call) =>
+    new Response(
+      JSON.stringify({
+        id: `gen-${call}`,
+        object: "chat.completion",
+        created: 1,
+        model,
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: "assistant",
+              content: null,
+              reasoning_details: [detail],
+              tool_calls: [
+                {
+                  id: `call-${call}`,
+                  type: "function",
+                  function: {
+                    name: "get_item_details",
+                    arguments: JSON.stringify({ itemId: "umbrella" }),
+                  },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      }),
+      { headers: { "Content-Type": "application/json" } },
+    );
+  const transport = fakeProviderTransport((body, call) =>
+    call % 2 === 1
+      ? toolCallCompletion(body.model, call)
+      : openRouterCompletion(NARRATION),
+  );
+  t.after(transport.restore);
+
+  for (const [model, effort] of [
+    ["google/gemini-3.6-flash", "minimal"],
+    ["google/gemini-3.8-flash", "low"],
+    ["google/gemini-3-pro-preview", "low"],
+  ]) {
+    transport.requests.length = 0;
+    const session = makeSession("openrouter");
+    session.ai.model = model;
+    const result = await agent.runNarrator(
+      makeInput({ session, playerAction: "Aku diam." }),
+    );
+    assert.equal(result.response.narrative, "Hujan reda.");
+    assert.equal(transport.requests.length, 2);
+    assert.deepEqual(transport.requests[0].body.reasoning, { effort });
+    // The signed details come back on the tool loop instead of being dropped
+    // by an exclude flag, which is what keeps the continuation valid.
+    const continuation = transport.requests[1].body.messages.find(
+      (message) => message.role === "assistant",
+    );
+    assert.equal(continuation.reasoning_details.length, 1);
+    assert.equal(continuation.reasoning_details[0].type, "reasoning.text");
+    assert.equal(continuation.reasoning_details[0].signature, detail.signature);
+    assert.equal(continuation.reasoning_details[0].text, detail.text);
+  }
+});
+
+test("reasoning off keeps opted-in Gemini safety settings on the repair", async (t) => {
+  process.env.FWORLD_AI_REASONING = "off";
+  process.env.FWORLD_GEMINI_SAFETY = "off";
+  t.after(() => {
+    delete process.env.FWORLD_AI_REASONING;
+    delete process.env.FWORLD_GEMINI_SAFETY;
+  });
+  const transport = fakeProviderTransport((_body, call) =>
+    geminiCompletion(call === 1 ? "not json" : NARRATION),
+  );
+  t.after(transport.restore);
+
+  const session = makeSession("gemini");
+  session.ai.model = "gemini-3.6-flash";
+  const result = await agent.runNarrator(
+    makeInput({ session, playerAction: "Aku diam." }),
+  );
+  assert.equal(result.response.narrative, "Hujan reda.");
+  assert.equal(transport.requests.length, 2);
+  for (const { body } of transport.requests) {
+    assert.deepEqual(body.generationConfig.thinkingConfig, {
+      thinkingLevel: "minimal",
+    });
+    assert.equal(body.safetySettings.length, 4);
+    assert.ok(
+      body.safetySettings.every((entry) => entry.threshold === "BLOCK_NONE"),
+    );
+  }
 });
 
 test("repairs choice generation after output-limit truncation", async () => {
@@ -810,6 +1221,32 @@ test("opening preserves narrative choices while leaving state effects to the cal
   assert.equal(result.response.effects.length, 1);
   assert.equal(result.response.choices.length, 2);
   assert.equal(result.response.narrative, "The cafe opens.");
+});
+
+test("an opening commits when the model sends malformed effects", async () => {
+  let calls = 0;
+  const result = await agent.runNarrator(
+    makeInput({ kind: "opening", playerAction: "" }),
+    {
+      generateText: async (options) => {
+        calls += 1;
+        await fakeStep(options);
+        return {
+          text: JSON.stringify({
+            narrative: "The cafe opens.",
+            effects: [
+              { type: "ADD_FACT", text: "Ignored.", scope: "scene" },
+              { type: "SET_FLAGX", target: "x", value: true },
+            ],
+          }),
+        };
+      },
+    },
+  );
+  assert.equal(calls, 1);
+  assert.equal(result.response.narrative, "The cafe opens.");
+  assert.equal(result.response.effects.length, 0);
+  assert.equal(result.application, null);
 });
 
 test("uses OpenRouter only when selected in the session snapshot", async () => {
@@ -1511,6 +1948,51 @@ test("only explicit NPC address grants private context or NPC-scoped tools", asy
   await capture("I ask Sava about the lighthouse.", true);
   await capture("Sava, tell me about the lighthouse.", true);
   await capture("I remember a story about Sava and the lighthouse.", false);
+});
+
+test("relationship catalog exposes ids without a principal while values stay principal-only", () => {
+  const session = makeSession();
+  session.definitionSnapshot.relationships.push({
+    id: "tarik",
+    name: "Ketertarikan",
+    min: -10,
+    max: 10,
+    defaultValue: 0,
+  });
+  session.state.relationships = [
+    { npcId: "aiko", values: { trust: 3, tarik: 9 } },
+  ];
+
+  const anonymous = contextModule.buildNarratorContext(
+    makeInput({ session, playerAction: "I watch the rain." }),
+  );
+  const anonymousContext = JSON.parse(anonymous.prompt).context;
+  assert.deepEqual(anonymousContext.actorScope, { kind: "player-narrator" });
+  assert.deepEqual(anonymousContext.state.relationships, []);
+  assert.deepEqual(anonymousContext.game.relationshipCatalog, [
+    { id: "trust", name: "Trust" },
+    { id: "tarik", name: "Ketertarikan" },
+  ]);
+  assert.doesNotMatch(anonymous.prompt, /"values"|"tarik":9/);
+  assert.match(
+    anonymous.system,
+    /RELATIONSHIP_CHANGE target must be one of the ids in game\.relationshipCatalog/,
+  );
+
+  const addressed = JSON.parse(
+    contextModule.buildNarratorContext(
+      makeInput({ session, playerAction: "I ask Aiko about the rain." }),
+    ).prompt,
+  ).context;
+  assert.deepEqual(addressed.actorScope, { kind: "npc", npcId: "aiko" });
+  assert.deepEqual(
+    addressed.game.relationshipCatalog,
+    anonymousContext.game.relationshipCatalog,
+  );
+  assert.deepEqual(addressed.state.relationships, [
+    { npcId: "aiko", id: "trust", name: "Trust", value: 3 },
+    { npcId: "aiko", id: "tarik", name: "Ketertarikan", value: 9 },
+  ]);
 });
 
 test("movement turns scope the principal and NPC tools to the allowed destination", async () => {

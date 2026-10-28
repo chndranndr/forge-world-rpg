@@ -558,6 +558,18 @@ export function getAiSettings(): Promise<AiSettings> {
   return api("/ai/settings");
 }
 
+export interface AiReasoningState {
+  enabled: boolean;
+}
+
+export function getAiReasoning(): Promise<AiReasoningState> {
+  return api("/ai/reasoning");
+}
+
+export function saveAiReasoning(enabled: boolean): Promise<AiReasoningState> {
+  return api("/ai/reasoning", json("PUT", { enabled }));
+}
+
 export function saveAiCredential(
   provider: "gemini" | "openrouter",
   apiKey: string,

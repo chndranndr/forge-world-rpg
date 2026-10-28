@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer as createFixtureServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -1036,4 +1036,112 @@ test("start, manual session AI, and connection test routes require explicit cust
     backend.json("PUT", { expectedRevision: 1, apiKey: "x" }),
   );
   assert.equal(missingKeyProfile.status, 404);
+});
+
+test("reasoning setting persists globally and validates input", async (t) => {
+  const previousReasoning = process.env.FWORLD_AI_REASONING;
+  delete process.env.FWORLD_AI_REASONING;
+  const backend = await withBackend(t);
+  t.after(() => {
+    if (previousReasoning === undefined) delete process.env.FWORLD_AI_REASONING;
+    else process.env.FWORLD_AI_REASONING = previousReasoning;
+  });
+  writeFileSync(
+    backend.envFilePath,
+    "GEMINI_API_KEY=keep-me\nFWORLD_GEMINI_SAFETY=off\n",
+  );
+
+  // Unset behaves as enabled, matching the runtime default.
+  const initial = await backend.get("/ai/reasoning");
+  assert.equal(initial.status, 200);
+  assert.deepEqual(await initial.json(), { enabled: true });
+
+  const profile = await backend.createProfile({
+    name: "Reasoning profil",
+    provider: "gemini",
+    model: "gemini-3-flash",
+    systemPrompt: "Prompt sesi tetap.",
+  });
+  const session = await backend.startSession(
+    game("reasoning-game"),
+    profile.id,
+  );
+  const before = await (await backend.get(`/sessions/${session.id}`)).json();
+
+  const offResponse = await fetch(
+    `${backend.base}/ai/reasoning`,
+    backend.json("PUT", { enabled: false }),
+  );
+  assert.equal(offResponse.status, 200);
+  assert.deepEqual(await offResponse.json(), { enabled: false });
+  assert.equal(process.env.FWORLD_AI_REASONING, "off");
+  const offEnv = readFileSync(backend.envFilePath, "utf8");
+  assert.match(offEnv, /^FWORLD_AI_REASONING=off$/m);
+  assert.ok(offEnv.includes("GEMINI_API_KEY=keep-me"));
+  assert.ok(offEnv.includes("FWORLD_GEMINI_SAFETY=off"));
+
+  const onResponse = await fetch(
+    `${backend.base}/ai/reasoning`,
+    backend.json("PUT", { enabled: true }),
+  );
+  assert.equal(onResponse.status, 200);
+  assert.deepEqual(await onResponse.json(), { enabled: true });
+  assert.equal(process.env.FWORLD_AI_REASONING, "on");
+  const onEnv = readFileSync(backend.envFilePath, "utf8");
+  assert.match(onEnv, /^FWORLD_AI_REASONING=on$/m);
+  assert.equal(
+    onEnv.split("\n").filter((line) => line.startsWith("FWORLD_AI_REASONING="))
+      .length,
+    1,
+    "enabling rewrites the key instead of dropping it",
+  );
+  assert.ok(onEnv.includes("GEMINI_API_KEY=keep-me"));
+  assert.ok(onEnv.includes("FWORLD_GEMINI_SAFETY=off"));
+
+  const after = await (await backend.get(`/sessions/${session.id}`)).json();
+  assert.deepEqual(after.value.ai, before.value.ai);
+  assert.equal(after.revision, before.revision);
+
+  const invalidPayloads = [
+    {},
+    { enabled: "off" },
+    { enabled: 0 },
+    { enabled: null },
+    { enabled: false, extra: true },
+    [],
+  ];
+  for (const payload of invalidPayloads) {
+    const response = await fetch(
+      `${backend.base}/ai/reasoning`,
+      backend.json("PUT", payload),
+    );
+    assert.equal(
+      response.status,
+      400,
+      `expected 400 for ${JSON.stringify(payload)}`,
+    );
+  }
+  assert.equal(readFileSync(backend.envFilePath, "utf8"), onEnv);
+});
+
+test("reasoning setting creates a missing backend env file", async (t) => {
+  const previousReasoning = process.env.FWORLD_AI_REASONING;
+  delete process.env.FWORLD_AI_REASONING;
+  const backend = await withBackend(t);
+  t.after(() => {
+    if (previousReasoning === undefined) delete process.env.FWORLD_AI_REASONING;
+    else process.env.FWORLD_AI_REASONING = previousReasoning;
+  });
+
+  const response = await fetch(
+    `${backend.base}/ai/reasoning`,
+    backend.json("PUT", { enabled: false }),
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { enabled: false });
+  assert.equal(
+    readFileSync(backend.envFilePath, "utf8"),
+    "FWORLD_AI_REASONING=off",
+  );
+  assert.equal(process.env.FWORLD_AI_REASONING, "off");
 });
